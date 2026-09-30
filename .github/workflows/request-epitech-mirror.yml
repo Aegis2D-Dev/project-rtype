@@ -1,0 +1,28 @@
+name: Request Epitech mirror
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: request-epitech-mirror
+  cancel-in-progress: false
+
+jobs:
+  request:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Request centralized assembly and validation
+        env:
+          GH_TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set EPITECH_MIRROR_TOKEN with access to Aegis2D-Dev/aegis2d."
+            exit 1
+          fi
+          gh api --method POST repos/Aegis2D-Dev/aegis2d/dispatches -f event_type=epitech-sync-requested
