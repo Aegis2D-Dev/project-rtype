@@ -18,7 +18,3 @@ Aligns the changelog naming with Aegis2D: one file per pull request, named
 
 ## Commits
 - docs(changelog): name changelog files by date
-
-## Notes
-- The pull request number (#2) is predicted from the repository's last number; check
-  it when opening the pull request.
