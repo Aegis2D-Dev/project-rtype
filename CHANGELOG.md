@@ -5,13 +5,16 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#1](https://github.com/Aegis2D-Dev/project-rtype/pull/1) | Bootstrap R-Type on Aegis2D and request the Epitech mirror | `develop` → `master` | Merged | 2026-09-30 | [initial-game-setup](changelogs/initial-game-setup.md) |
+| [#2](https://github.com/Aegis2D-Dev/project-rtype/pull/2) | Name changelog files by date | `docs/changelog-dated-names` | Open | 2026-10-01 | [2026-10-01-changelog-dated-names](changelogs/2026-10-01-changelog-dated-names.md) |
+| [#1](https://github.com/Aegis2D-Dev/project-rtype/pull/1) | Bootstrap R-Type on Aegis2D and request the Epitech mirror | `develop` → `master` | Merged | 2026-09-30 | [2026-09-30-initial-game-setup](changelogs/2026-09-30-initial-game-setup.md) |
 
 ## Adding an entry
 
 One pull request = one changelog file.
 
-1. Create `changelogs/<short-slug>.md` in the pull request's branch, from the template below.
+1. Create `changelogs/YYYY-MM-DD-<short-slug>.md` in the pull request's branch, from the
+   template below, dated the day the pull request is opened (e.g.
+   `2026-10-01-server-entry-point.md`), so the folder lists them in date order.
 2. Add a row at the top of the table above, linking to the file.
 3. When the pull request is opened, fill in its number; when it is merged, update the status and date.
 
