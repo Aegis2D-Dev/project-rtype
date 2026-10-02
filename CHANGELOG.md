@@ -5,7 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#4](https://github.com/Aegis2D-Dev/project-rtype/pull/4) | Replace rtype with r-type_server and r-type_client, add presets | `build/executables` | Open | 2026-10-02 | [2026-10-02-executables](changelogs/2026-10-02-executables.md) |
+| [#4](https://github.com/Aegis2D-Dev/project-rtype/pull/4) | Replace rtype with r-type_server and r-type_client, add presets | `build/executables` | Merged | 2026-10-02 | [2026-10-02-executables](changelogs/2026-10-02-executables.md) |
 | [#2](https://github.com/Aegis2D-Dev/project-rtype/pull/2) | Name changelog files by date | `docs/changelog-dated-names` | Merged | 2026-10-01 | [2026-10-01-changelog-dated-names](changelogs/2026-10-01-changelog-dated-names.md) |
 | [#1](https://github.com/Aegis2D-Dev/project-rtype/pull/1) | Bootstrap R-Type on Aegis2D and request the Epitech mirror | `develop` → `master` | Merged | 2026-09-30 | [2026-09-30-initial-game-setup](changelogs/2026-09-30-initial-game-setup.md) |
 
