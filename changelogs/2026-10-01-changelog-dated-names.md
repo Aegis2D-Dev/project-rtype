@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#2](https://github.com/Aegis2D-Dev/project-rtype/pull/2) (opened 2026-10-01) |
 | Branch | `docs/changelog-dated-names` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-02 |
 | Author | @Loic-ally |
 
 ## Summary

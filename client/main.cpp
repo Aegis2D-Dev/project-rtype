@@ -1,0 +1,27 @@
+#include <aegis2d/audio/module.hpp>
+#include <aegis2d/core/module.hpp>
+#include <aegis2d/ecs/module.hpp>
+#include <aegis2d/net/module.hpp>
+#include <aegis2d/render/module.hpp>
+
+#include <iostream>
+#include <span>
+#include <string_view>
+
+namespace {
+constexpr std::string_view version = RTYPE_VERSION;
+} // namespace
+
+int main(int argc, char** argv) {
+    const std::span args{argv, static_cast<std::size_t>(argc)};
+    for (const std::string_view arg : args.subspan(1)) {
+        if (arg == "--version") {
+            std::cout << "r-type_client " << version << '\n';
+            return 0;
+        }
+    }
+    std::cout << "r-type_client " << version << " (engine modules: " << aegis2d::core::name()
+              << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ", "
+              << aegis2d::render::name() << ", " << aegis2d::audio::name() << ")\n";
+    return 0;
+}
