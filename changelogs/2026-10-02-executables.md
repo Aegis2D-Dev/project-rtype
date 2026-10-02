@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#4](https://github.com/Aegis2D-Dev/project-rtype/pull/4) (opened 2026-10-02) |
 | Branch | `build/executables` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-02 (`ee13569`) |
 | Author | @Loic-ally |
 | Tickets | Aegis2D-Dev/aegis2d#3 build: add root CMakeLists with C++20 and both executables · Aegis2D-Dev/aegis2d#5 build: add CMakePresets for Linux and Windows (game side) |
 
@@ -35,10 +35,10 @@ engine.
 - `main.cpp` and the `rtype` target (moved to `server/main.cpp`).
 
 ## Commits
-- _not committed yet_
+- `0c13703` feat(build): added r-type_server and r-type_client executables and presets
 
 ## Notes
-- Merge together with Aegis2D-Dev/aegis2d#173, which makes the Epitech mirror run
+- Merged together with Aegis2D-Dev/aegis2d#172, which makes the Epitech mirror run
   `r-type_server --version` and `r-type_client --version` instead of `rtype`.
 - Checked on Linux with Clang 18: the assembled submission (engine bundled, as the
   mirror does) builds in Release without warnings and both `--version` calls succeed;
