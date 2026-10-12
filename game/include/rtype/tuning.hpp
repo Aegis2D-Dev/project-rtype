@@ -33,6 +33,9 @@ inline constexpr std::uint32_t player_lives = 3;
 /// @brief Distance of the player spawns from the left edge.
 inline constexpr float player_spawn_x = 100.0F;
 
+/// @brief Seconds between two shots of a player holding fire (four shots a second).
+inline constexpr float player_fire_cooldown = 0.25F;
+
 /// @brief Speed of a player missile, to the right.
 inline constexpr float player_missile_speed = 900.0F;
 /// @brief Size of a player missile.

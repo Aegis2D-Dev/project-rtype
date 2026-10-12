@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#8](https://github.com/Aegis2D-Dev/project-rtype/pull/8) | Player missiles with a fire cooldown | `feat/player-weapons` | Open | 2026-10-12 | [2026-10-12-player-weapons](changelogs/2026-10-12-player-weapons.md) |
 | [#7](https://github.com/Aegis2D-Dev/project-rtype/pull/7) | Server gameplay on the engine systems | `feat/server-gameplay` | Open | 2026-10-12 | [2026-10-12-server-gameplay](changelogs/2026-10-12-server-gameplay.md) |
 | [#6](https://github.com/Aegis2D-Dev/project-rtype/pull/6) | Follow the engine's develop branch | `build/engine-develop` | Merged | 2026-10-12 | [2026-10-12-engine-develop](changelogs/2026-10-12-engine-develop.md) |
 | [#4](https://github.com/Aegis2D-Dev/project-rtype/pull/4) | Replace rtype with r-type_server and r-type_client, add presets | `build/executables` | Merged | 2026-10-02 | [2026-10-02-executables](changelogs/2026-10-02-executables.md) |

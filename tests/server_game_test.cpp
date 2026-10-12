@@ -53,8 +53,8 @@ void place(ServerGame& game, Entity entity, Vec2 position) {
 TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
-          std::vector<std::string_view>{"steering", "movement", "play_area", "collision", "damage",
-                                        "score", "lives", "cleanup"});
+          std::vector<std::string_view>{"steering", "movement", "play_area", "weapons", "collision",
+                                        "damage", "score", "lives", "cleanup"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
     CHECK_FALSE(game.game_over());
@@ -221,5 +221,78 @@ TEST_CASE("ramming a Bydos costs a life and kills it", "[rtype][server][140][142
     CHECK_FALSE(game.registry().alive(bydos));
     REQUIRE(game.lives_lost().size() == 1);
     CHECK(game.lives_lost().front().lives_left == tuning::player_lives - 1);
+    CHECK(game.registry().get<Score>(ship).points == tuning::bydos_score);
+}
+
+TEST_CASE("holding fire respects the rate", "[rtype][server][133]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    game.set_input(ship, holding(Action::Fire));
+
+    std::size_t missiles = 0;
+    for (std::uint32_t tick = 0; tick < 10 * tuning::tick_rate; ++tick) {
+        run(game, 1);
+        missiles += game.fired().size();
+        for (const Entity missile : game.fired()) {
+            CHECK(game.registry().get<aegis2d::ecs::Owner>(missile).entity == ship);
+        }
+    }
+    const auto expected = static_cast<std::size_t>(10.0F / tuning::player_fire_cooldown);
+    CHECK(missiles >= expected);
+    CHECK(missiles <= expected + 1);
+}
+
+TEST_CASE("missiles leave the ship's nose and fly right", "[rtype][server][133]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    game.set_input(ship, holding(Action::Fire));
+    run(game, 1);
+    REQUIRE(game.fired().size() == 1);
+    const Entity missile = game.fired().front();
+    CHECK(position_of(game, missile).x > position_of(game, ship).x);
+    CHECK(position_of(game, missile).y == position_of(game, ship).y);
+
+    const float before = position_of(game, missile).x;
+    run(game, 1);
+    CHECK(game.fired().empty());
+    CHECK(position_of(game, missile).x > before);
+}
+
+TEST_CASE("tapping fire does not shoot faster", "[rtype][server][133]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    std::size_t missiles = 0;
+    for (std::uint32_t tick = 0; tick < 10 * tuning::tick_rate; ++tick) {
+        game.set_input(ship, tick % 2 == 0 ? holding(Action::Fire) : PlayerInput{});
+        run(game, 1);
+        missiles += game.fired().size();
+    }
+    CHECK(missiles <= static_cast<std::size_t>(10.0F / tuning::player_fire_cooldown) + 1);
+}
+
+TEST_CASE("each player fires their own missiles", "[rtype][server][133]") {
+    ServerGame game;
+    const Entity shooter = game.add_player();
+    const Entity idle = game.add_player();
+    game.set_input(shooter, holding(Action::Fire));
+    run(game, static_cast<int>(tuning::tick_rate));
+    CHECK(game.registry().count<aegis2d::ecs::Owner>() == 4);
+    bool idle_fired = false;
+    game.registry().view<aegis2d::ecs::Owner>().each(
+        [&idle_fired, idle](const aegis2d::ecs::Owner& owner) {
+            idle_fired = idle_fired || owner.entity == idle;
+        });
+    CHECK_FALSE(idle_fired);
+}
+
+TEST_CASE("a fired missile kills a Bydos in its path", "[rtype][server][133][141]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), Vec2{});
+    place(game, bydos, Vec2{600.0F, position_of(game, ship).y});
+    game.set_input(ship, holding(Action::Fire));
+
+    run(game, static_cast<int>(tuning::tick_rate));
+    CHECK_FALSE(game.registry().alive(bydos));
     CHECK(game.registry().get<Score>(ship).points == tuning::bydos_score);
 }

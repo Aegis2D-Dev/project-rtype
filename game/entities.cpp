@@ -35,6 +35,7 @@ ecs::Entity spawn_player(ecs::Registry& registry, std::size_t slot) {
         ship,
         ecs::Lives{.count = tuning::player_lives, .spawn = spawn, .health = tuning::player_health});
     registry.emplace<ecs::Score>(ship);
+    registry.emplace<ecs::Weapon>(ship, ecs::Weapon{.cooldown = tuning::player_fire_cooldown});
     registry.emplace<ecs::NetworkId>(ship, ecs::NetworkId::of(ship));
     return ship;
 }

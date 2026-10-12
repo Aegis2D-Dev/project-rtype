@@ -1,4 +1,5 @@
 #include <aegis2d/ecs/movement.hpp>
+#include <aegis2d/ecs/weapons.hpp>
 
 #include <rtype/entities.hpp>
 #include <rtype/server_game.hpp>
@@ -22,6 +23,13 @@ void ServerGame::register_systems() {
     systems_.add("movement", ecs::apply_velocity);
     systems_.add("play_area", [](ecs::Registry& world, const ecs::Tick& /*tick*/) {
         ecs::clamp_player_ships(world, play_area());
+    });
+    systems_.add("weapons", [this](ecs::Registry& world, const ecs::Tick& tick) {
+        ecs::trigger_weapons(world, tick, shooters_);
+        fired_.clear();
+        for (const ecs::Entity shooter : shooters_) {
+            fired_.push_back(spawn_player_missile(world, shooter));
+        }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
         grid_.build(world);
@@ -98,6 +106,10 @@ const ecs::Registry& ServerGame::registry() const noexcept {
 
 const ecs::Scheduler& ServerGame::systems() const noexcept {
     return systems_;
+}
+
+const std::vector<ecs::Entity>& ServerGame::fired() const noexcept {
+    return fired_;
 }
 
 const ecs::DamageReport& ServerGame::damage() const noexcept {
