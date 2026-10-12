@@ -23,6 +23,7 @@ function(rtype_executable target)
     aegis2d_stage_runtime(${target})
 endfunction()
 
+add_subdirectory(game)
 add_subdirectory(server)
 if(RTYPE_BUILD_CLIENT)
     add_subdirectory(client)
