@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Pull request | — (opened 2026-10-12) |
+| Pull request | [#6](https://github.com/Aegis2D-Dev/project-rtype/pull/6) (opened 2026-10-12) |
 | Branch | `build/engine-develop` → `develop` |
 | Status | Open |
 | Author | @vmbr068 |
@@ -19,6 +19,7 @@ merged.
   `master`, with a comment explaining why.
 
 ## Commits
+- `91f46cf` feat(build): followed the engine develop branch
 
 ## Notes
 - The Epitech mirror is not affected: it bundles the engine's `master` through
