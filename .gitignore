@@ -1,6 +1,7 @@
 /build/
 /out/
 /.venv/
+/.cache/
 CMakeUserPresets.json
 compile_commands.json
 .DS_Store
