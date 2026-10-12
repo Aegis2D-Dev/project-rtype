@@ -69,6 +69,9 @@ To hunt memory errors and undefined behavior, configure with the engine's saniti
 - **Checks**: the *Code quality* workflow must be green: format, build + tests +
   clang-tidy on Linux, build + tests on Windows, and tests under ASan and UBSan; so must
   the *Documentation* workflow when the docs or the game's headers change.
+  The Linux jobs run on the team's self-hosted runner, shared with the engine, the Windows
+  job on GitHub's (see the engine's
+  [CI runner](https://aegis2d-docs.pages.dev/ci-runner/) page).
 - **Merge**: with a merge commit, never squash, after one approval.
 
 ## Documentation
