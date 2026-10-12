@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: request-epitech-mirror
@@ -16,15 +17,12 @@ jobs:
   request:
     runs-on: [self-hosted, nixos]
     container:
-      image: ubuntu:24.04
-      env:
-        DEBIAN_FRONTEND: noninteractive
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 5
     steps:
-      - name: Install system packages
-        run: |
-          apt-get update
-          apt-get install -y ca-certificates gh
       - name: Request centralized assembly and validation
         env:
           GH_TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
