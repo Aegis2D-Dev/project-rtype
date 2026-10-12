@@ -31,6 +31,8 @@ jobs:
         run: |
           apt-get update
           apt-get install -y ca-certificates git doxygen
+          # The workspace belongs to the runner user, not to root in the container.
+          git config --global --add safe.directory '*'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
