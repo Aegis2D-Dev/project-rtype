@@ -13,18 +13,27 @@ concurrency:
   group: code-quality-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
-
 # The engine (Aegis2D-Dev/aegis2d) is private: the build jobs let git fetch it with
 # EPITECH_MIRROR_TOKEN, which already has access to it for the Epitech mirror.
+#
+# Linux jobs run on the self-hosted NixOS runners, inside an Ubuntu container. The runner's
+# Node.js (used by the actions) links into /nix/store, so the store is mounted read-only.
 
 jobs:
   format:
     name: Format (clang-format)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ubuntu:24.04
+      volumes: ['/nix/store:/nix/store:ro']
+      env:
+        DEBIAN_FRONTEND: noninteractive
     timeout-minutes: 5
     steps:
+      - name: Install system packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
@@ -38,9 +47,18 @@ jobs:
 
   build:
     name: Build, test and lint (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ubuntu:24.04
+      volumes: ['/nix/store:/nix/store:ro']
+      env:
+        DEBIAN_FRONTEND: noninteractive
     timeout-minutes: 40
     steps:
+      - name: Install system packages
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates git clang ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
@@ -56,6 +74,9 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
+      - name: Point CPM at the workspace cache
+        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -64,8 +85,6 @@ jobs:
           restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
           python -m pip install cmake==3.31.6 -r tools/requirements.txt
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build the server, the client and the tests
@@ -91,6 +110,8 @@ jobs:
     name: Build and test (Windows, MSVC toolchain)
     runs-on: windows-latest
     timeout-minutes: 50
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -128,12 +149,21 @@ jobs:
 
   sanitize:
     name: Tests with ASan and UBSan (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ubuntu:24.04
+      volumes: ['/nix/store:/nix/store:ro']
+      env:
+        DEBIAN_FRONTEND: noninteractive
     timeout-minutes: 40
     env:
       ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:
+      - name: Install system packages
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates git clang libclang-rt-18-dev ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
@@ -149,6 +179,9 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
+      - name: Point CPM at the workspace cache
+        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -157,8 +190,6 @@ jobs:
           restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-rt-18-dev ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
           python -m pip install cmake==3.31.6
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build with sanitizers

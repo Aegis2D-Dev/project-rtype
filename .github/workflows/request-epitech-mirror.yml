@@ -14,9 +14,17 @@ concurrency:
 
 jobs:
   request:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ubuntu:24.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
     timeout-minutes: 5
     steps:
+      - name: Install system packages
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates gh
       - name: Request centralized assembly and validation
         env:
           GH_TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
