@@ -4,13 +4,13 @@
 |---|---|
 | Pull request | [#8](https://github.com/Aegis2D-Dev/project-rtype/pull/8) (opened 2026-10-12) |
 | Branch | `feat/player-weapons` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-12 (`e2ac724`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#133 player missiles with fire cooldown |
 
 ## Summary
 Players now shoot: holding fire spawns a missile from the nose of the ship four times a
-second, the rate being enforced by the server with the engine's weapons (aegis2d#205), so
+second, the rate being enforced by the server with the engine's weapons (aegis2d#207), so
 tapping fire or sending fire every tick does not shoot faster.
 
 ## Added
@@ -32,9 +32,9 @@ tapping fire or sending fire every tick does not shoot faster.
 - feat(changelog): updated changelogs
 
 ## Notes
-- Needs the engine's weapons (aegis2d#205) merged in the engine's `develop`.
+- Needs the engine's weapons (aegis2d#207) merged in the engine's `develop`.
 - Made from `feat/server-gameplay` (#7, not merged yet).
 - Missiles are not removed when they leave the screen yet: #134.
-- Verified against the engine with aegis2d#205: server build with `-Werror` (21 tests),
+- Verified against the engine with aegis2d#207: server build with `-Werror` (21 tests),
   libc++ 18 build (21 tests), client build with ASan + UBSan (21 tests), clang-format and
   clang-tidy with the engine's configuration.

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#7](https://github.com/Aegis2D-Dev/project-rtype/pull/7) (opened 2026-10-12) |
 | Branch | `feat/server-gameplay` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-12 (`11e708c`) |
 | Author | @Loic-ally |
 | Tickets | Game side of Aegis2D-Dev/aegis2d#131 player ship and movement · #132 clamp players inside the screen · #138 collision broad phase · #139 AABB collision with layer masks · #140 health and damage · #141 enemy destruction and score · #142 player death, lives and game over |
 
