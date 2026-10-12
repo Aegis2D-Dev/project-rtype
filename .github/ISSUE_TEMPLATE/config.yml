@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: New task (in the engine repository)
+    url: https://github.com/Aegis2D-Dev/aegis2d/issues/new/choose
+    about: Every ticket, game ones included, lives in Aegis2D-Dev/aegis2d and its GitHub Project.
+  - name: Contributing guide
+    url: https://github.com/Aegis2D-Dev/project-rtype/blob/develop/CONTRIBUTING.md
+    about: What is specific to the game repository.
