@@ -67,8 +67,30 @@ To hunt memory errors and undefined behavior, configure with the engine's saniti
 - **Changelog**: one pull request = one file in [`changelogs/`](changelogs/) plus one row
   in [CHANGELOG.md](CHANGELOG.md), following the template there.
 - **Checks**: the *Code quality* workflow must be green: format, build + tests +
-  clang-tidy on Linux, build + tests on Windows, and tests under ASan and UBSan.
+  clang-tidy on Linux, build + tests on Windows, and tests under ASan and UBSan; so must
+  the *Documentation* workflow when the docs or the game's headers change.
 - **Merge**: with a merge commit, never squash, after one approval.
+
+## Documentation
+
+The documentation site lives in `docs/` and is built with MkDocs Material
+(`mkdocs.yml`). Preview it with `pip install -r docs/requirements.txt && mkdocs serve`;
+the *Documentation* workflow builds it with `--strict` on every pull request touching it
+(the built site is attached to the run as a downloadable artifact) and publishes it to
+[Cloudflare Pages](https://rtype-docs.pages.dev) from `develop`. New pages must be added
+to the `nav` in `mkdocs.yml`. A change to the gameplay (a system, an entity, a tuning
+value) updates [docs/gameplay.md](docs/gameplay.md) in the same pull request.
+
+One-time hosting setup (an admin, with the Cloudflare account of the engine's site):
+
+1. Create the project: `npx wrangler pages project create rtype-docs --production-branch=main`.
+2. Reuse the engine's API token (*Cloudflare Pages: Edit*) or create one.
+3. Add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to this
+   repository (*Settings → Secrets and variables → Actions*).
+
+Game headers carry Doxygen comments (`/// @brief`, `/// @param`, `/// @return`); the API
+reference is generated with `mkdir -p build && doxygen docs/Doxyfile` and published under
+`/api/`. Doxygen warnings fail the build.
 
 ## Code style
 

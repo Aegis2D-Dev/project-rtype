@@ -1,0 +1,98 @@
+# Getting started
+
+## Requirements
+
+Linux is the main platform (server and client); Windows is supported, macOS is used for
+development.
+
+- CMake 3.30 or newer and Ninja.
+- A compiler with C++26 support in CMake: Clang 18+, GCC 14+ or Apple Clang 17+.
+- Windows: Visual Studio 2022 or newer with the *C++ Clang tools for Windows* component
+  (clang-cl 17+) and CMake 4. CMake has no C++26 mode for the plain MSVC compiler.
+- Client builds only: Python 3 with Jinja2, because the engine generates its OpenGL
+  loader with glad:
+  ```bash
+  python3 -m venv .venv && source .venv/bin/activate
+  pip install -r cmake/requirements.txt
+  ```
+- Linux client builds: the X11, OpenGL and audio development packages SDL3 needs, e.g. on
+  Ubuntu:
+  ```bash
+  sudo apt-get install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+      libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
+  ```
+
+Every library is downloaded at configure time: the engine with FetchContent, its
+dependencies (SDL3, Asio, GLM...) and Catch2 with
+[CPM](https://github.com/cpm-cmake/CPM.cmake). Nothing is installed on the system.
+
+## Access to the engine
+
+The engine repository, [Aegis2D-Dev/aegis2d](https://github.com/Aegis2D-Dev/aegis2d), is
+private. Give git your GitHub credentials once, for example with the GitHub CLI:
+
+```bash
+gh auth login
+gh auth setup-git
+```
+
+Development builds follow the engine's `develop` branch (`GIT_TAG develop` in
+`CMakeLists.txt`), so an engine feature reaches the game as soon as it is merged there.
+A build directory keeps the engine it first fetched: to get the latest one, delete
+`build/<preset>/_deps/aegis2d-*` and configure again.
+
+## Build and test
+
+```bash
+cmake --preset linux-debug
+cmake --build build/linux-debug
+ctest --test-dir build/linux-debug --output-on-failure
+```
+
+| Configure preset | Contents |
+|---|---|
+| `linux-debug`, `linux-release` | Server, client and tests |
+| `server`, `server-release` | Server and tests only, without SDL3 or OpenGL |
+| `macos` | Server, client and tests with OpenGL 4.1 (the highest macOS supports) |
+| `windows` | Visual Studio and clang-cl, multi-configuration |
+
+On Windows, build with `cmake --build --preset windows-debug` (or `windows-release`) and
+test with `ctest --test-dir build/windows -C Debug`.
+
+If CMake does not find Jinja2, add `-DPython_EXECUTABLE=$PWD/.venv/bin/python` to the
+first configure.
+
+### Options
+
+| Option | Default | Effect |
+|---|---|---|
+| `RTYPE_BUILD_CLIENT` | `ON` | Build `r-type_client` and the engine's client modules |
+| `RTYPE_BUILD_TESTS` | `ON` when built alone | Build the Catch2 tests (`rtype_tests`) |
+| `AEGIS2D_WARNINGS_AS_ERRORS` | `OFF` | Turn compiler warnings into errors (CI turns it on) |
+| `AEGIS2D_SANITIZE` | `OFF` | ASan and UBSan on the engine and the game |
+
+## Run
+
+```bash
+./build/linux-debug/r-type_server
+./build/linux-debug/r-type_client
+```
+
+Both binaries accept `--version`, which prints the version and exits. For now the server
+creates a game and lists its systems, and the client lists the engine modules it is built
+with; the network loop and the window come with the next tickets.
+
+## Documentation
+
+The site is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and
+the API reference with Doxygen:
+
+```bash
+pip install -r docs/requirements.txt
+mkdocs serve                    # http://127.0.0.1:8000, reloads on save
+doxygen docs/Doxyfile           # build/doxygen/html/index.html
+```
+
+Every push to `develop` that changes the docs or the game's headers deploys the site to
+[rtype-docs.pages.dev](https://rtype-docs.pages.dev/), with the API reference under
+`/api/`.

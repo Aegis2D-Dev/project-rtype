@@ -1,0 +1,24 @@
+# API reference of the game: doxygen docs/Doxyfile from the repository root.
+# CI copies build/doxygen/html into the site's api/ folder.
+PROJECT_NAME           = "R-Type"
+PROJECT_BRIEF          = "Networked shoot'em up built on Aegis2D"
+OUTPUT_DIRECTORY       = build/doxygen
+INPUT                  = game/include docs/api-mainpage.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.md
+USE_MDFILE_AS_MAINPAGE = docs/api-mainpage.md
+STRIP_FROM_PATH        = game/include
+STRIP_FROM_INC_PATH    = game/include
+FULL_PATH_NAMES        = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+QUIET                  = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+HTML_COLORSTYLE        = TOGGLE
+SEARCHENGINE           = YES
+HAVE_DOT               = NO
