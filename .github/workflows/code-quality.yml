@@ -8,29 +8,34 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: code-quality-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
-
 # The engine (Aegis2D-Dev/aegis2d) is private: the build jobs let git fetch it with
 # EPITECH_MIRROR_TOKEN, which already has access to it for the Epitech mirror.
+#
+# Linux jobs run on the self-hosted NixOS runners, inside the aegis2d-ci image (built from
+# Aegis2D-Dev/aegis2d .github/ci-image). The runner's Node.js (used by the actions) links
+# into /nix/store, so the store is mounted read-only.
 
 jobs:
   format:
     name: Format (clang-format)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes: ['/nix/store:/nix/store:ro']
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12'
       - name: Install clang-format
         run: python -m pip install -r tools/requirements.txt
       - name: Check formatting
@@ -38,15 +43,18 @@ jobs:
 
   build:
     name: Build, test and lint (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes: ['/nix/store:/nix/store:ro']
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12'
       - name: Give git access to the engine
         env:
           TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
@@ -56,6 +64,9 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
+      - name: Point CPM at the workspace cache
+        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -64,8 +75,6 @@ jobs:
           restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
           python -m pip install cmake==3.31.6 -r tools/requirements.txt
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build the server, the client and the tests
@@ -89,8 +98,10 @@ jobs:
 
   windows:
     name: Build and test (Windows, MSVC toolchain)
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows]
     timeout-minutes: 50
+    env:
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -106,6 +117,10 @@ jobs:
             Write-Output "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
             exit 1
           }
+          # The runner is persistent: keep the token in this job's temp directory, not in the user's gitconfig.
+          $config = Join-Path $env:RUNNER_TEMP gitconfig
+          "GIT_CONFIG_GLOBAL=$config" >> $env:GITHUB_ENV
+          $env:GIT_CONFIG_GLOBAL = $config
           git config --global url."https://x-access-token:$($env:TOKEN)@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -128,7 +143,13 @@ jobs:
 
   sanitize:
     name: Tests with ASan and UBSan (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes: ['/nix/store:/nix/store:ro']
     timeout-minutes: 40
     env:
       ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1
@@ -137,9 +158,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12'
       - name: Give git access to the engine
         env:
           TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
@@ -149,6 +167,9 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
+      - name: Point CPM at the workspace cache
+        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -157,8 +178,6 @@ jobs:
           restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libclang-rt-18-dev ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libgl1-mesa-dev libasound2-dev libpulse-dev
           python -m pip install cmake==3.31.6
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build with sanitizers

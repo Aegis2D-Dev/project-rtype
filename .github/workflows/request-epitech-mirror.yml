@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: request-epitech-mirror
@@ -14,7 +15,12 @@ concurrency:
 
 jobs:
   request:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 5
     steps:
       - name: Request centralized assembly and validation
