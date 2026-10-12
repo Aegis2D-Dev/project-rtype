@@ -18,9 +18,10 @@ namespace rtype {
 [[nodiscard]] aegis2d::Vec2 player_spawn(std::size_t slot);
 
 /// @brief Creates the ship of a player.
-/// @details The ship is steered by its `ecs::PlayerInput`, kept in the play area, has one
-/// health point, tuning::player_lives lives respawning at player_spawn(), a `Score`, a
-/// `NetworkId`, and rams enemies.
+/// @details The ship is steered by its `ecs::PlayerInput`, kept in the play area, fires
+/// every tuning::player_fire_cooldown seconds while fire is held, has one health point,
+/// tuning::player_lives lives respawning at player_spawn(), a `Score`, a `NetworkId`, and
+/// rams enemies.
 /// @param registry World of the game.
 /// @param slot Player slot, from 0 to tuning::max_players - 1.
 /// @return The ship.
