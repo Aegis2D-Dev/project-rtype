@@ -4,10 +4,13 @@ project(rtype VERSION 0.1.0 LANGUAGES CXX)
 option(RTYPE_BUILD_CLIENT "Build r-type_client (needs SDL3 and OpenGL)" ON)
 set(AEGIS2D_BUILD_CLIENT ${RTYPE_BUILD_CLIENT} CACHE BOOL "Build platform, render and audio" FORCE)
 
+# Development builds follow the engine's integration branch, so the game gets each engine
+# feature as soon as it is merged. The Epitech mirror ignores this: it bundles the engine's
+# master through FETCHCONTENT_SOURCE_DIR_AEGIS2D.
 include(FetchContent)
 FetchContent_Declare(aegis2d
     GIT_REPOSITORY https://github.com/Aegis2D-Dev/aegis2d.git
-    GIT_TAG master
+    GIT_TAG develop
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(aegis2d)
 
