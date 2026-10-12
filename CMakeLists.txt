@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.30)
 project(rtype VERSION 0.1.0 LANGUAGES CXX)
 
 option(RTYPE_BUILD_CLIENT "Build r-type_client (needs SDL3 and OpenGL)" ON)
+option(RTYPE_BUILD_TESTS "Build the game unit tests" ${PROJECT_IS_TOP_LEVEL})
 set(AEGIS2D_BUILD_CLIENT ${RTYPE_BUILD_CLIENT} CACHE BOOL "Build platform, render and audio" FORCE)
 
 # Development builds follow the engine's integration branch, so the game gets each engine
@@ -23,7 +24,12 @@ function(rtype_executable target)
     aegis2d_stage_runtime(${target})
 endfunction()
 
+add_subdirectory(game)
 add_subdirectory(server)
 if(RTYPE_BUILD_CLIENT)
     add_subdirectory(client)
+endif()
+if(RTYPE_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()

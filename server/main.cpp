@@ -2,6 +2,8 @@
 #include <aegis2d/ecs/module.hpp>
 #include <aegis2d/net/module.hpp>
 
+#include <rtype/server_game.hpp>
+
 #include <iostream>
 #include <span>
 #include <string_view>
@@ -20,5 +22,11 @@ int main(int argc, char** argv) {
     }
     std::cout << "r-type_server " << version << " (engine modules: " << aegis2d::core::name()
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
+    const rtype::ServerGame game;
+    std::cout << "systems:";
+    for (const std::string_view system : game.systems().names()) {
+        std::cout << ' ' << system;
+    }
+    std::cout << '\n';
     return 0;
 }
