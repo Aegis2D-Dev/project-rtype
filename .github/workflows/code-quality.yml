@@ -22,7 +22,7 @@ env:
 jobs:
   format:
     name: Format (clang-format)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -38,7 +38,7 @@ jobs:
 
   build:
     name: Build, test and lint (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -55,7 +55,9 @@ jobs:
             echo "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
             exit 1
           fi
-          git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+          # Job-local git config: a self-hosted runner must not keep the token in ~/.gitconfig.
+          git config --file "$RUNNER_TEMP/gitconfig" url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -128,7 +130,7 @@ jobs:
 
   sanitize:
     name: Tests with ASan and UBSan (Linux)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 40
     env:
       ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1
@@ -148,7 +150,9 @@ jobs:
             echo "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
             exit 1
           fi
-          git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+          # Job-local git config: a self-hosted runner must not keep the token in ~/.gitconfig.
+          git config --file "$RUNNER_TEMP/gitconfig" url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:

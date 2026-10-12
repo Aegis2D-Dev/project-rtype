@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build:
     name: Build the site and API reference
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -51,17 +51,24 @@ jobs:
     name: Deploy to Cloudflare Pages
     if: github.event_name != 'pull_request'
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 10
     environment:
       name: documentation
       url: https://rtype-docs.pages.dev
     steps:
+      # Self-hosted runners keep the workspace between runs: start from an empty one.
+      - name: Clean the workspace
+        run: find . -mindepth 1 -delete
       - name: Download the built site
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: documentation-site
           path: site
+      # wrangler needs Node.js, which a self-hosted runner may not have.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
