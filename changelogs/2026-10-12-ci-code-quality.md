@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#10](https://github.com/Aegis2D-Dev/project-rtype/pull/10) (opened 2026-10-12) |
 | Branch | `ci/code-quality` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-12 (`35e9d5f`) |
 | Author | @Loic-ally |
 
 ## Summary

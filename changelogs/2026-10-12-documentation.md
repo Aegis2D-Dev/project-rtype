@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#12](https://github.com/Aegis2D-Dev/project-rtype/pull/12) (opened 2026-10-12) |
 | Branch | `docs/documentation` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-12 (`83d0bed`) |
 | Author | @Loic-ally |
 
 ## Summary
