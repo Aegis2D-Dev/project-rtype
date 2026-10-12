@@ -98,7 +98,7 @@ jobs:
 
   windows:
     name: Build and test (Windows, MSVC toolchain)
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows]
     timeout-minutes: 50
     env:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
@@ -117,6 +117,10 @@ jobs:
             Write-Output "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
             exit 1
           }
+          # The runner is persistent: keep the token in this job's temp directory, not in the user's gitconfig.
+          $config = Join-Path $env:RUNNER_TEMP gitconfig
+          "GIT_CONFIG_GLOBAL=$config" >> $env:GITHUB_ENV
+          $env:GIT_CONFIG_GLOBAL = $config
           git config --global url."https://x-access-token:$($env:TOKEN)@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
       - name: Cache CPM sources
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
