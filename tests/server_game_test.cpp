@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using aegis2d::Vec2;
@@ -50,6 +51,18 @@ void place(ServerGame& game, Entity entity, Vec2 position) {
     game.registry().get<Transform>(entity).position = position;
 }
 
+// Tick and position of each Bydos spawned at random during the first ticks of a game.
+std::vector<std::pair<std::uint64_t, Vec2>> spawns_of(ServerGame& game, int ticks) {
+    std::vector<std::pair<std::uint64_t, Vec2>> spawns;
+    for (int tick = 0; tick < ticks; ++tick) {
+        run(game, 1);
+        for (const Entity bydos : game.spawned()) {
+            spawns.emplace_back(game.ticks(), position_of(game, bydos));
+        }
+    }
+    return spawns;
+}
+
 // A Bydos that does not weave, for the tests that aim a missile at it.
 Entity straight_bydos(ServerGame& game, Vec2 position) {
     const Entity bydos = rtype::spawn_bydos_slave(game.registry(), position);
@@ -63,7 +76,7 @@ TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
           std::vector<std::string_view>{"steering", "movement", "sine_motion", "play_area",
-                                        "weapons", "collision", "damage", "score", "lives",
+                                        "weapons", "spawn", "collision", "damage", "score", "lives",
                                         "cleanup", "despawn"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
@@ -412,4 +425,59 @@ TEST_CASE("a Bydos weaving above the screen comes back", "[rtype][server][134][1
     }
     CHECK(highest + (tuning::bydos_size.y / 2.0F) < 0.0F);
     CHECK(position_of(game, bydos).y == Approx(0.0F).margin(0.01));
+}
+
+TEST_CASE("without a seed, no enemy spawns", "[rtype][server][136]") {
+    ServerGame game;
+    CHECK_FALSE(game.seed().has_value());
+    CHECK_FALSE(game.systems().enabled("spawn"));
+    run(game, 60 * 10);
+    CHECK(game.spawned().empty());
+    CHECK(game.registry().size() == 0);
+}
+
+TEST_CASE("a fixed seed gives the same spawns", "[rtype][server][136]") {
+    ServerGame first{42};
+    ServerGame second{42};
+    ServerGame other{43};
+    CHECK(first.seed() == 42);
+    CHECK(first.systems().enabled("spawn"));
+    const int minute = 60 * 60;
+    const auto spawns = spawns_of(first, minute);
+    CHECK(spawns.size() >= 30);
+    CHECK(spawns == spawns_of(second, minute));
+    CHECK(spawns != spawns_of(other, minute));
+}
+
+TEST_CASE("random Bydos enter on the right and weave on screen", "[rtype][server][135][136]") {
+    ServerGame game{7};
+    std::size_t spawned = 0;
+    std::size_t despawned = 0;
+    std::uint64_t last_spawn = 0;
+    const auto ticks_of = [](float seconds) {
+        return static_cast<std::uint64_t>(seconds * static_cast<float>(tuning::tick_rate));
+    };
+    for (int tick = 0; tick < 60 * 60 * 2; ++tick) {
+        run(game, 1);
+        for (const Entity bydos : game.spawned()) {
+            CHECK(position_of(game, bydos).x == tuning::bydos_spawn_x);
+            if (spawned > 0) {
+                const std::uint64_t gap = game.ticks() - last_spawn;
+                REQUIRE(gap + 1 >= ticks_of(tuning::bydos_spawn_min_interval));
+                REQUIRE(gap <= ticks_of(tuning::bydos_spawn_max_interval) + 1);
+            }
+            last_spawn = game.ticks();
+            ++spawned;
+        }
+        despawned += game.despawned().size();
+        game.registry().view<SineMotion, Transform>().each(
+            [](const SineMotion& /*wave*/, const Transform& transform) {
+                REQUIRE(transform.position.y - (tuning::bydos_size.y / 2.0F) >= -0.01F);
+                REQUIRE(transform.position.y + (tuning::bydos_size.y / 2.0F) <=
+                        tuning::area_height + 0.01F);
+            });
+    }
+    CHECK(spawned >= 60);
+    CHECK(despawned > 0);
+    CHECK(game.registry().size() == spawned - despawned);
 }
