@@ -53,8 +53,8 @@ read it from `rtype::tuning`, so only behavior that really changed fails.
    in the tick:
 
     ```cpp
-    systems_.add("despawn", [](ecs::Registry& world, const ecs::Tick& /*tick*/) {
-        ecs::despawn_outside(world, play_area());
+    systems_.add("waves", [this](ecs::Registry& world, const ecs::Tick& tick) {
+        waves_.update(world, tick, spawned_);    // the enemies of the current wave
     });
     ```
 
