@@ -5,8 +5,9 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#18](https://github.com/Aegis2D-Dev/project-rtype/pull/18) | Random Bydos spawns on the right edge | `feat/random-enemy-spawns` | Open | 2026-10-13 | [2026-10-13-random-enemy-spawns](changelogs/2026-10-13-random-enemy-spawns.md) |
-| [#17](https://github.com/Aegis2D-Dev/project-rtype/pull/17) | Bydos slaves weave in a sine wave | `feat/bydos-sine-wave` | Open | 2026-10-13 | [2026-10-13-bydos-sine-wave](changelogs/2026-10-13-bydos-sine-wave.md) |
+| [#19](https://github.com/Aegis2D-Dev/project-rtype/pull/19) | Random Bydos spawns on the right edge | `feat/random-enemy-spawns` | Open | 2026-10-13 | [2026-10-13-random-enemy-spawns](changelogs/2026-10-13-random-enemy-spawns.md) |
+| [#18](https://github.com/Aegis2D-Dev/project-rtype/pull/18) | CI build caches on self-hosted runners | `ci/windows-build-cache` | Merged | 2026-10-13 | [2026-10-13-ci-windows-build-cache](changelogs/2026-10-13-ci-windows-build-cache.md) |
+| [#17](https://github.com/Aegis2D-Dev/project-rtype/pull/17) | Bydos slaves weave in a sine wave | `feat/bydos-sine-wave` | Merged | 2026-10-13 | [2026-10-13-bydos-sine-wave](changelogs/2026-10-13-bydos-sine-wave.md) |
 | [#16](https://github.com/Aegis2D-Dev/project-rtype/pull/16) | Missiles and enemies despawn off screen | `feat/offscreen-despawn` | Merged | 2026-10-13 | [2026-10-13-offscreen-despawn](changelogs/2026-10-13-offscreen-despawn.md) |
 | [#15](https://github.com/Aegis2D-Dev/project-rtype/pull/15) | CI on self-hosted runners | `ci/self-hosted-runners` | Merged | 2026-10-12 | [2026-10-12-ci-self-hosted-runners](changelogs/2026-10-12-ci-self-hosted-runners.md) |
 | [#12](https://github.com/Aegis2D-Dev/project-rtype/pull/12) | README, documentation site and API reference | `docs/documentation` | Merged | 2026-10-12 | [2026-10-12-documentation](changelogs/2026-10-12-documentation.md) |
