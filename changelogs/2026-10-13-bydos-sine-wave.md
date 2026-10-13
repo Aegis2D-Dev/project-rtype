@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#17](https://github.com/Aegis2D-Dev/project-rtype/pull/17) (opened 2026-10-13) |
 | Branch | `feat/bydos-sine-wave` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-13 (`737b0f8`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#135 Bydos slaves move in a sine wave |
 

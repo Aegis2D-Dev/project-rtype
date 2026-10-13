@@ -49,7 +49,10 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      volumes: ['/nix/store:/nix/store:ro']
+      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache']
+      # CPM sources stay on the host (see infra-config), shared by the runners of the host.
+      env:
+        CPM_SOURCE_CACHE: /cpm-cache
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -64,15 +67,6 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
-      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
-      - name: Point CPM at the workspace cache
-        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
-      - name: Cache CPM sources
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: .cache/cpm
-          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
           python -m pip install cmake==3.31.6 -r tools/requirements.txt
@@ -100,8 +94,11 @@ jobs:
     name: Build and test (Windows, MSVC toolchain)
     runs-on: [self-hosted, windows]
     timeout-minutes: 50
+    # The Windows runners keep their disk between jobs: CPM sources live in a machine-wide
+    # cache (CPM locks it) and the build tree stays outside the checkout, which
+    # actions/checkout cleans, so configure and build are incremental.
     env:
-      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/cpm
+      CPM_SOURCE_CACHE: C:\cpm-cache
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -119,27 +116,23 @@ jobs:
           }
           # The runner is persistent: keep the token in this job's temp directory, not in the user's gitconfig.
           $config = Join-Path $env:RUNNER_TEMP gitconfig
-          "GIT_CONFIG_GLOBAL=$config" >> $env:GITHUB_ENV
+          "GIT_CONFIG_GLOBAL=$config" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $env:GIT_CONFIG_GLOBAL = $config
           git config --global url."https://x-access-token:$($env:TOKEN)@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
-      - name: Cache CPM sources
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: .cache/cpm
-          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-${{ runner.os }}-
+      - name: Keep the build tree between jobs
+        run: '"BUILD_DIR=$env:RUNNER_WORKSPACE\build" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
       - name: Install build prerequisites
         run: python -m pip install cmake==4.4.3 -r cmake/requirements.txt
       - name: Configure the server, the client and the tests
-        run: cmake -S . -B build -A x64 -T ClangCL -DAEGIS2D_WARNINGS_AS_ERRORS=ON -DPython_EXECUTABLE="$((Get-Command python).Source)"
+        run: cmake -S . -B "$env:BUILD_DIR" -A x64 -T ClangCL -DAEGIS2D_WARNINGS_AS_ERRORS=ON -DPython_EXECUTABLE="$((Get-Command python).Source)"
       - name: Build
-        run: cmake --build build --config Debug --parallel
+        run: cmake --build "$env:BUILD_DIR" --config Debug --parallel
       - name: Run the tests
-        run: ctest --test-dir build -C Debug --output-on-failure
+        run: ctest --test-dir "$env:BUILD_DIR" -C Debug --output-on-failure
       - name: Run the binaries
         run: |
-          ./build/r-type_server.exe --version
-          ./build/r-type_client.exe --version
+          & "$env:BUILD_DIR\r-type_server.exe" --version
+          & "$env:BUILD_DIR\r-type_client.exe" --version
 
   sanitize:
     name: Tests with ASan and UBSan (Linux)
@@ -149,7 +142,10 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      volumes: ['/nix/store:/nix/store:ro']
+      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache']
+      # CPM sources stay on the host (see infra-config), shared by the runners of the host.
+      env:
+        CPM_SOURCE_CACHE: /cpm-cache
     timeout-minutes: 40
     env:
       ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1
@@ -167,15 +163,6 @@ jobs:
             exit 1
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
-      # github.workspace is the host path in a container job; GITHUB_WORKSPACE is the container one.
-      - name: Point CPM at the workspace cache
-        run: echo "CPM_SOURCE_CACHE=$GITHUB_WORKSPACE/.cache/cpm" >> "$GITHUB_ENV"
-      - name: Cache CPM sources
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: .cache/cpm
-          key: cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
-          restore-keys: cpm-${{ runner.os }}-
       - name: Install build prerequisites
         run: |
           python -m pip install cmake==3.31.6
