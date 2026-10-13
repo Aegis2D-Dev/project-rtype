@@ -29,8 +29,9 @@ namespace rtype {
 aegis2d::ecs::Entity spawn_player(aegis2d::ecs::Registry& registry, std::size_t slot);
 
 /// @brief Creates a missile fired by a player, in front of its ship.
-/// @details The missile flies right, hits only enemies, is consumed by its first hit and
-/// credits its kill to @p shooter (`ecs::Owner`).
+/// @details The missile flies right, hits only enemies, is consumed by its first hit,
+/// credits its kill to @p shooter (`ecs::Owner`) and is destroyed once past the right edge
+/// (`ecs::OffscreenDespawn`).
 /// @param registry World of the game.
 /// @param shooter Player ship that fires; it must have a Transform.
 /// @return The missile.
@@ -40,14 +41,16 @@ aegis2d::ecs::Entity spawn_player_missile(aegis2d::ecs::Registry& registry,
 
 /// @brief Creates a Bydos slave, the first enemy type.
 /// @details It flies left, dies from one missile, gives tuning::bydos_score points to its
-/// killer, rams players and ignores the other enemies.
+/// killer, rams players, ignores the other enemies and is destroyed once it has crossed the
+/// screen; it can be created beyond the right edge.
 /// @param registry World of the game.
 /// @param position Center of the Bydos.
 /// @return The Bydos.
 aegis2d::ecs::Entity spawn_bydos_slave(aegis2d::ecs::Registry& registry, aegis2d::Vec2 position);
 
 /// @brief Creates a missile fired by an enemy.
-/// @details It flies left, hits only players and is consumed by its first hit.
+/// @details It flies left, hits only players, is consumed by its first hit and is destroyed
+/// once past the left edge.
 /// @param registry World of the game.
 /// @param position Center of the missile.
 /// @return The missile.
