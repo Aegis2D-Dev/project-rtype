@@ -1,4 +1,4 @@
-# Windows build cache on self-hosted runners
+# CI build caches on self-hosted runners
 
 | | |
 |---|---|
@@ -12,7 +12,9 @@ The Windows job took 12 to 15 minutes on the self-hosted runners, most of it in 
 `cmake` configure: the CPM cache was never restored, so every run cloned all the
 dependencies again, and SDL3's configure checks (one MSBuild per check) ran from scratch.
 The Windows runners keep their disk between jobs, so the job now reuses what the previous
-run left behind. Matches Aegis2D-Dev/aegis2d#216.
+run left behind. The Linux jobs spent about 2.5 minutes each restoring a 140 MB
+CPM archive with `actions/cache`; they now read the sources from a cache kept on the
+runner host. Matches Aegis2D-Dev/aegis2d#216.
 
 ## Changed
 - *Code quality*, Windows job: `CPM_SOURCE_CACHE` points at `C:\cpm-cache`, shared by both
@@ -24,9 +26,14 @@ run left behind. Matches Aegis2D-Dev/aegis2d#216.
 - `GITHUB_ENV` (`BUILD_DIR` and `GIT_CONFIG_GLOBAL`) is written with
   `Out-File -Encoding utf8`: the runner uses Windows PowerShell 5.1, where `>>` writes
   UTF-16.
+- *Code quality*, Linux *Build* and *ASan* jobs: the container mounts the host's
+  `/var/cache/ci-cpm` (created by `Aegis2D-Dev/infra-config`) at `/cpm-cache`, and
+  `CPM_SOURCE_CACHE` points there; the *Point CPM* and `actions/cache` steps are gone.
 
 ## Commits
 - feat(ci): kept windows build tree and cpm cache between jobs
+- feat(changelog): updated changelogs
+- feat(ci): kept linux cpm cache on the runner hosts
 - feat(changelog): updated changelogs
 
 ## Notes
@@ -34,6 +41,8 @@ run left behind. Matches Aegis2D-Dev/aegis2d#216.
   configure, so the kept build tree still follows the engine. The token is only applied
   through the job's `insteadOf` rewrite and is not stored in `_deps`.
 - The first run on each runner fills the caches; the gain shows from the next one.
-- Linux jobs are unchanged: they still build from scratch in their containers.
+- The Linux build trees still start from scratch in each container; only the CPM
+  sources are kept. The three runners of a host share that cache, and entries unused
+  for 30 days are removed.
 - If an incremental Windows build ever misbehaves, delete
   `C:\actions-runner*\_work\project-rtype\build` on the VM.
