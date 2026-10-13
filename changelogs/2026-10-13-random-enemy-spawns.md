@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Pull request | [#18](https://github.com/Aegis2D-Dev/project-rtype/pull/18) (opened 2026-10-13) |
+| Pull request | [#19](https://github.com/Aegis2D-Dev/project-rtype/pull/19) (opened 2026-10-13) |
 | Branch | `feat/random-enemy-spawns` → `develop` (on top of `feat/bydos-sine-wave`, #17) |
 | Status | Open |
 | Author | @Loic-ally |
