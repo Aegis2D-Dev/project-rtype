@@ -22,6 +22,7 @@ using aegis2d::ecs::Action;
 using aegis2d::ecs::Entity;
 using aegis2d::ecs::PlayerInput;
 using aegis2d::ecs::Score;
+using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using Catch::Approx;
 using rtype::ServerGame;
@@ -49,13 +50,21 @@ void place(ServerGame& game, Entity entity, Vec2 position) {
     game.registry().get<Transform>(entity).position = position;
 }
 
+// A Bydos that does not weave, for the tests that aim a missile at it.
+Entity straight_bydos(ServerGame& game, Vec2 position) {
+    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), position);
+    game.registry().remove<SineMotion>(bydos);
+    return bydos;
+}
+
 } // namespace
 
 TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
-          std::vector<std::string_view>{"steering", "movement", "play_area", "weapons", "collision",
-                                        "damage", "score", "lives", "cleanup", "despawn"});
+          std::vector<std::string_view>{"steering", "movement", "sine_motion", "play_area",
+                                        "weapons", "collision", "damage", "score", "lives",
+                                        "cleanup", "despawn"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
     CHECK_FALSE(game.game_over());
@@ -106,8 +115,7 @@ TEST_CASE("holding an arrow stops at the edge", "[rtype][server][132]") {
 TEST_CASE("a missile kills a Bydos and credits its shooter", "[rtype][server][140][141]") {
     ServerGame game;
     const Entity ship = game.add_player();
-    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), Vec2{400.0F, 0.0F});
-    place(game, bydos, Vec2{400.0F, position_of(game, ship).y});
+    const Entity bydos = straight_bydos(game, Vec2{400.0F, position_of(game, ship).y});
     const Entity missile = rtype::spawn_player_missile(game.registry(), ship);
 
     bool killed = false;
@@ -128,9 +136,7 @@ TEST_CASE("each player's score increases on their own kills", "[rtype][server][1
     const Entity one = game.add_player();
     const Entity two = game.add_player();
     const auto bydos_in_front_of = [&game](Entity ship, float x) {
-        const Entity bydos = rtype::spawn_bydos_slave(game.registry(), Vec2{});
-        place(game, bydos, Vec2{x, position_of(game, ship).y});
-        return bydos;
+        return straight_bydos(game, Vec2{x, position_of(game, ship).y});
     };
     bydos_in_front_of(one, 500.0F);
     bydos_in_front_of(two, 500.0F);
@@ -289,8 +295,7 @@ TEST_CASE("each player fires their own missiles", "[rtype][server][133]") {
 TEST_CASE("a fired missile kills a Bydos in its path", "[rtype][server][133][141]") {
     ServerGame game;
     const Entity ship = game.add_player();
-    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), Vec2{});
-    place(game, bydos, Vec2{600.0F, position_of(game, ship).y});
+    const Entity bydos = straight_bydos(game, Vec2{600.0F, position_of(game, ship).y});
     game.set_input(ship, holding(Action::Fire));
 
     run(game, static_cast<int>(tuning::tick_rate));
@@ -370,4 +375,41 @@ TEST_CASE("players are never despawned", "[rtype][server][134]") {
     run(game, 1);
     CHECK(game.registry().alive(ship));
     CHECK(game.despawned().empty());
+}
+
+TEST_CASE("Bydos slaves weave around their line as they fly left", "[rtype][server][135]") {
+    ServerGame game;
+    const Vec2 start{1000.0F, 360.0F};
+    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), start);
+    const int wave = static_cast<int>(tuning::bydos_wave_period * tuning::tick_rate);
+    const auto x_after = [&start](float seconds) {
+        return start.x - (tuning::bydos_speed * seconds);
+    };
+
+    run(game, wave / 4);
+    CHECK(position_of(game, bydos).x == Approx(x_after(0.5F)).margin(0.01));
+    CHECK(position_of(game, bydos).y ==
+          Approx(start.y - tuning::bydos_wave_amplitude).margin(0.01));
+    run(game, wave / 2);
+    CHECK(position_of(game, bydos).x == Approx(x_after(1.5F)).margin(0.01));
+    CHECK(position_of(game, bydos).y ==
+          Approx(start.y + tuning::bydos_wave_amplitude).margin(0.01));
+    run(game, wave / 4);
+    CHECK(position_of(game, bydos).x == Approx(x_after(2.0F)).margin(0.01));
+    CHECK(position_of(game, bydos).y == Approx(start.y).margin(0.01));
+}
+
+TEST_CASE("a Bydos weaving above the screen comes back", "[rtype][server][134][135]") {
+    ServerGame game;
+    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), Vec2{1000.0F, 0.0F});
+    const int wave = static_cast<int>(tuning::bydos_wave_period * tuning::tick_rate);
+
+    float highest = 0.0F;
+    for (int tick = 0; tick < wave; ++tick) {
+        run(game, 1);
+        REQUIRE(game.registry().alive(bydos));
+        highest = std::min(highest, position_of(game, bydos).y);
+    }
+    CHECK(highest + (tuning::bydos_size.y / 2.0F) < 0.0F);
+    CHECK(position_of(game, bydos).y == Approx(0.0F).margin(0.01));
 }

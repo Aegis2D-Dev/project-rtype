@@ -40,11 +40,14 @@ aegis2d::ecs::Entity spawn_player_missile(aegis2d::ecs::Registry& registry,
                                           aegis2d::ecs::Entity shooter);
 
 /// @brief Creates a Bydos slave, the first enemy type.
-/// @details It flies left, dies from one missile, gives tuning::bydos_score points to its
-/// killer, rams players, ignores the other enemies and is destroyed once it has crossed the
-/// screen; it can be created beyond the right edge.
+/// @details It flies left while weaving up and down around its line
+/// (tuning::bydos_wave_amplitude, every tuning::bydos_wave_period seconds, `ecs::SineMotion`),
+/// dies from one missile, gives tuning::bydos_score points to its killer, rams players,
+/// ignores the other enemies and is destroyed once it has crossed the screen; it can be
+/// created beyond the right edge.
 /// @param registry World of the game.
-/// @param position Center of the Bydos.
+/// @param position Center of the Bydos, on its line: it first rises (towards y = 0) and
+/// comes back to it.
 /// @return The Bydos.
 aegis2d::ecs::Entity spawn_bydos_slave(aegis2d::ecs::Registry& registry, aegis2d::Vec2 position);
 

@@ -26,14 +26,15 @@ namespace rtype {
 ///
 /// 1. `steering`: player ships take the velocity of their held directions;
 /// 2. `movement`: every entity moves by its velocity;
-/// 3. `play_area`: player ships are kept on screen;
-/// 4. `weapons`: players holding fire with a reloaded weapon fire a missile;
-/// 5. `collision`: the grid and the layer masks give the contacts of the tick;
-/// 6. `damage`: contacts remove health, consume missiles and make kills;
-/// 7. `score`: each kill is credited to the player who made it;
-/// 8. `lives`: killed players lose a life and respawn, or are out;
-/// 9. `cleanup`: the dead and the spent missiles are destroyed;
-/// 10. `despawn`: missiles and enemies that left the screen for good are destroyed.
+/// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
+/// 4. `play_area`: player ships are kept on screen;
+/// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
+/// 6. `collision`: the grid and the layer masks give the contacts of the tick;
+/// 7. `damage`: contacts remove health, consume missiles and make kills;
+/// 8. `score`: each kill is credited to the player who made it;
+/// 9. `lives`: killed players lose a life and respawn, or are out;
+/// 10. `cleanup`: the dead and the spent missiles are destroyed;
+/// 11. `despawn`: missiles and enemies that left the screen for good are destroyed.
 ///
 /// The network layer (#112, #113, #114) calls set_input() with each client's input, tick()
 /// at tuning::tick_rate, then sends the world and the events of the tick (fired(),

@@ -61,6 +61,9 @@ ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 position) {
     const ecs::Entity bydos = registry.create();
     registry.emplace<ecs::Transform>(bydos, position);
     registry.emplace<ecs::Velocity>(bydos, Vec2{-tuning::bydos_speed, 0.0F});
+    registry.emplace<ecs::SineMotion>(
+        bydos, ecs::SineMotion{.amplitude = Vec2{0.0F, -tuning::bydos_wave_amplitude},
+                               .period = tuning::bydos_wave_period});
     registry.emplace<ecs::Sprite>(bydos, ecs::Sprite{.size = tuning::bydos_size});
     registry.emplace<ecs::Collider>(
         bydos,
