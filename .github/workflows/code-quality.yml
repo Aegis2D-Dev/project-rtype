@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   packages: read
+  pull-requests: read
 
 concurrency:
   group: code-quality-${{ github.ref }}
@@ -49,7 +50,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache']
+      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache', '/var/cache/ci-build:/ci-build']
       # CPM sources stay on the host (see infra-config), shared by the runners of the host.
       env:
         CPM_SOURCE_CACHE: /cpm-cache
@@ -58,6 +59,24 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      # Pull requests build incrementally in this runner's trees on the host: git only rewrites
+      # the files that changed, so ninja only rebuilds those. Pushes start from scratch.
+      - name: Reuse this runner's source and build trees
+        run: |
+          keep="/ci-build/${RUNNER_NAME:?}/${GITHUB_REPOSITORY#*/}/$GITHUB_JOB-$(clang --version | sha1sum | cut -c1-8)"
+          sync() {
+            git init -q "$keep/src" &&
+              git -C "$keep/src" fetch -q --depth=1 "$GITHUB_WORKSPACE" HEAD &&
+              git -C "$keep/src" checkout -q --force FETCH_HEAD &&
+              git -C "$keep/src" clean -q -ffdx
+          }
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || ! sync; then
+            rm -rf "$keep"
+            sync
+          fi
+          touch "$keep"
+          echo "SRC=$keep/src" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$keep/build" >> "$GITHUB_ENV"
       - name: Give git access to the engine
         env:
           TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
@@ -68,27 +87,43 @@ jobs:
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
       - name: Install build prerequisites
+        working-directory: ${{ env.SRC }}
         run: |
           python -m pip install cmake==3.31.6 -r tools/requirements.txt
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build the server, the client and the tests
+        working-directory: ${{ env.SRC }}
         id: build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+          cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DAEGIS2D_WARNINGS_AS_ERRORS=ON \
             -DPython_EXECUTABLE="$(command -v python)"
-          cmake --build build --parallel
+          cmake --build "$BUILD_DIR" --parallel
       - name: Run the tests
-        run: ctest --test-dir build --output-on-failure
+        working-directory: ${{ env.SRC }}
+        run: ctest --test-dir "$BUILD_DIR" --output-on-failure
       - name: Run the binaries
+        working-directory: ${{ env.SRC }}
         run: |
-          ./build/r-type_server --version
-          ./build/r-type_server
-          ./build/r-type_client --version
+          "$BUILD_DIR"/r-type_server --version
+          "$BUILD_DIR"/r-type_server
+          "$BUILD_DIR"/r-type_client --version
       - name: Run clang-tidy
+        working-directory: ${{ env.SRC }}
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: bash tools/lint.sh build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Pull requests only check their changed sources, unless a header or the build changed.
+          if [ -n "$PR" ]; then
+            changed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | select(.status != "removed") | .filename')
+            if ! printf '%s\n' "$changed" | grep -qE '\.(h|hpp|inl)$|CMakeLists\.txt$|\.cmake$|(^|/)\.clang-tidy$'; then
+              export LINT_FILES="$changed"
+            fi
+          fi
+          bash tools/lint.sh "$BUILD_DIR"
 
   windows:
     name: Build and test (Windows, MSVC toolchain)
@@ -142,7 +177,7 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache']
+      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache', '/var/cache/ci-build:/ci-build']
       # CPM sources stay on the host (see infra-config), shared by the runners of the host.
       env:
         CPM_SOURCE_CACHE: /cpm-cache
@@ -154,6 +189,24 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      # Pull requests build incrementally in this runner's trees on the host: git only rewrites
+      # the files that changed, so ninja only rebuilds those. Pushes start from scratch.
+      - name: Reuse this runner's source and build trees
+        run: |
+          keep="/ci-build/${RUNNER_NAME:?}/${GITHUB_REPOSITORY#*/}/$GITHUB_JOB-$(clang --version | sha1sum | cut -c1-8)"
+          sync() {
+            git init -q "$keep/src" &&
+              git -C "$keep/src" fetch -q --depth=1 "$GITHUB_WORKSPACE" HEAD &&
+              git -C "$keep/src" checkout -q --force FETCH_HEAD &&
+              git -C "$keep/src" clean -q -ffdx
+          }
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || ! sync; then
+            rm -rf "$keep"
+            sync
+          fi
+          touch "$keep"
+          echo "SRC=$keep/src" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$keep/build" >> "$GITHUB_ENV"
       - name: Give git access to the engine
         env:
           TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
@@ -164,14 +217,17 @@ jobs:
           fi
           git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
       - name: Install build prerequisites
+        working-directory: ${{ env.SRC }}
         run: |
           python -m pip install cmake==3.31.6
           python -m pip install -r cmake/requirements.txt
       - name: Configure and build with sanitizers
+        working-directory: ${{ env.SRC }}
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+          cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DAEGIS2D_SANITIZE=ON -DPython_EXECUTABLE="$(command -v python)"
-          cmake --build build --parallel
+          cmake --build "$BUILD_DIR" --parallel
       - name: Run the tests
-        run: ctest --test-dir build --output-on-failure
+        working-directory: ${{ env.SRC }}
+        run: ctest --test-dir "$BUILD_DIR" --output-on-failure
