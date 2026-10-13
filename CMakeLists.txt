@@ -6,13 +6,44 @@ option(RTYPE_BUILD_TESTS "Build the game unit tests" ${PROJECT_IS_TOP_LEVEL})
 set(AEGIS2D_BUILD_CLIENT ${RTYPE_BUILD_CLIENT} CACHE BOOL "Build platform, render and audio" FORCE)
 
 # Development builds follow the engine's integration branch, so the game gets each engine
-# feature as soon as it is merged. The Epitech mirror ignores this: it bundles the engine's
-# master through FETCHCONTENT_SOURCE_DIR_AEGIS2D.
+# feature as soon as it is merged. FetchContent never updates a branch it has already
+# checked out, and CI keeps its build trees between jobs, so the branch is resolved to its
+# latest commit at each configure: a new commit changes GIT_TAG and is fetched. If git cannot
+# reach the engine, the commit resolved last time is kept (offline configures still work),
+# or the branch itself on a new build tree. The Epitech mirror skips all this: it bundles the
+# engine's master through FETCHCONTENT_SOURCE_DIR_AEGIS2D.
+set(RTYPE_ENGINE_REPOSITORY https://github.com/Aegis2D-Dev/aegis2d.git)
+set(RTYPE_ENGINE_BRANCH develop CACHE STRING "Engine branch followed by development builds")
 include(FetchContent)
+set(rtype_engine_tag ${RTYPE_ENGINE_BRANCH})
+set(rtype_engine_shallow TRUE)
+if(NOT FETCHCONTENT_SOURCE_DIR_AEGIS2D AND NOT FETCHCONTENT_FULLY_DISCONNECTED)
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E env GIT_TERMINAL_PROMPT=0 ${GIT_EXECUTABLE} ls-remote
+                    ${RTYPE_ENGINE_REPOSITORY} refs/heads/${RTYPE_ENGINE_BRANCH}
+            OUTPUT_VARIABLE rtype_engine_head
+            ERROR_QUIET
+            TIMEOUT 60)
+        string(REGEX MATCH "^[0-9a-f]+" rtype_engine_commit "${rtype_engine_head}")
+    endif()
+    if(rtype_engine_commit)
+        set(RTYPE_ENGINE_COMMIT ${rtype_engine_commit} CACHE INTERNAL "Engine commit resolved last")
+        message(STATUS "Engine: ${RTYPE_ENGINE_BRANCH} is at ${rtype_engine_commit}")
+    else()
+        message(WARNING "Engine: could not resolve ${RTYPE_ENGINE_BRANCH}; keeping the engine "
+                        "of the last configure")
+    endif()
+    if(RTYPE_ENGINE_COMMIT)
+        set(rtype_engine_tag ${RTYPE_ENGINE_COMMIT})
+        set(rtype_engine_shallow FALSE)
+    endif()
+endif()
 FetchContent_Declare(aegis2d
-    GIT_REPOSITORY https://github.com/Aegis2D-Dev/aegis2d.git
-    GIT_TAG develop
-    GIT_SHALLOW TRUE)
+    GIT_REPOSITORY ${RTYPE_ENGINE_REPOSITORY}
+    GIT_TAG ${rtype_engine_tag}
+    GIT_SHALLOW ${rtype_engine_shallow})
 FetchContent_MakeAvailable(aegis2d)
 
 function(rtype_executable target)

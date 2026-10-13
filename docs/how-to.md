@@ -67,7 +67,10 @@ read it from `rtype::tuning`, so only behavior that really changed fails.
 
 Tests are Catch2 test cases in `tests/`, built into `rtype_tests`; tag them `[rtype]` plus
 the area (`[server]`...) and the ticket number. A gameplay test drives a `ServerGame` tick
-by tick, with the same step as the server, and reads its values from `rtype::tuning`:
+by tick, with the same step as the server, and reads its values from `rtype::tuning`. A
+`ServerGame` created without a seed spawns no enemy, so the test controls the whole world;
+give it a seed (`rtype::ServerGame game{42};`) to test the random spawns, which are then
+the same at every run:
 
 ```cpp
 TEST_CASE("a player holding right stops at the right edge", "[rtype][server]") {

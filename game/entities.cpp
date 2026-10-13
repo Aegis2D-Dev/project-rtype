@@ -57,13 +57,14 @@ ecs::Entity spawn_player_missile(ecs::Registry& registry, ecs::Entity shooter) {
     return missile;
 }
 
-ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 position) {
+ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase) {
+    const ecs::SineMotion wave{.amplitude = Vec2{0.0F, -tuning::bydos_wave_amplitude},
+                               .period = tuning::bydos_wave_period,
+                               .elapsed = phase};
     const ecs::Entity bydos = registry.create();
-    registry.emplace<ecs::Transform>(bydos, position);
+    registry.emplace<ecs::Transform>(bydos, line + ecs::sine_offset(wave, phase));
     registry.emplace<ecs::Velocity>(bydos, Vec2{-tuning::bydos_speed, 0.0F});
-    registry.emplace<ecs::SineMotion>(
-        bydos, ecs::SineMotion{.amplitude = Vec2{0.0F, -tuning::bydos_wave_amplitude},
-                               .period = tuning::bydos_wave_period});
+    registry.emplace<ecs::SineMotion>(bydos, wave);
     registry.emplace<ecs::Sprite>(bydos, ecs::Sprite{.size = tuning::bydos_size});
     registry.emplace<ecs::Collider>(
         bydos,

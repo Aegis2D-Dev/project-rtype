@@ -6,7 +6,9 @@
 #include <rtype/server_game.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 
 namespace rtype {
@@ -14,9 +16,22 @@ namespace rtype {
 namespace ecs = aegis2d::ecs;
 using aegis2d::Vec2;
 
-ServerGame::ServerGame()
-    : grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell} {
+namespace {
+
+ecs::SpawnSettings bydos_spawns() noexcept {
+    return ecs::SpawnSettings{.from = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_top},
+                              .to = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_bottom},
+                              .min_interval = tuning::bydos_spawn_min_interval,
+                              .max_interval = tuning::bydos_spawn_max_interval};
+}
+
+} // namespace
+
+ServerGame::ServerGame(std::optional<std::uint64_t> seed)
+    : grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
+      spawner_{bydos_spawns(), seed.value_or(0)} {
     register_systems();
+    systems_.set_enabled("spawn", seed_.has_value());
 }
 
 void ServerGame::register_systems() {
@@ -31,6 +46,14 @@ void ServerGame::register_systems() {
         fired_.clear();
         for (const ecs::Entity shooter : shooters_) {
             fired_.push_back(spawn_player_missile(world, shooter));
+        }
+    });
+    systems_.add("spawn", [this](ecs::Registry& world, const ecs::Tick& tick) {
+        spawner_.update(tick, spawn_points_);
+        spawned_.clear();
+        for (const Vec2 line : spawn_points_) {
+            const float phase = spawner_.random().uniform(0.0F, tuning::bydos_wave_period);
+            spawned_.push_back(spawn_bydos_slave(world, line, phase));
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
@@ -115,6 +138,14 @@ const ecs::Scheduler& ServerGame::systems() const noexcept {
 
 const std::vector<ecs::Entity>& ServerGame::fired() const noexcept {
     return fired_;
+}
+
+const std::vector<ecs::Entity>& ServerGame::spawned() const noexcept {
+    return spawned_;
+}
+
+std::optional<std::uint64_t> ServerGame::seed() const noexcept {
+    return seed_;
 }
 
 const ecs::DamageReport& ServerGame::damage() const noexcept {

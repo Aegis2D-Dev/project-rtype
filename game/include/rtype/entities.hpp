@@ -46,10 +46,14 @@ aegis2d::ecs::Entity spawn_player_missile(aegis2d::ecs::Registry& registry,
 /// ignores the other enemies and is destroyed once it has crossed the screen; it can be
 /// created beyond the right edge.
 /// @param registry World of the game.
-/// @param position Center of the Bydos, on its line: it first rises (towards y = 0) and
-/// comes back to it.
+/// @param line Point of the line it weaves around; with no @p phase, its center, and it
+/// first rises (towards y = 0) and comes back to it.
+/// @param phase Seconds into its wave, from 0 to tuning::bydos_wave_period, so that Bydos
+/// spawned together do not move in step; the Bydos is placed where its wave is at that
+/// time.
 /// @return The Bydos.
-aegis2d::ecs::Entity spawn_bydos_slave(aegis2d::ecs::Registry& registry, aegis2d::Vec2 position);
+aegis2d::ecs::Entity spawn_bydos_slave(aegis2d::ecs::Registry& registry, aegis2d::Vec2 line,
+                                       float phase = 0.0F);
 
 /// @brief Creates a missile fired by an enemy.
 /// @details It flies left, hits only players, is consumed by its first hit and is destroyed

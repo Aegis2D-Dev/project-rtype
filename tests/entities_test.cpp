@@ -3,6 +3,7 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/registry.hpp>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/entities.hpp>
 #include <rtype/layers.hpp>
@@ -33,6 +34,7 @@ using aegis2d::ecs::ScoreValue;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
+using Catch::Approx;
 namespace layer = rtype::layer;
 namespace mask = rtype::mask;
 namespace tuning = rtype::tuning;
@@ -121,6 +123,22 @@ TEST_CASE("Bydos slaves weave up first, within the despawn margin", "[rtype][ent
     CHECK(wave.elapsed == 0.0F);
     CHECK(registry.get<Velocity>(bydos).value.y == 0.0F);
     STATIC_CHECK(tuning::bydos_wave_amplitude <= tuning::despawn_margin);
+}
+
+TEST_CASE("a Bydos spawned further along its wave is placed on it", "[rtype][entities][136]") {
+    Registry registry;
+    const Vec2 line{1296.0F, 300.0F};
+    const float quarter = tuning::bydos_wave_period / 4.0F;
+    const Entity crest = rtype::spawn_bydos_slave(registry, line, quarter);
+    CHECK(registry.get<Transform>(crest).position.x == line.x);
+    CHECK(registry.get<Transform>(crest).position.y ==
+          Approx(line.y - tuning::bydos_wave_amplitude));
+    CHECK(registry.get<SineMotion>(crest).elapsed == quarter);
+    CHECK(registry.get<Transform>(rtype::spawn_bydos_slave(registry, line)).position == line);
+    STATIC_CHECK(tuning::bydos_lane_top - tuning::bydos_wave_amplitude ==
+                 tuning::bydos_size.y / 2.0F);
+    STATIC_CHECK(tuning::bydos_lane_bottom + tuning::bydos_wave_amplitude ==
+                 tuning::area_height - (tuning::bydos_size.y / 2.0F));
 }
 
 TEST_CASE("the layer table has no friendly fire", "[rtype][layers]") {

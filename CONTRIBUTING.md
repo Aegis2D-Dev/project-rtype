@@ -16,10 +16,9 @@ This page lists only what is specific to this repository.
 
 ## The engine
 
-- Development builds fetch the engine's `develop` (`GIT_TAG develop` in
-  `CMakeLists.txt`): a feature merged in the engine reaches the game when the build
-  directory fetches it again; if a configure keeps the old engine, delete
-  `build/<preset>/_deps/aegis2d-*` and configure again.
+- Development builds fetch the engine's `develop` (`RTYPE_ENGINE_BRANCH` in
+  `CMakeLists.txt`): each configure resolves it to its latest commit, so a feature merged
+  in the engine reaches the game at the next configure, CI build trees included.
 - A change that needs a new engine feature is split in two pull requests: the generic part
   in the engine, merged first, then the game part here.
 - The engine repository is private: give git your GitHub credentials once, e.g.
