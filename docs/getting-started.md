@@ -36,10 +36,11 @@ gh auth login
 gh auth setup-git
 ```
 
-Development builds follow the engine's `develop` branch (`GIT_TAG develop` in
-`CMakeLists.txt`), so an engine feature reaches the game as soon as it is merged there.
-A build directory keeps the engine it first fetched: to get the latest one, delete
-`build/<preset>/_deps/aegis2d-*` and configure again.
+Development builds follow the engine's `develop` branch (`RTYPE_ENGINE_BRANCH` in
+`CMakeLists.txt`), so an engine feature reaches the game as soon as it is merged there:
+each configure asks git for the latest commit of the branch (`Engine: develop is at ...`)
+and fetches it if the build directory has an older one. If git cannot reach the engine, a
+warning says so and the build directory keeps the engine it has.
 
 ## Build and test
 
