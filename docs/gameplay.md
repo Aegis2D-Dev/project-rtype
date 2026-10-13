@@ -6,11 +6,11 @@ speeds are per second, so the game plays the same at any tick rate.
 
 ## The server game
 
-`ServerGame` holds the world (the engine's `Registry`), its systems in order, and up to
-four player slots.
+`ServerGame` holds the world (the engine's `Registry`), its systems in order, up to four
+player slots, and the seed of its random enemy spawns.
 
 ```cpp
-rtype::ServerGame game;
+rtype::ServerGame game{seed};                    // same seed, same enemies (log it)
 const auto player = game.add_player();          // ship in the first free slot
 
 aegis2d::ecs::PlayerInput input;
@@ -20,6 +20,7 @@ game.set_input(player, input);                   // latest input, kept until the
 
 game.tick(aegis2d::core::step_from_rate(rtype::tuning::tick_rate));
 for (const auto missile : game.fired()) { /* send a spawn */ }
+for (const auto bydos : game.spawned()) { /* send a spawn */ }
 for (const auto& kill : game.damage().kills) { /* send a kill */ }
 for (const auto& award : game.awards()) { /* send a score */ }
 for (const auto& lost : game.lives_lost()) { /* send a death, or "out" */ }
@@ -29,11 +30,13 @@ if (game.game_over()) { /* every player who joined is out */ }
 
 | Call | What it does |
 |---|---|
+| `ServerGame{seed}` | A game whose Bydos spawn at random from `seed`; `ServerGame{}` spawns none (tests) |
 | `add_player()` | Spawns a ship in the first free slot; throws `std::length_error` with four players |
 | `slot_of(player)` | Slot of a player, or nothing once it is out |
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
 | `tick(step)` | Runs every system once, in order |
-| `fired()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
+| `fired()`, `spawned()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
+| `seed()` | Seed of the random spawns, if any |
 | `players()`, `game_over()` | Players with lives left; `true` once all of them are out |
 
 A slot frees up when its player is out of lives, so a new player can join a running game.
@@ -49,12 +52,13 @@ The systems run in this order (`game.systems().names()` lists them):
 | 3 | `sine_motion` | `apply_sine_motion` | Bydos slaves weave up and down on top of their velocity |
 | 4 | `play_area` | `clamp_player_ships` | Ships are kept fully on screen |
 | 5 | `weapons` | `trigger_weapons` | A ship holding fire with a reloaded weapon fires a missile from its nose |
-| 6 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
-| 7 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
-| 8 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
-| 9 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
-| 10 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
-| 11 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
+| 6 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves appear at random on the right edge |
+| 7 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
+| 8 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
+| 9 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
+| 10 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
+| 11 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
+| 12 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
 
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a
@@ -68,6 +72,17 @@ back down through its line to 48 px below it, and is back on its line every
 `tuning::bydos_wave_period` (2 s). The wave depends on the time, not on the number of
 ticks, so its path is the same at any tick rate; a missile aimed at its line can pass
 above or below it.
+
+## Enemy spawns
+
+A game created with a seed spawns Bydos slaves on its own, with the engine's
+`RandomSpawner`: one every 0.8 to 2 s (`tuning::bydos_spawn_min_interval`,
+`tuning::bydos_spawn_max_interval`), just beyond the right edge (`tuning::bydos_spawn_x`),
+on a line drawn between `tuning::bydos_lane_top` and `tuning::bydos_lane_bottom` so that
+its wave never leaves the screen, and at a random point of its wave. All of it comes from
+the seed through the engine's `core::Random`, whose numbers are the same on every platform:
+the same seed gives the same enemies at the same ticks, so a game can be replayed from its
+logged seed. `spawned()` lists the Bydos of the last tick.
 
 ## Leaving the screen
 
@@ -103,7 +118,7 @@ name them:
 |---|---|---|
 | Player ship | `spawn_player(registry, slot)` | Transform, Velocity, PlayerInput, PlayerShip, Sprite, Collider, Health, Damage (ramming), Lives, Score, Weapon |
 | Player missile | `spawn_player_missile(registry, shooter)` | Transform, Velocity (right), Sprite, Collider, Damage (consumed on hit), Owner, OffscreenDespawn |
-| Bydos slave | `spawn_bydos_slave(registry, position)` | Transform, Velocity (left), SineMotion (up and down), Sprite, Collider, Health, Damage (ramming), ScoreValue, OffscreenDespawn |
+| Bydos slave | `spawn_bydos_slave(registry, line, phase)` | Transform, Velocity (left), SineMotion (up and down), Sprite, Collider, Health, Damage (ramming), ScoreValue, OffscreenDespawn |
 | Enemy missile | `spawn_enemy_missile(registry, position)` | Transform, Velocity (left), Sprite, Collider, Damage (consumed on hit), OffscreenDespawn |
 
 Players spawn at `x = 100`, their slots spread evenly over the height of the screen.
@@ -124,6 +139,7 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 | Player missile | 900 px/s, 16 × 4, 1 damage |
 | Bydos slave | 120 px/s, 32 × 32, 1 point of health, 100 points |
 | Bydos wave | 48 px above and below its line, every 2 s |
+| Bydos spawns | every 0.8 to 2 s, at x = 1296, lines from y = 64 to 656 |
 | Enemy missile | 300 px/s, 8 × 8, 1 damage |
 | Ramming damage | 1 |
 | Despawn margin | 64 px beyond each edge |
@@ -131,4 +147,5 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 
 ## Not there yet
 
-- Enemy waves, enemy fire and the scrolling star field come with the next tickets.
+- Enemy fire (#137), enemy waves loaded from a file (#146) and the scrolling star field
+  come with the next tickets.
