@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#20](https://github.com/Aegis2D-Dev/project-rtype/pull/20) (opened 2026-10-13) |
 | Branch | `ci/linux-build-cache` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-13 (`43ff7ed`) |
 | Author | @vmbr068 |
 
 ## Summary

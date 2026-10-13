@@ -33,6 +33,13 @@ ticks, on every platform, so a game can be replayed from its logged seed.
   wave, placed where its wave is at that time, so random Bydos do not move in step; with no
   phase it is unchanged.
 - `ServerGame`: the system list and the events in its comment.
+- `CMakeLists.txt`: the engine's `develop` is resolved to its latest commit (`git
+  ls-remote`) at each configure and fetched by that commit. FetchContent never updates a
+  branch it has already checked out, so since the CI keeps its build trees (#18, #20) the
+  jobs kept an old engine and failed with `aegis2d/ecs/spawner.hpp` not found. If git
+  cannot reach the engine, the commit of the last configure is kept; the Epitech mirror
+  (`FETCHCONTENT_SOURCE_DIR_AEGIS2D`) skips it. `RTYPE_ENGINE_BRANCH` picks another branch.
+  `docs/getting-started.md` and `CONTRIBUTING.md` no longer ask to delete `_deps/aegis2d-*`.
 - `docs/gameplay.md`: `ServerGame{seed}`, `spawned()` and `seed()`, the tick table (12
   systems), an *Enemy spawns* section, the entities and tuning tables, *Not there yet*.
   `docs/how-to.md`: games with and without a seed in tests.
@@ -40,6 +47,8 @@ ticks, on every platform, so a game can be replayed from its logged seed.
 ## Commits
 - feat(game): added random Bydos spawns from a seed
 - feat(tests): added random spawn tests on the server game
+- feat(changelog): updated changelogs
+- feat(build): followed the engine's develop by commit in kept build trees
 - feat(changelog): updated changelogs
 
 ## Notes
