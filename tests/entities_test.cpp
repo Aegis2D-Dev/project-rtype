@@ -30,6 +30,7 @@ using aegis2d::ecs::Owner;
 using aegis2d::ecs::Registry;
 using aegis2d::ecs::Score;
 using aegis2d::ecs::ScoreValue;
+using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
 namespace layer = rtype::layer;
@@ -108,6 +109,18 @@ TEST_CASE("Bydos slaves and enemy missiles fly left", "[rtype][entities]") {
     CHECK_FALSE(registry.has<Health>(bullet));
     CHECK(registry.has<OffscreenDespawn>(bydos));
     CHECK(registry.has<OffscreenDespawn>(bullet));
+    CHECK_FALSE(registry.has<SineMotion>(bullet));
+}
+
+TEST_CASE("Bydos slaves weave up first, within the despawn margin", "[rtype][entities][135]") {
+    Registry registry;
+    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F});
+    const SineMotion& wave = registry.get<SineMotion>(bydos);
+    CHECK(wave.amplitude == Vec2{0.0F, -tuning::bydos_wave_amplitude});
+    CHECK(wave.period == tuning::bydos_wave_period);
+    CHECK(wave.elapsed == 0.0F);
+    CHECK(registry.get<Velocity>(bydos).value.y == 0.0F);
+    STATIC_CHECK(tuning::bydos_wave_amplitude <= tuning::despawn_margin);
 }
 
 TEST_CASE("the layer table has no friendly fire", "[rtype][layers]") {
