@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#15](https://github.com/Aegis2D-Dev/project-rtype/pull/15) (opened 2026-10-12) |
 | Branch | `ci/self-hosted-runners` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-12 (`1122f5c`) |
 | Author | @vmbr068 |
 
 ## Summary

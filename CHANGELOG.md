@@ -5,8 +5,9 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#16](https://github.com/Aegis2D-Dev/project-rtype/pull/16) | Missiles and enemies despawn off screen | `feat/offscreen-despawn` | Open | 2026-10-13 | [2026-10-13-offscreen-despawn](changelogs/2026-10-13-offscreen-despawn.md) |
-| [#15](https://github.com/Aegis2D-Dev/project-rtype/pull/15) | CI on self-hosted runners | `ci/self-hosted-runners` | Open | 2026-10-12 | [2026-10-12-ci-self-hosted-runners](changelogs/2026-10-12-ci-self-hosted-runners.md) |
+| [#17](https://github.com/Aegis2D-Dev/project-rtype/pull/17) | Bydos slaves weave in a sine wave | `feat/bydos-sine-wave` | Open | 2026-10-13 | [2026-10-13-bydos-sine-wave](changelogs/2026-10-13-bydos-sine-wave.md) |
+| [#16](https://github.com/Aegis2D-Dev/project-rtype/pull/16) | Missiles and enemies despawn off screen | `feat/offscreen-despawn` | Merged | 2026-10-13 | [2026-10-13-offscreen-despawn](changelogs/2026-10-13-offscreen-despawn.md) |
+| [#15](https://github.com/Aegis2D-Dev/project-rtype/pull/15) | CI on self-hosted runners | `ci/self-hosted-runners` | Merged | 2026-10-12 | [2026-10-12-ci-self-hosted-runners](changelogs/2026-10-12-ci-self-hosted-runners.md) |
 | [#12](https://github.com/Aegis2D-Dev/project-rtype/pull/12) | README, documentation site and API reference | `docs/documentation` | Merged | 2026-10-12 | [2026-10-12-documentation](changelogs/2026-10-12-documentation.md) |
 | [#11](https://github.com/Aegis2D-Dev/project-rtype/pull/11) | Contributing guide and GitHub templates | `docs/contributing` | Merged | 2026-10-12 | [2026-10-12-contributing](changelogs/2026-10-12-contributing.md) |
 | [#10](https://github.com/Aegis2D-Dev/project-rtype/pull/10) | Code quality CI | `ci/code-quality` | Merged | 2026-10-12 | [2026-10-12-ci-code-quality](changelogs/2026-10-12-ci-code-quality.md) |

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#16](https://github.com/Aegis2D-Dev/project-rtype/pull/16) (opened 2026-10-13) |
 | Branch | `feat/offscreen-despawn` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-13 (`538c8ee`) |
 | Author | @Loic-ally |
 
 ## Summary
