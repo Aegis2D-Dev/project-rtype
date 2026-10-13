@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#18](https://github.com/Aegis2D-Dev/project-rtype/pull/18) (opened 2026-10-13) |
 | Branch | `ci/windows-build-cache` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-13 (`f15554e`) |
 | Author | @vmbr068 |
 
 ## Summary

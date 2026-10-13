@@ -9,6 +9,8 @@ require() {
 }
 require clang-tidy
 
+# LINT_FILES (one path per line) limits the check to those sources, such as the files a
+# pull request changed.
 build=${1:-build}
 database="$build/compile_commands.json"
 if [ ! -f "$database" ]; then
@@ -19,10 +21,18 @@ fi
 files=$(python3 - "$database" <<'PY'
 import json, os, subprocess, sys
 compiled = {os.path.realpath(os.path.join(e["directory"], e["file"])) for e in json.load(open(sys.argv[1]))}
-tracked = subprocess.check_output(["git", "ls-files", "*.cpp"], text=True).split()
+listed = os.environ.get("LINT_FILES")
+if listed is None:
+    tracked = subprocess.check_output(["git", "ls-files", "*.cpp"], text=True).split()
+else:
+    tracked = [f for f in listed.split() if f.endswith(".cpp")]
 print("\n".join(f for f in tracked if os.path.realpath(f) in compiled))
 PY
 )
+if [ -z "$files" ] && [ -n "${LINT_FILES+set}" ]; then
+    echo "clang-tidy: no changed source to check"
+    exit 0
+fi
 if [ -z "$files" ]; then
     echo "no source of $database is tracked by git" >&2
     exit 2
