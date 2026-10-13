@@ -25,6 +25,7 @@ using aegis2d::ecs::Health;
 using aegis2d::ecs::hits;
 using aegis2d::ecs::Lives;
 using aegis2d::ecs::NetworkId;
+using aegis2d::ecs::OffscreenDespawn;
 using aegis2d::ecs::Owner;
 using aegis2d::ecs::Registry;
 using aegis2d::ecs::Score;
@@ -79,6 +80,7 @@ TEST_CASE("a player ship has everything the server needs", "[rtype][entities]") 
     CHECK(registry.get<Score>(ship).points == 0);
     CHECK_FALSE(registry.get<Damage>(ship).consumed_on_hit);
     CHECK(registry.get<NetworkId>(ship) == NetworkId::of(ship));
+    CHECK_FALSE(registry.has<OffscreenDespawn>(ship));
     CHECK_THROWS_AS(rtype::spawn_player(registry, tuning::max_players), std::out_of_range);
 }
 
@@ -91,6 +93,7 @@ TEST_CASE("a player missile leaves the nose of its shooter", "[rtype][entities]"
     CHECK(registry.get<Velocity>(missile).value == Vec2{tuning::player_missile_speed, 0.0F});
     CHECK(registry.get<Owner>(missile).entity == ship);
     CHECK(registry.get<Damage>(missile).consumed_on_hit);
+    CHECK(registry.get<OffscreenDespawn>(missile).margin == tuning::despawn_margin);
     CHECK_THROWS_AS(rtype::spawn_player_missile(registry, registry.create()), std::out_of_range);
 }
 
@@ -103,6 +106,8 @@ TEST_CASE("Bydos slaves and enemy missiles fly left", "[rtype][entities]") {
     CHECK(registry.get<ScoreValue>(bydos).points == tuning::bydos_score);
     CHECK(registry.get<Health>(bydos).points == tuning::bydos_health);
     CHECK_FALSE(registry.has<Health>(bullet));
+    CHECK(registry.has<OffscreenDespawn>(bydos));
+    CHECK(registry.has<OffscreenDespawn>(bullet));
 }
 
 TEST_CASE("the layer table has no friendly fire", "[rtype][layers]") {
