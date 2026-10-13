@@ -62,6 +62,10 @@ inline constexpr std::int32_t enemy_missile_damage = 1;
 /// @brief Damage dealt by ramming: a player ship and a Bydos hurt each other on contact.
 inline constexpr std::int32_t ram_damage = 1;
 
+/// @brief Distance beyond the screen edges before a missile or an enemy is destroyed, so an
+/// enemy whose path dips off screen is kept (`ecs::OffscreenDespawn::margin`).
+inline constexpr float despawn_margin = 64.0F;
+
 /// @brief Side of a cell of the collision grid, about the size of a Bydos.
 inline constexpr float collision_cell = 64.0F;
 

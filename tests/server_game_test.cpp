@@ -9,6 +9,7 @@
 #include <rtype/server_game.hpp>
 #include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -54,7 +55,7 @@ TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
           std::vector<std::string_view>{"steering", "movement", "play_area", "weapons", "collision",
-                                        "damage", "score", "lives", "cleanup"});
+                                        "damage", "score", "lives", "cleanup", "despawn"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
     CHECK_FALSE(game.game_over());
@@ -295,4 +296,78 @@ TEST_CASE("a fired missile kills a Bydos in its path", "[rtype][server][133][141
     run(game, static_cast<int>(tuning::tick_rate));
     CHECK_FALSE(game.registry().alive(bydos));
     CHECK(game.registry().get<Score>(ship).points == tuning::bydos_score);
+}
+
+TEST_CASE("a missile that leaves the screen is despawned and reported", "[rtype][server][134]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    game.set_input(ship, holding(Action::Fire));
+    run(game, 1);
+    REQUIRE(game.fired().size() == 1);
+    const Entity missile = game.fired().front();
+    game.set_input(ship, PlayerInput{});
+
+    const float gone_at =
+        tuning::area_width + tuning::despawn_margin + (tuning::player_missile_size.x / 2.0F);
+    const float step = tuning::player_missile_speed / static_cast<float>(tuning::tick_rate);
+    float last = position_of(game, missile).x;
+    int ticks = 0;
+    while (game.registry().alive(missile)) {
+        REQUIRE(ticks < 2 * static_cast<int>(tuning::tick_rate));
+        CHECK(game.despawned().empty());
+        last = position_of(game, missile).x;
+        run(game, 1);
+        ++ticks;
+    }
+    CHECK(game.despawned() == std::vector<Entity>{missile});
+    CHECK(last < gone_at);
+    CHECK(last + step >= gone_at);
+    run(game, 1);
+    CHECK(game.despawned().empty());
+}
+
+TEST_CASE("holding fire for a minute does not leak missiles", "[rtype][server][134]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    game.set_input(ship, holding(Action::Fire));
+
+    std::size_t fired = 0;
+    std::size_t despawned = 0;
+    std::size_t peak = 0;
+    for (std::uint32_t tick = 0; tick < 60 * tuning::tick_rate; ++tick) {
+        run(game, 1);
+        fired += game.fired().size();
+        despawned += game.despawned().size();
+        peak = std::max(peak, game.registry().size());
+    }
+    CHECK(fired >= 239);
+    CHECK(game.registry().size() == 1 + fired - despawned);
+    const float lifetime =
+        (tuning::area_width + tuning::despawn_margin) / tuning::player_missile_speed;
+    const auto in_flight = static_cast<std::size_t>(lifetime / tuning::player_fire_cooldown) + 1;
+    CHECK(peak <= 1 + in_flight);
+}
+
+TEST_CASE("Bydos and enemy missiles leave on the left", "[rtype][server][134]") {
+    ServerGame game;
+    const Entity bydos =
+        rtype::spawn_bydos_slave(game.registry(), Vec2{tuning::area_width + 40.0F, 200.0F});
+    const Entity bullet = rtype::spawn_enemy_missile(game.registry(), Vec2{300.0F, 600.0F});
+
+    run(game, 2 * static_cast<int>(tuning::tick_rate));
+    CHECK_FALSE(game.registry().alive(bullet));
+    CHECK(game.registry().alive(bydos));
+
+    run(game, 12 * static_cast<int>(tuning::tick_rate));
+    CHECK_FALSE(game.registry().alive(bydos));
+    CHECK(game.registry().size() == 0);
+}
+
+TEST_CASE("players are never despawned", "[rtype][server][134]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    place(game, ship, Vec2{-500.0F, -500.0F});
+    run(game, 1);
+    CHECK(game.registry().alive(ship));
+    CHECK(game.despawned().empty());
 }

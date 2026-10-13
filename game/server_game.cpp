@@ -1,3 +1,4 @@
+#include <aegis2d/ecs/despawn.hpp>
 #include <aegis2d/ecs/movement.hpp>
 #include <aegis2d/ecs/weapons.hpp>
 
@@ -46,6 +47,9 @@ void ServerGame::register_systems() {
     });
     systems_.add("cleanup", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
         ecs::remove_casualties(world, damage_);
+    });
+    systems_.add("despawn", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
+        ecs::despawn_outside(world, play_area(), despawned_);
     });
 }
 
@@ -122,6 +126,10 @@ const std::vector<ecs::Award>& ServerGame::awards() const noexcept {
 
 const std::vector<ecs::LifeLost>& ServerGame::lives_lost() const noexcept {
     return lives_lost_;
+}
+
+const std::vector<ecs::Entity>& ServerGame::despawned() const noexcept {
+    return despawned_;
 }
 
 ecs::Aabb ServerGame::play_area() noexcept {

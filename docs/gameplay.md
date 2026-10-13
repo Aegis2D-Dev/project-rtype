@@ -23,6 +23,7 @@ for (const auto missile : game.fired()) { /* send a spawn */ }
 for (const auto& kill : game.damage().kills) { /* send a kill */ }
 for (const auto& award : game.awards()) { /* send a score */ }
 for (const auto& lost : game.lives_lost()) { /* send a death, or "out" */ }
+for (const auto gone : game.despawned()) { /* send a removal */ }
 if (game.game_over()) { /* every player who joined is out */ }
 ```
 
@@ -32,7 +33,7 @@ if (game.game_over()) { /* every player who joined is out */ }
 | `slot_of(player)` | Slot of a player, or nothing once it is out |
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
 | `tick(step)` | Runs every system once, in order |
-| `fired()`, `damage()`, `awards()`, `lives_lost()` | Events of the last tick, for the network layer |
+| `fired()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
 | `players()`, `game_over()` | Players with lives left; `true` once all of them are out |
 
 A slot frees up when its player is out of lives, so a new player can join a running game.
@@ -52,10 +53,20 @@ The systems run in this order (`game.systems().names()` lists them):
 | 7 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
 | 8 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
 | 9 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
+| 10 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
 
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a
 Bydos that ram each other both take the hit.
+
+## Leaving the screen
+
+Missiles and enemies carry the engine's `OffscreenDespawn`: once an entity is entirely
+beyond an edge of the screen, by more than `tuning::despawn_margin`, and its velocity does
+not bring it back, the `despawn` system destroys it and lists it in `despawned()`. A player
+missile is gone just after the right edge, an enemy missile after the left one; a Bydos
+created beyond the right edge and flying left is kept until it has crossed the screen.
+Players never despawn: they are kept on screen.
 
 ## Who can hit whom
 
@@ -79,9 +90,9 @@ name them:
 | Entity | Function | Components |
 |---|---|---|
 | Player ship | `spawn_player(registry, slot)` | Transform, Velocity, PlayerInput, PlayerShip, Sprite, Collider, Health, Damage (ramming), Lives, Score, Weapon |
-| Player missile | `spawn_player_missile(registry, shooter)` | Transform, Velocity (right), Sprite, Collider, Damage (consumed on hit), Owner |
-| Bydos slave | `spawn_bydos_slave(registry, position)` | Transform, Velocity (left), Sprite, Collider, Health, Damage (ramming), ScoreValue |
-| Enemy missile | `spawn_enemy_missile(registry, position)` | Transform, Velocity (left), Sprite, Collider, Damage (consumed on hit) |
+| Player missile | `spawn_player_missile(registry, shooter)` | Transform, Velocity (right), Sprite, Collider, Damage (consumed on hit), Owner, OffscreenDespawn |
+| Bydos slave | `spawn_bydos_slave(registry, position)` | Transform, Velocity (left), Sprite, Collider, Health, Damage (ramming), ScoreValue, OffscreenDespawn |
+| Enemy missile | `spawn_enemy_missile(registry, position)` | Transform, Velocity (left), Sprite, Collider, Damage (consumed on hit), OffscreenDespawn |
 
 Players spawn at `x = 100`, their slots spread evenly over the height of the screen.
 
@@ -102,9 +113,9 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 | Bydos slave | 120 px/s, 32 × 32, 1 point of health, 100 points |
 | Enemy missile | 300 px/s, 8 × 8, 1 damage |
 | Ramming damage | 1 |
+| Despawn margin | 64 px beyond each edge |
 | Collision grid cell | 64 px |
 
 ## Not there yet
 
-- Missiles and enemies leaving the screen are not destroyed yet (#134).
 - Enemy waves, enemy fire and the scrolling star field come with the next tickets.

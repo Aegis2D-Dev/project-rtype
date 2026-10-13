@@ -52,6 +52,7 @@ ecs::Entity spawn_player_missile(ecs::Registry& registry, ecs::Entity shooter) {
                                                            .mask = mask::player_missile});
     registry.emplace<ecs::Damage>(missile, tuning::player_missile_damage);
     registry.emplace<ecs::Owner>(missile, shooter);
+    registry.emplace<ecs::OffscreenDespawn>(missile, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(missile, ecs::NetworkId::of(missile));
     return missile;
 }
@@ -68,6 +69,7 @@ ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 position) {
     registry.emplace<ecs::Damage>(
         bydos, ecs::Damage{.amount = tuning::ram_damage, .consumed_on_hit = false});
     registry.emplace<ecs::ScoreValue>(bydos, tuning::bydos_score);
+    registry.emplace<ecs::OffscreenDespawn>(bydos, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(bydos, ecs::NetworkId::of(bydos));
     return bydos;
 }
@@ -81,6 +83,7 @@ ecs::Entity spawn_enemy_missile(ecs::Registry& registry, Vec2 position) {
                                                            .layer = layer::enemy_missile,
                                                            .mask = mask::enemy_missile});
     registry.emplace<ecs::Damage>(missile, tuning::enemy_missile_damage);
+    registry.emplace<ecs::OffscreenDespawn>(missile, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(missile, ecs::NetworkId::of(missile));
     return missile;
 }

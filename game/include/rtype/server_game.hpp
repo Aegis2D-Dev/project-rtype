@@ -32,12 +32,13 @@ namespace rtype {
 /// 6. `damage`: contacts remove health, consume missiles and make kills;
 /// 7. `score`: each kill is credited to the player who made it;
 /// 8. `lives`: killed players lose a life and respawn, or are out;
-/// 9. `cleanup`: the dead and the spent missiles are destroyed.
+/// 9. `cleanup`: the dead and the spent missiles are destroyed;
+/// 10. `despawn`: missiles and enemies that left the screen for good are destroyed.
 ///
 /// The network layer (#112, #113, #114) calls set_input() with each client's input, tick()
 /// at tuning::tick_rate, then sends the world and the events of the tick (fired(),
-/// damage(), awards(), lives_lost(), game_over()). Not thread-safe: use it from the simulation
-/// thread only.
+/// damage(), awards(), lives_lost(), despawned(), game_over()). Not thread-safe: use it from the
+/// simulation thread only.
 class ServerGame {
 public:
     /// @brief Creates an empty game with its systems registered.
@@ -108,6 +109,10 @@ public:
     /// @return One event per player death.
     [[nodiscard]] const std::vector<aegis2d::ecs::LifeLost>& lives_lost() const noexcept;
 
+    /// @brief Missiles and enemies destroyed during the last tick because they left the screen.
+    /// @return The despawned entities; their handles are no longer alive.
+    [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& despawned() const noexcept;
+
     /// @brief Play area: from the origin to the logical resolution.
     /// @return The area player ships are kept in.
     [[nodiscard]] static aegis2d::ecs::Aabb play_area() noexcept;
@@ -124,6 +129,7 @@ private:
     aegis2d::ecs::DamageReport damage_;
     std::vector<aegis2d::ecs::Award> awards_;
     std::vector<aegis2d::ecs::LifeLost> lives_lost_;
+    std::vector<aegis2d::ecs::Entity> despawned_;
     std::array<aegis2d::ecs::Entity, tuning::max_players> slots_{};
     bool started_ = false;
 };
