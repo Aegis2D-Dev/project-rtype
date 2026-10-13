@@ -51,6 +51,10 @@ inline constexpr aegis2d::Vec2 bydos_size{32.0F, 32.0F};
 inline constexpr std::int32_t bydos_health = 1;
 /// @brief Points for killing a Bydos slave.
 inline constexpr std::uint32_t bydos_score = 100;
+/// @brief Largest distance of a Bydos slave above or below its line as it weaves.
+inline constexpr float bydos_wave_amplitude = 48.0F;
+/// @brief Seconds for a Bydos slave to weave up, down and back to its line.
+inline constexpr float bydos_wave_period = 2.0F;
 
 /// @brief Speed of an enemy missile, to the left.
 inline constexpr float enemy_missile_speed = 300.0F;
@@ -65,6 +69,8 @@ inline constexpr std::int32_t ram_damage = 1;
 /// @brief Distance beyond the screen edges before a missile or an enemy is destroyed, so an
 /// enemy whose path dips off screen is kept (`ecs::OffscreenDespawn::margin`).
 inline constexpr float despawn_margin = 64.0F;
+static_assert(bydos_wave_amplitude <= despawn_margin,
+              "a Bydos weaving off screen must not be despawned before it comes back");
 
 /// @brief Side of a cell of the collision grid, about the size of a Bydos.
 inline constexpr float collision_cell = 64.0F;
