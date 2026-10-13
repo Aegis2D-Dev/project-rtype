@@ -2,6 +2,7 @@
 /// @brief The R-Type simulation run by the server: world, systems and players.
 #pragma once
 #include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/collision.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/damage.hpp>
@@ -9,6 +10,7 @@
 #include <aegis2d/ecs/lives.hpp>
 #include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/score.hpp>
+#include <aegis2d/ecs/spawner.hpp>
 #include <aegis2d/ecs/system.hpp>
 
 #include <rtype/tuning.hpp>
@@ -29,21 +31,25 @@ namespace rtype {
 /// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
 /// 4. `play_area`: player ships are kept on screen;
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
-/// 6. `collision`: the grid and the layer masks give the contacts of the tick;
-/// 7. `damage`: contacts remove health, consume missiles and make kills;
-/// 8. `score`: each kill is credited to the player who made it;
-/// 9. `lives`: killed players lose a life and respawn, or are out;
-/// 10. `cleanup`: the dead and the spent missiles are destroyed;
-/// 11. `despawn`: missiles and enemies that left the screen for good are destroyed.
+/// 6. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
+/// 7. `collision`: the grid and the layer masks give the contacts of the tick;
+/// 8. `damage`: contacts remove health, consume missiles and make kills;
+/// 9. `score`: each kill is credited to the player who made it;
+/// 10. `lives`: killed players lose a life and respawn, or are out;
+/// 11. `cleanup`: the dead and the spent missiles are destroyed;
+/// 12. `despawn`: missiles and enemies that left the screen for good are destroyed.
 ///
-/// The network layer (#112, #113, #114) calls set_input() with each client's input, tick()
-/// at tuning::tick_rate, then sends the world and the events of the tick (fired(),
-/// damage(), awards(), lives_lost(), despawned(), game_over()). Not thread-safe: use it from the
-/// simulation thread only.
+/// The network layer (#112, #113, #114) creates it with a seed, calls set_input() with each
+/// client's input, tick() at tuning::tick_rate, then sends the world and the events of the
+/// tick (fired(), spawned(), damage(), awards(), lives_lost(), despawned(), game_over()).
+/// Not thread-safe: use it from the simulation thread only.
 class ServerGame {
 public:
     /// @brief Creates an empty game with its systems registered.
-    ServerGame();
+    /// @param seed Seed of the random Bydos spawns: the same seed gives the same spawns, so
+    /// a game can be replayed from its logged seed. Without one, the `spawn` system is
+    /// disabled and only what the caller creates is in the world (tests, scripted levels).
+    explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt);
     ServerGame(const ServerGame&) = delete;
     ServerGame& operator=(const ServerGame&) = delete;
     ServerGame(ServerGame&&) = delete;
@@ -98,6 +104,14 @@ public:
     /// @return The new missiles, in the order of their shooters.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& fired() const noexcept;
 
+    /// @brief Bydos slaves spawned at random during the last tick.
+    /// @return The new Bydos, in spawn order.
+    [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& spawned() const noexcept;
+
+    /// @brief Seed of the random spawns.
+    /// @return The seed given to the constructor, or `std::nullopt` without random spawns.
+    [[nodiscard]] std::optional<std::uint64_t> seed() const noexcept;
+
     /// @brief Hits, kills and spent missiles of the last tick.
     /// @return The damage report.
     [[nodiscard]] const aegis2d::ecs::DamageReport& damage() const noexcept;
@@ -126,6 +140,10 @@ private:
     aegis2d::ecs::CollisionGrid grid_;
     std::vector<aegis2d::ecs::Entity> shooters_;
     std::vector<aegis2d::ecs::Entity> fired_;
+    std::optional<std::uint64_t> seed_;
+    aegis2d::ecs::RandomSpawner spawner_;
+    std::vector<aegis2d::Vec2> spawn_points_;
+    std::vector<aegis2d::ecs::Entity> spawned_;
     std::vector<aegis2d::ecs::Contact> contacts_;
     aegis2d::ecs::DamageReport damage_;
     std::vector<aegis2d::ecs::Award> awards_;

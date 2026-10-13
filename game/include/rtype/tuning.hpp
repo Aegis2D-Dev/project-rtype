@@ -56,6 +56,17 @@ inline constexpr float bydos_wave_amplitude = 48.0F;
 /// @brief Seconds for a Bydos slave to weave up, down and back to its line.
 inline constexpr float bydos_wave_period = 2.0F;
 
+/// @brief Shortest time between two random Bydos spawns, in seconds.
+inline constexpr float bydos_spawn_min_interval = 0.8F;
+/// @brief Longest time between two random Bydos spawns, in seconds.
+inline constexpr float bydos_spawn_max_interval = 2.0F;
+/// @brief x of the random spawns: a Bydos appears just beyond the right edge.
+inline constexpr float bydos_spawn_x = area_width + (bydos_size.x / 2.0F);
+/// @brief Highest line of a random Bydos, so that it weaves without leaving the screen.
+inline constexpr float bydos_lane_top = bydos_wave_amplitude + (bydos_size.y / 2.0F);
+/// @brief Lowest line of a random Bydos.
+inline constexpr float bydos_lane_bottom = area_height - bydos_lane_top;
+
 /// @brief Speed of an enemy missile, to the left.
 inline constexpr float enemy_missile_speed = 300.0F;
 /// @brief Size of an enemy missile.
