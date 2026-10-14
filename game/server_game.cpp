@@ -25,6 +25,13 @@ ecs::SpawnSettings bydos_spawns() noexcept {
                               .max_interval = tuning::bydos_spawn_max_interval};
 }
 
+bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
+    const Vec2 center = world.get<ecs::Transform>(entity).position;
+    const ecs::Aabb area = ServerGame::play_area();
+    return center.x >= area.min.x && center.x <= area.max.x && center.y >= area.min.y &&
+           center.y <= area.max.y;
+}
+
 } // namespace
 
 ServerGame::ServerGame(std::optional<std::uint64_t> seed)
@@ -48,12 +55,23 @@ void ServerGame::register_systems() {
             fired_.push_back(spawn_player_missile(world, shooter));
         }
     });
+    systems_.add("enemy_fire", [this](ecs::Registry& world, const ecs::Tick& tick) {
+        ecs::trigger_auto_weapons(world, tick, gunners_);
+        enemy_fired_.clear();
+        for (const ecs::Entity gunner : gunners_) {
+            if (on_screen(world, gunner)) {
+                enemy_fired_.push_back(fire_enemy_missile(world, gunner));
+            }
+        }
+    });
     systems_.add("spawn", [this](ecs::Registry& world, const ecs::Tick& tick) {
         spawner_.update(tick, spawn_points_);
         spawned_.clear();
         for (const Vec2 line : spawn_points_) {
             const float phase = spawner_.random().uniform(0.0F, tuning::bydos_wave_period);
-            spawned_.push_back(spawn_bydos_slave(world, line, phase));
+            const float first_shot = tuning::bydos_first_shot +
+                                     spawner_.random().uniform(0.0F, tuning::bydos_fire_cooldown);
+            spawned_.push_back(spawn_bydos_slave(world, line, phase, first_shot));
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
@@ -138,6 +156,10 @@ const ecs::Scheduler& ServerGame::systems() const noexcept {
 
 const std::vector<ecs::Entity>& ServerGame::fired() const noexcept {
     return fired_;
+}
+
+const std::vector<ecs::Entity>& ServerGame::enemy_fired() const noexcept {
+    return enemy_fired_;
 }
 
 const std::vector<ecs::Entity>& ServerGame::spawned() const noexcept {
