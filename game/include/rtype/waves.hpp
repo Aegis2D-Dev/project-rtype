@@ -11,7 +11,9 @@
 namespace rtype {
 
 /// @brief Enemy types a waves file can name, each created by spawn_enemy().
-inline constexpr std::array<std::string_view, 1> enemy_types{"bydos_slave"};
+/// @details Add a name here and its branch in spawn_enemy() to use a new enemy in waves
+/// (see the "Add an enemy type" guide); the size of the array follows.
+inline constexpr std::array enemy_types{std::string_view{"bydos_slave"}};
 
 /// @brief Waves file played by the server when none is given.
 /// @return `core::asset_path("waves/stage1.json")`: `assets/waves/stage1.json` of the
