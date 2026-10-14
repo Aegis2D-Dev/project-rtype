@@ -66,7 +66,9 @@ nav:
   - Getting started: getting-started.md
   - Architecture: architecture.md
   - Gameplay: gameplay.md
-  - How-to guides: how-to.md
+  - How-to guides:
+      - Common tasks: how-to.md
+      - Add an enemy type: add-an-enemy.md
   - API reference: https://rtype-docs.pages.dev/api/
   - Engine documentation: https://aegis2d-docs.pages.dev/
   - Development:

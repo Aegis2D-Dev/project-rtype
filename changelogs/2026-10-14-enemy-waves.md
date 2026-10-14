@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#22](https://github.com/Aegis2D-Dev/project-rtype/pull/22) (opened 2026-10-14) |
 | Branch | `feat/enemy-waves` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-14 (`5faa07e`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#146 load enemy waves from JSON |
 
