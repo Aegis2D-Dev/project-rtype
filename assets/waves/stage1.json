@@ -1,0 +1,44 @@
+// Stage 1 of R-Type: the enemy waves the server plays, in order, then again (loop).
+// Edit this file to change the waves; no recompilation needed (docs/how-to.md, "Add a wave").
+// Positions are in logical pixels of the 1280 x 720 play area. x = 1296 is just beyond the
+// right edge; y stays between 64 and 656 so that the Bydos weave without leaving the screen.
+{
+    "loop": true,
+    "waves": [
+        {
+            // A wall of five Bydos.
+            "delay": 2.0,
+            "spawns": [
+                {"type": "bydos_slave", "position": [1296, 136], "count": 5, "step": [0, 112]}
+            ]
+        },
+        {
+            // A file of six in the upper half, then six in the lower half.
+            "delay": 3.0,
+            "spawns": [
+                {"type": "bydos_slave", "position": [1296, 200], "count": 6, "every": 0.5},
+                {"type": "bydos_slave", "position": [1296, 520], "count": 6, "every": 0.5,
+                 "at": 2.0}
+            ]
+        },
+        {
+            // A diagonal from top to bottom.
+            "delay": 3.0,
+            "spawns": [
+                {"type": "bydos_slave", "position": [1296, 160], "count": 5, "every": 0.4,
+                 "step": [0, 100]}
+            ]
+        },
+        {
+            // A V: both arms come in together, the tip first.
+            "delay": 4.0,
+            "spawns": [
+                {"type": "bydos_slave", "position": [1296, 360]},
+                {"type": "bydos_slave", "position": [1296, 280], "at": 0.4, "count": 3,
+                 "every": 0.4, "step": [0, -80]},
+                {"type": "bydos_slave", "position": [1296, 440], "at": 0.4, "count": 3,
+                 "every": 0.4, "step": [0, 80]}
+            ]
+        }
+    ]
+}

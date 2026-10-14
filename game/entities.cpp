@@ -7,6 +7,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace rtype {
 
@@ -103,6 +104,13 @@ ecs::Entity fire_enemy_missile(ecs::Registry& registry, ecs::Entity shooter) {
     const ecs::Entity missile = spawn_enemy_missile(registry, position - nose);
     registry.emplace<ecs::Owner>(missile, shooter);
     return missile;
+}
+
+ecs::Entity spawn_enemy(ecs::Registry& registry, std::string_view type, Vec2 position) {
+    if (type == "bydos_slave") {
+        return spawn_bydos_slave(registry, position);
+    }
+    throw std::invalid_argument{"rtype: unknown enemy type \"" + std::string{type} + '"'};
 }
 
 } // namespace rtype

@@ -10,6 +10,7 @@
 #include <iterator>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 
 namespace rtype {
 
@@ -66,12 +67,17 @@ void ServerGame::register_systems() {
     });
     systems_.add("spawn", [this](ecs::Registry& world, const ecs::Tick& tick) {
         spawner_.update(tick, spawn_points_);
-        spawned_.clear();
         for (const Vec2 line : spawn_points_) {
             const float phase = spawner_.random().uniform(0.0F, tuning::bydos_wave_period);
             const float first_shot = tuning::bydos_first_shot +
                                      spawner_.random().uniform(0.0F, tuning::bydos_fire_cooldown);
             spawned_.push_back(spawn_bydos_slave(world, line, phase, first_shot));
+        }
+    });
+    systems_.add("waves", [this](ecs::Registry& world, const ecs::Tick& tick) {
+        waves_.update(tick, due_);
+        for (const ecs::WaveSpawn& spawn : due_) {
+            spawned_.push_back(spawn_enemy(world, spawn.type, spawn.position));
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
@@ -131,7 +137,16 @@ bool ServerGame::set_input(ecs::Entity player, ecs::PlayerInput input) {
 }
 
 void ServerGame::tick(aegis2d::core::Duration step) {
+    spawned_.clear();
     systems_.update(registry_, step);
+}
+
+void ServerGame::play_waves(ecs::WaveSchedule waves) {
+    waves_ = std::move(waves);
+}
+
+const ecs::WaveSchedule& ServerGame::waves() const noexcept {
+    return waves_;
 }
 
 bool ServerGame::game_over() const {

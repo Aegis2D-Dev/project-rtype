@@ -80,7 +80,8 @@ first configure.
 ```
 
 Both binaries accept `--version`, which prints the version and exits. For now the server
-creates a game and lists its systems, and the client lists the engine modules it is built
+creates a game, loads its enemy waves (`assets/waves/stage1.json`, or the file given with
+`--waves <file>`) and lists its systems, and the client lists the engine modules it is built
 with; the network loop and the window come with the next tickets.
 
 ## Documentation

@@ -3,7 +3,8 @@
 # game's own code.
 add_library(rtype_game STATIC
     entities.cpp
-    server_game.cpp)
+    server_game.cpp
+    waves.cpp)
 target_include_directories(rtype_game PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_game
     PUBLIC aegis2d::core aegis2d::ecs

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#21](https://github.com/Aegis2D-Dev/project-rtype/pull/21) (opened 2026-10-14) |
 | Branch | `feat/enemy-missiles` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-14 (`65d79b7`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#137 enemy missiles |
 

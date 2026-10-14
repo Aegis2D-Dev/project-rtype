@@ -12,6 +12,7 @@
 #include <aegis2d/ecs/score.hpp>
 #include <aegis2d/ecs/spawner.hpp>
 #include <aegis2d/ecs/system.hpp>
+#include <aegis2d/ecs/waves.hpp>
 
 #include <rtype/tuning.hpp>
 
@@ -33,14 +34,16 @@ namespace rtype {
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
 /// 6. `enemy_fire`: enemies on screen with a reloaded weapon fire a missile to the left;
 /// 7. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
-/// 8. `collision`: the grid and the layer masks give the contacts of the tick;
-/// 9. `damage`: contacts remove health, consume missiles and make kills;
-/// 10. `score`: each kill is credited to the player who made it;
-/// 11. `lives`: killed players lose a life and respawn, or are out;
-/// 12. `cleanup`: the dead and the spent missiles are destroyed;
-/// 13. `despawn`: missiles and enemies that left the screen for good are destroyed.
+/// 8. `waves`: the enemies of the waves given to play_waves() appear when due;
+/// 9. `collision`: the grid and the layer masks give the contacts of the tick;
+/// 10. `damage`: contacts remove health, consume missiles and make kills;
+/// 11. `score`: each kill is credited to the player who made it;
+/// 12. `lives`: killed players lose a life and respawn, or are out;
+/// 13. `cleanup`: the dead and the spent missiles are destroyed;
+/// 14. `despawn`: missiles and enemies that left the screen for good are destroyed.
 ///
-/// The network layer (#112, #113, #114) creates it with a seed, calls set_input() with each
+/// The network layer (#112, #113, #114) creates it with a seed, gives it the waves of the
+/// level (play_waves(load_waves(...))), calls set_input() with each
 /// client's input, tick() at tuning::tick_rate, then sends the world and the events of the
 /// tick (fired(), enemy_fired(), spawned(), damage(), awards(), lives_lost(), despawned(),
 /// game_over()). Not thread-safe: use it from the simulation thread only.
@@ -71,6 +74,14 @@ public:
     /// @brief Players still in the game.
     /// @return Ships that have lives left.
     [[nodiscard]] std::size_t players() const;
+
+    /// @brief Plays enemy waves from now on, replacing the ones played so far.
+    /// @param waves Schedule read by load_waves(), at its start.
+    void play_waves(aegis2d::ecs::WaveSchedule waves);
+
+    /// @brief Enemy waves being played.
+    /// @return The schedule given to play_waves(), or an empty (finished) one.
+    [[nodiscard]] const aegis2d::ecs::WaveSchedule& waves() const noexcept;
 
     /// @brief Sets the actions a player holds, as received from its client.
     /// @param player Ship returned by add_player().
@@ -109,8 +120,8 @@ public:
     /// @return The new missiles, in the order of their shooters.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& enemy_fired() const noexcept;
 
-    /// @brief Bydos slaves spawned at random during the last tick.
-    /// @return The new Bydos, in spawn order.
+    /// @brief Enemies spawned during the last tick, at random or by the waves.
+    /// @return The new enemies, random ones first, in spawn order.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& spawned() const noexcept;
 
     /// @brief Seed of the random spawns.
@@ -151,6 +162,8 @@ private:
     aegis2d::ecs::RandomSpawner spawner_;
     std::vector<aegis2d::Vec2> spawn_points_;
     std::vector<aegis2d::ecs::Entity> spawned_;
+    aegis2d::ecs::WaveSchedule waves_;
+    std::vector<aegis2d::ecs::WaveSpawn> due_;
     std::vector<aegis2d::ecs::Contact> contacts_;
     aegis2d::ecs::DamageReport damage_;
     std::vector<aegis2d::ecs::Award> awards_;
