@@ -17,6 +17,37 @@ inline constexpr float player_fire_cooldown = 0.2F;
 Update the [tuning table](gameplay.md#tuning) and run the tests: tests that check a value
 read it from `rtype::tuning`, so only behavior that really changed fails.
 
+## Add a wave
+
+Waves are data: edit `assets/waves/stage1.json` (or a copy given to `r-type_server
+--waves`), no recompilation needed. A wave waits `delay` seconds after the last enemy of the
+previous wave, then spawns its groups:
+
+```json
+{
+    "delay": 3.0,                                   // seconds after the previous wave
+    "spawns": [
+        // Four Bydos, one every 0.5 s, each 80 px lower, starting 1 s into the wave.
+        {"type": "bydos_slave", "position": [1296, 160], "at": 1.0, "count": 4,
+         "every": 0.5, "step": [0, 80]}
+    ]
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `type` | required | Enemy type, one of `rtype::enemy_types` |
+| `position` | required | `[x, y]` of the first enemy; x = 1296 is just beyond the right edge |
+| `at` | 0 | Seconds from the start of the wave |
+| `count` | 1 | Enemies in the group |
+| `every` | 0 | Seconds between two enemies of the group |
+| `step` | `[0, 0]` | Offset between two enemies of the group |
+
+Keep `y` between 64 and 656 (`tuning::bydos_lane_top` and `bydos_lane_bottom`) so a Bydos
+weaves without leaving the screen; the test of `tests/waves_test.cpp` checks it for
+`stage1.json`. Run `./build/linux-debug/r-type_server` (or with `--waves <file>`) to check a
+file: it prints the number of waves and enemies, or the place of the first mistake.
+
 ## Add an enemy type
 
 1. Add its values to `tuning.hpp` (speed, size, health, score).
@@ -39,10 +70,12 @@ read it from `rtype::tuning`, so only behavior that really changed fails.
     }
     ```
 
-3. Test its components in `tests/entities_test.cpp`, and its behavior through a
+3. To use it in waves files, add its name to `rtype::enemy_types` (`rtype/waves.hpp`) and
+   to `spawn_enemy()` (`game/entities.cpp`).
+4. Test its components in `tests/entities_test.cpp`, and its behavior through a
    `ServerGame` in `tests/server_game_test.cpp` (for instance: one missile kills it and
    gives its points to the shooter).
-4. Add it to the [entities table](gameplay.md#entities).
+5. Add it to the [entities table](gameplay.md#entities).
 
 ## Add a system
 

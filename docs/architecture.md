@@ -74,8 +74,11 @@ game/
     entities.hpp      spawn_player, spawn_player_missile, spawn_bydos_slave...
     layers.hpp        collision layers and masks
     tuning.hpp        every gameplay value (speeds, sizes, health, lives, scores)
+    waves.hpp         enemy types of the waves files, load_waves
   server_game.cpp
   entities.cpp
+  waves.cpp
+assets/waves/         enemy waves (JSON), copied next to r-type_server
 server/main.cpp       r-type_server
 client/main.cpp       r-type_client
 tests/                Catch2 tests of rtype_game

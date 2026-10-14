@@ -11,6 +11,7 @@ player slots, and the seed of its random enemy spawns.
 
 ```cpp
 rtype::ServerGame game{seed};                    // same seed, same enemies (log it)
+game.play_waves(rtype::load_waves(rtype::default_waves_file()));   // the stage's waves
 const auto player = game.add_player();          // ship in the first free slot
 
 aegis2d::ecs::PlayerInput input;
@@ -32,6 +33,7 @@ if (game.game_over()) { /* every player who joined is out */ }
 | Call | What it does |
 |---|---|
 | `ServerGame{seed}` | A game whose Bydos spawn at random from `seed`; `ServerGame{}` spawns none (tests) |
+| `play_waves(waves)`, `waves()` | Plays the enemy waves of a file read by `load_waves()`; the schedule being played |
 | `add_player()` | Spawns a ship in the first free slot; throws `std::length_error` with four players |
 | `slot_of(player)` | Slot of a player, or nothing once it is out |
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
@@ -55,12 +57,13 @@ The systems run in this order (`game.systems().names()` lists them):
 | 5 | `weapons` | `trigger_weapons` | A ship holding fire with a reloaded weapon fires a missile from its nose |
 | 6 | `enemy_fire` | `trigger_auto_weapons` | Each enemy on screen with a reloaded weapon fires a missile to the left |
 | 7 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves appear at random on the right edge |
-| 8 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
-| 9 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
-| 10 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
-| 11 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
-| 12 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
-| 13 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
+| 8 | `waves` | `WaveSchedule::update` | The enemies of the waves file appear when due |
+| 9 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
+| 10 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
+| 11 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
+| 12 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
+| 13 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
+| 14 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
 
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a
@@ -84,6 +87,25 @@ screen; random Bydos wait up to 2 s more, drawn from the seed, so they do not al
 step. An enemy whose center is off screen does not fire. Enemy missiles hit only players: a
 hit costs a life, like ramming a Bydos. `enemy_fired()` lists the missiles of the last tick.
 
+## Enemy waves
+
+The waves of a level are data, read when the server starts: `assets/waves/stage1.json` by
+default, copied next to `r-type_server`, or another file with `r-type_server --waves
+<file>`. Each wave starts some time after the last enemy of the previous one and lists
+groups of enemies by type, position, count, interval and offset (a wall, a file, a
+diagonal, a V...); `"loop": true` plays them again from the first. The format is the
+engine's `WaveSchedule` (see [Add a wave](how-to.md#add-a-wave)). `load_waves()` accepts
+only the types of `rtype::enemy_types` (`bydos_slave` for now), so a typo stops the server
+at start with the file and the place of the mistake:
+
+```text
+r-type_server: assets/waves/stage1.json: waves.1.spawns.0.type: unknown type "bydos" (known: bydos_slave)
+```
+
+Wave enemies are the same as the others (`spawn_enemy()` creates them by type): they weave,
+fire and despawn. A game plays waves and random spawns together if it has both; one created
+without a seed and without waves spawns nothing (tests).
+
 ## Enemy spawns
 
 A game created with a seed spawns Bydos slaves on its own, with the engine's
@@ -93,7 +115,8 @@ on a line drawn between `tuning::bydos_lane_top` and `tuning::bydos_lane_bottom`
 its wave never leaves the screen, and at a random point of its wave. All of it comes from
 the seed through the engine's `core::Random`, whose numbers are the same on every platform:
 the same seed gives the same enemies at the same ticks, so a game can be replayed from its
-logged seed. `spawned()` lists the Bydos of the last tick.
+logged seed. `spawned()` lists the enemies of the last tick, random ones then those of the
+waves.
 
 ## Leaving the screen
 
@@ -160,5 +183,5 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 
 ## Not there yet
 
-- Enemy waves loaded from a file (#146) and the scrolling star field come with the next
-  tickets.
+- More enemy types (#37 explains how to add one) and the scrolling star field come with
+  the next tickets.

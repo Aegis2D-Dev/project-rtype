@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#21](https://github.com/Aegis2D-Dev/project-rtype/pull/21) | Bydos slaves fire enemy missiles | `feat/enemy-missiles` | Open | 2026-10-14 | [2026-10-14-enemy-missiles](changelogs/2026-10-14-enemy-missiles.md) |
+| [#22](https://github.com/Aegis2D-Dev/project-rtype/pull/22) | Enemy waves loaded from a JSON file | `feat/enemy-waves` | Open | 2026-10-14 | [2026-10-14-enemy-waves](changelogs/2026-10-14-enemy-waves.md) |
+| [#21](https://github.com/Aegis2D-Dev/project-rtype/pull/21) | Bydos slaves fire enemy missiles | `feat/enemy-missiles` | Merged | 2026-10-14 | [2026-10-14-enemy-missiles](changelogs/2026-10-14-enemy-missiles.md) |
 | [#20](https://github.com/Aegis2D-Dev/project-rtype/pull/20) | Incremental Linux builds on pull requests | `ci/linux-build-cache` | Merged | 2026-10-13 | [2026-10-13-ci-linux-build-cache](changelogs/2026-10-13-ci-linux-build-cache.md) |
 | [#19](https://github.com/Aegis2D-Dev/project-rtype/pull/19) | Random Bydos spawns on the right edge | `feat/random-enemy-spawns` | Merged | 2026-10-13 | [2026-10-13-random-enemy-spawns](changelogs/2026-10-13-random-enemy-spawns.md) |
 | [#18](https://github.com/Aegis2D-Dev/project-rtype/pull/18) | CI build caches on self-hosted runners | `ci/windows-build-cache` | Merged | 2026-10-13 | [2026-10-13-ci-windows-build-cache](changelogs/2026-10-13-ci-windows-build-cache.md) |
