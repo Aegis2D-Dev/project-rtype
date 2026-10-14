@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/entities.hpp>
+#include <rtype/layers.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
@@ -72,8 +73,7 @@ TEST_CASE("the stage 1 waves are valid and stay in the Bydos lanes", "[rtype][wa
     CHECK(waves.loops());
     CHECK(waves.spawns().size() >= 20);
     for (const auto& spawn : waves.spawns()) {
-        INFO("wave " << spawn.wave << " at " << spawn.time << " s");
-        CHECK(spawn.type == "bydos_slave");
+        INFO(spawn.type << ", wave " << spawn.wave << " at " << spawn.time << " s");
         CHECK(spawn.position.x >= tuning::area_width);
         CHECK(spawn.position.y >= tuning::bydos_lane_top);
         CHECK(spawn.position.y <= tuning::bydos_lane_bottom);
@@ -111,7 +111,19 @@ TEST_CASE("wave enemies are Bydos slaves, as dangerous as the others", "[rtype][
     CHECK(registry.has<SineMotion>(bydos));
     CHECK(registry.has<AutoTrigger>(bydos));
     CHECK_THROWS_AS(rtype::spawn_enemy(registry, "boss", Vec2{}), std::invalid_argument);
-    CHECK(rtype::enemy_types.size() == 1);
+}
+
+TEST_CASE("every enemy type a waves file can name can be spawned", "[rtype][waves][37]") {
+    Registry registry;
+    for (const std::string_view type : rtype::enemy_types) {
+        INFO(type);
+        Entity enemy{};
+        REQUIRE_NOTHROW(enemy = rtype::spawn_enemy(registry, type, Vec2{1296.0F, 360.0F}));
+        CHECK(registry.has<Transform>(enemy));
+        CHECK(registry.has<aegis2d::ecs::OffscreenDespawn>(enemy));
+        CHECK(registry.has<aegis2d::ecs::NetworkId>(enemy));
+        CHECK(registry.get<aegis2d::ecs::Collider>(enemy).layer == rtype::layer::enemy);
+    }
 }
 
 TEST_CASE("a typo in a waves file is reported with its place", "[rtype][waves][146]") {
