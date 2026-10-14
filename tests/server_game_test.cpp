@@ -79,8 +79,8 @@ TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
           std::vector<std::string_view>{"steering", "movement", "sine_motion", "play_area",
-                                        "weapons", "enemy_fire", "spawn", "collision", "damage",
-                                        "score", "lives", "cleanup", "despawn"});
+                                        "weapons", "enemy_fire", "spawn", "waves", "collision",
+                                        "damage", "score", "lives", "cleanup", "despawn"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
     CHECK_FALSE(game.game_over());
