@@ -183,5 +183,5 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 
 ## Not there yet
 
-- More enemy types (#37 explains how to add one) and the scrolling star field come with
-  the next tickets.
+- More enemy types ([Add an enemy type](add-an-enemy.md) explains how) and the scrolling
+  star field come with the next tickets.

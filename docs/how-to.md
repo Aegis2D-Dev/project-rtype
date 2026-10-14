@@ -36,7 +36,7 @@ previous wave, then spawns its groups:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `type` | required | Enemy type, one of `rtype::enemy_types` |
+| `type` | required | Enemy type, one of `rtype::enemy_types` ([add one](add-an-enemy.md)) |
 | `position` | required | `[x, y]` of the first enemy; x = 1296 is just beyond the right edge |
 | `at` | 0 | Seconds from the start of the wave |
 | `count` | 1 | Enemies in the group |
@@ -50,32 +50,9 @@ file: it prints the number of waves and enemies, or the place of the first mista
 
 ## Add an enemy type
 
-1. Add its values to `tuning.hpp` (speed, size, health, score).
-2. Declare its creation function in `game/include/rtype/entities.hpp`, documented like the
-   others, and write it in `game/entities.cpp`. Give it the `enemy` layer and mask so it
-   hits players and is hit by their missiles, and a `NetworkId` so clients can name it:
-
-    ```cpp
-    ecs::Entity spawn_bydos_turret(ecs::Registry& registry, Vec2 position) {
-        const ecs::Entity turret = registry.create();
-        registry.emplace<ecs::Transform>(turret, position);
-        registry.emplace<ecs::Sprite>(turret, ecs::Sprite{.size = tuning::turret_size});
-        registry.emplace<ecs::Collider>(
-            turret,
-            ecs::Collider{.size = tuning::turret_size, .layer = layer::enemy, .mask = mask::enemy});
-        registry.emplace<ecs::Health>(turret, tuning::turret_health);
-        registry.emplace<ecs::ScoreValue>(turret, tuning::turret_score);
-        registry.emplace<ecs::NetworkId>(turret, ecs::NetworkId::of(turret));
-        return turret;
-    }
-    ```
-
-3. To use it in waves files, add its name to `rtype::enemy_types` (`rtype/waves.hpp`) and
-   to `spawn_enemy()` (`game/entities.cpp`).
-4. Test its components in `tests/entities_test.cpp`, and its behavior through a
-   `ServerGame` in `tests/server_game_test.cpp` (for instance: one missile kills it and
-   gives its points to the shooter).
-5. Add it to the [entities table](gameplay.md#entities).
+A new enemy goes from its sprite to its values, its creation function, its name in the
+waves files, a wave that uses it, tests and documentation. [Add an enemy type](add-an-enemy.md)
+walks through all of it with a complete example.
 
 ## Add a system
 
