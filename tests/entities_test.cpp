@@ -16,6 +16,7 @@
 #include <vector>
 
 using aegis2d::Vec2;
+using aegis2d::ecs::AutoTrigger;
 using aegis2d::ecs::Collider;
 using aegis2d::ecs::CollisionGrid;
 using aegis2d::ecs::Contact;
@@ -34,6 +35,7 @@ using aegis2d::ecs::ScoreValue;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
+using aegis2d::ecs::Weapon;
 using Catch::Approx;
 namespace layer = rtype::layer;
 namespace mask = rtype::mask;
@@ -186,4 +188,29 @@ TEST_CASE("missiles hit only their targets and enemies ignore enemies", "[rtype]
     CHECK_FALSE(touching(contacts, bydos, other_bydos));
     CHECK_FALSE(touching(contacts, bullet, bydos));
     CHECK_FALSE(touching(contacts, bullet, missile));
+}
+
+TEST_CASE("Bydos slaves fire on their own, after a first delay", "[rtype][entities][137]") {
+    Registry registry;
+    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F});
+    CHECK(registry.has<AutoTrigger>(bydos));
+    CHECK(registry.get<Weapon>(bydos).cooldown == tuning::bydos_fire_cooldown);
+    CHECK(registry.get<Weapon>(bydos).reload == tuning::bydos_first_shot);
+    const Entity later = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F}, 0.0F, 2.5F);
+    CHECK(registry.get<Weapon>(later).reload == 2.5F);
+    STATIC_CHECK(tuning::bydos_first_shot * tuning::bydos_speed >
+                 tuning::bydos_spawn_x - tuning::area_width + tuning::bydos_size.x);
+}
+
+TEST_CASE("an enemy fires its missile from its left side", "[rtype][entities][137]") {
+    Registry registry;
+    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{900.0F, 200.0F});
+    const Entity missile = rtype::fire_enemy_missile(registry, bydos);
+    const float nose = (tuning::bydos_size.x + tuning::enemy_missile_size.x) / 2.0F;
+    CHECK(registry.get<Transform>(missile).position == Vec2{900.0F - nose, 200.0F});
+    CHECK(registry.get<Velocity>(missile).value.x == -tuning::enemy_missile_speed);
+    CHECK(registry.get<Owner>(missile).entity == bydos);
+    CHECK(registry.get<Collider>(missile).layer == layer::enemy_missile);
+    CHECK(registry.has<OffscreenDespawn>(missile));
+    CHECK_THROWS_AS(rtype::fire_enemy_missile(registry, registry.create()), std::out_of_range);
 }
