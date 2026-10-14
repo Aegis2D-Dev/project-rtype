@@ -2,3 +2,5 @@ add_executable(r-type_server main.cpp)
 target_link_libraries(r-type_server PRIVATE
     rtype_game aegis2d::core aegis2d::ecs aegis2d::net aegis2d::warnings)
 rtype_executable(r-type_server)
+# The waves files and other server data, copied next to r-type_server (core::asset_path()).
+aegis2d_copy_assets(r-type_server "${PROJECT_SOURCE_DIR}/assets")

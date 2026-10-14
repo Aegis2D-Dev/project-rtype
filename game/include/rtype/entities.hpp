@@ -8,6 +8,7 @@
 #include <rtype/tuning.hpp>
 
 #include <cstddef>
+#include <string_view>
 
 /// @brief R-Type game code, built on the Aegis2D engine.
 namespace rtype {
@@ -77,5 +78,15 @@ aegis2d::ecs::Entity spawn_enemy_missile(aegis2d::ecs::Registry& registry, aegis
 /// @throws std::out_of_range If @p shooter has no Transform.
 aegis2d::ecs::Entity fire_enemy_missile(aegis2d::ecs::Registry& registry,
                                         aegis2d::ecs::Entity shooter);
+
+/// @brief Creates an enemy by the name a waves file gives it (see enemy_types).
+/// @details `"bydos_slave"` is spawn_bydos_slave() with @p position on its line.
+/// @param registry World of the game.
+/// @param type Name of the enemy type.
+/// @param position Where it appears.
+/// @return The enemy.
+/// @throws std::invalid_argument If @p type is not one of enemy_types.
+aegis2d::ecs::Entity spawn_enemy(aegis2d::ecs::Registry& registry, std::string_view type,
+                                 aegis2d::Vec2 position);
 
 } // namespace rtype
