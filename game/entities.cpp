@@ -57,7 +57,7 @@ ecs::Entity spawn_player_missile(ecs::Registry& registry, ecs::Entity shooter) {
     return missile;
 }
 
-ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase) {
+ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase, float first_shot) {
     const ecs::SineMotion wave{.amplitude = Vec2{0.0F, -tuning::bydos_wave_amplitude},
                                .period = tuning::bydos_wave_period,
                                .elapsed = phase};
@@ -73,6 +73,9 @@ ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase) {
     registry.emplace<ecs::Damage>(
         bydos, ecs::Damage{.amount = tuning::ram_damage, .consumed_on_hit = false});
     registry.emplace<ecs::ScoreValue>(bydos, tuning::bydos_score);
+    registry.emplace<ecs::Weapon>(
+        bydos, ecs::Weapon{.cooldown = tuning::bydos_fire_cooldown, .reload = first_shot});
+    registry.emplace<ecs::AutoTrigger>(bydos);
     registry.emplace<ecs::OffscreenDespawn>(bydos, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(bydos, ecs::NetworkId::of(bydos));
     return bydos;
@@ -89,6 +92,16 @@ ecs::Entity spawn_enemy_missile(ecs::Registry& registry, Vec2 position) {
     registry.emplace<ecs::Damage>(missile, tuning::enemy_missile_damage);
     registry.emplace<ecs::OffscreenDespawn>(missile, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(missile, ecs::NetworkId::of(missile));
+    return missile;
+}
+
+ecs::Entity fire_enemy_missile(ecs::Registry& registry, ecs::Entity shooter) {
+    const Vec2 position = registry.get<ecs::Transform>(shooter).position;
+    const auto sprite = registry.try_get<ecs::Sprite>(shooter);
+    const float half = sprite ? sprite->get().size.x * 0.5F : 0.0F;
+    const Vec2 nose{half + (tuning::enemy_missile_size.x * 0.5F), 0.0F};
+    const ecs::Entity missile = spawn_enemy_missile(registry, position - nose);
+    registry.emplace<ecs::Owner>(missile, shooter);
     return missile;
 }
 

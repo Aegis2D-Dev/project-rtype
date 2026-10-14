@@ -21,10 +21,13 @@ using aegis2d::Vec2;
 using aegis2d::core::step_from_rate;
 using aegis2d::ecs::Action;
 using aegis2d::ecs::Entity;
+using aegis2d::ecs::Lives;
 using aegis2d::ecs::PlayerInput;
 using aegis2d::ecs::Score;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
+using aegis2d::ecs::Velocity;
+using aegis2d::ecs::Weapon;
 using Catch::Approx;
 using rtype::ServerGame;
 namespace tuning = rtype::tuning;
@@ -76,8 +79,8 @@ TEST_CASE("the server registers its systems in tick order", "[rtype][server]") {
     const ServerGame game;
     CHECK(game.systems().names() ==
           std::vector<std::string_view>{"steering", "movement", "sine_motion", "play_area",
-                                        "weapons", "spawn", "collision", "damage", "score", "lives",
-                                        "cleanup", "despawn"});
+                                        "weapons", "enemy_fire", "spawn", "collision", "damage",
+                                        "score", "lives", "cleanup", "despawn"});
     CHECK(game.ticks() == 0);
     CHECK(game.players() == 0);
     CHECK_FALSE(game.game_over());
@@ -453,6 +456,7 @@ TEST_CASE("random Bydos enter on the right and weave on screen", "[rtype][server
     ServerGame game{7};
     std::size_t spawned = 0;
     std::size_t despawned = 0;
+    std::size_t enemy_shots = 0;
     std::uint64_t last_spawn = 0;
     const auto ticks_of = [](float seconds) {
         return static_cast<std::uint64_t>(seconds * static_cast<float>(tuning::tick_rate));
@@ -470,6 +474,7 @@ TEST_CASE("random Bydos enter on the right and weave on screen", "[rtype][server
             ++spawned;
         }
         despawned += game.despawned().size();
+        enemy_shots += game.enemy_fired().size();
         game.registry().view<SineMotion, Transform>().each(
             [](const SineMotion& /*wave*/, const Transform& transform) {
                 REQUIRE(transform.position.y - (tuning::bydos_size.y / 2.0F) >= -0.01F);
@@ -479,5 +484,105 @@ TEST_CASE("random Bydos enter on the right and weave on screen", "[rtype][server
     }
     CHECK(spawned >= 60);
     CHECK(despawned > 0);
-    CHECK(game.registry().size() == spawned - despawned);
+    CHECK(enemy_shots > spawned);
+    CHECK(game.registry().size() == spawned + enemy_shots - despawned);
+}
+
+TEST_CASE("a Bydos fires to the left every two seconds", "[rtype][server][137]") {
+    ServerGame game;
+    const Entity bydos = straight_bydos(game, Vec2{1000.0F, 360.0F});
+    const auto rate = static_cast<std::uint64_t>(tuning::tick_rate);
+    std::vector<std::uint64_t> shots;
+    for (std::uint64_t tick = 0; tick < 6 * rate; ++tick) {
+        run(game, 1);
+        for (const Entity missile : game.enemy_fired()) {
+            shots.push_back(game.ticks());
+            const Vec2 from = position_of(game, bydos);
+            CHECK(position_of(game, missile).x < from.x - (tuning::bydos_size.x / 2.0F));
+            CHECK(position_of(game, missile).y == from.y);
+            CHECK(game.registry().get<Velocity>(missile).value ==
+                  Vec2{-tuning::enemy_missile_speed, 0.0F});
+        }
+    }
+    const auto at = [](float seconds) {
+        return static_cast<std::uint64_t>(seconds * static_cast<float>(tuning::tick_rate));
+    };
+    REQUIRE(shots.size() == 3);
+    for (std::size_t shot = 0; shot < shots.size(); ++shot) {
+        const std::uint64_t expected =
+            at(tuning::bydos_first_shot + (static_cast<float>(shot) * tuning::bydos_fire_cooldown));
+        CHECK(shots.at(shot) + 1 >= expected);
+        CHECK(shots.at(shot) <= expected + 1);
+    }
+    CHECK(game.fired().empty());
+}
+
+TEST_CASE("enemy missiles can hit players", "[rtype][server][137][142]") {
+    ServerGame game;
+    const Entity ship = game.add_player();
+    const Vec2 start = position_of(game, ship);
+    const Entity bydos = straight_bydos(game, Vec2{start.x + 400.0F, start.y});
+    game.registry().get<Weapon>(bydos).reload = 0.0F;
+
+    run(game, 1);
+    REQUIRE(game.enemy_fired().size() == 1);
+    const Entity missile = game.enemy_fired().front();
+    bool hit = false;
+    for (int tick = 0; tick < 2 * 60 && !hit; ++tick) {
+        run(game, 1);
+        hit = !game.lives_lost().empty();
+    }
+    REQUIRE(hit);
+    CHECK(game.lives_lost().front().player == ship);
+    CHECK_FALSE(game.registry().alive(missile));
+    CHECK(game.registry().get<Lives>(ship).count == tuning::player_lives - 1);
+    CHECK(game.registry().alive(bydos));
+}
+
+TEST_CASE("player missiles and enemy missiles pass through each other", "[rtype][server][137]") {
+    ServerGame game;
+    const Vec2 line{640.0F, 360.0F};
+    const Entity enemy_missile = rtype::spawn_enemy_missile(game.registry(), line);
+    const Entity bydos = straight_bydos(game, Vec2{1200.0F, 600.0F});
+    const Entity player_missile = rtype::spawn_player_missile(game.registry(), bydos);
+    place(game, player_missile, line);
+    run(game, 1);
+    CHECK(game.registry().alive(enemy_missile));
+    CHECK(game.registry().alive(player_missile));
+    CHECK(game.damage().kills.empty());
+}
+
+TEST_CASE("random Bydos fire at their own times, the same for a seed",
+          "[rtype][server][136][137]") {
+    const auto shots_of = [](ServerGame& game) {
+        std::vector<std::pair<std::uint64_t, Vec2>> shots;
+        for (int tick = 0; tick < 60 * 30; ++tick) {
+            run(game, 1);
+            for (const Entity missile : game.enemy_fired()) {
+                shots.emplace_back(game.ticks(), position_of(game, missile));
+            }
+        }
+        return shots;
+    };
+    ServerGame first{42};
+    ServerGame second{42};
+    const auto shots = shots_of(first);
+    CHECK(shots.size() >= 20);
+    CHECK(shots == shots_of(second));
+    std::size_t same_tick = 0;
+    for (std::size_t index = 1; index < shots.size(); ++index) {
+        same_tick += shots.at(index).first == shots.at(index - 1).first ? 1U : 0U;
+    }
+    CHECK(same_tick * 4 < shots.size());
+}
+
+TEST_CASE("enemies off screen do not fire", "[rtype][server][137]") {
+    ServerGame game;
+    const Entity leaving = straight_bydos(game, Vec2{-10.0F, 360.0F});
+    const Entity coming = straight_bydos(game, Vec2{tuning::bydos_spawn_x + 200.0F, 200.0F});
+    game.registry().get<Weapon>(leaving).reload = 0.0F;
+    game.registry().get<Weapon>(coming).reload = 0.0F;
+    run(game, 1);
+    CHECK(game.enemy_fired().empty());
+    CHECK(game.registry().size() == 2);
 }

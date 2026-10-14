@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#19](https://github.com/Aegis2D-Dev/project-rtype/pull/19) (opened 2026-10-13) |
 | Branch | `feat/random-enemy-spawns` → `develop` (on top of `feat/bydos-sine-wave`, #17) |
-| Status | Open |
+| Status | Merged on 2026-10-13 (`d21706e`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#136 random enemy spawns on the right edge |
 

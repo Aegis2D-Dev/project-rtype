@@ -31,18 +31,19 @@ namespace rtype {
 /// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
 /// 4. `play_area`: player ships are kept on screen;
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
-/// 6. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
-/// 7. `collision`: the grid and the layer masks give the contacts of the tick;
-/// 8. `damage`: contacts remove health, consume missiles and make kills;
-/// 9. `score`: each kill is credited to the player who made it;
-/// 10. `lives`: killed players lose a life and respawn, or are out;
-/// 11. `cleanup`: the dead and the spent missiles are destroyed;
-/// 12. `despawn`: missiles and enemies that left the screen for good are destroyed.
+/// 6. `enemy_fire`: enemies on screen with a reloaded weapon fire a missile to the left;
+/// 7. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
+/// 8. `collision`: the grid and the layer masks give the contacts of the tick;
+/// 9. `damage`: contacts remove health, consume missiles and make kills;
+/// 10. `score`: each kill is credited to the player who made it;
+/// 11. `lives`: killed players lose a life and respawn, or are out;
+/// 12. `cleanup`: the dead and the spent missiles are destroyed;
+/// 13. `despawn`: missiles and enemies that left the screen for good are destroyed.
 ///
 /// The network layer (#112, #113, #114) creates it with a seed, calls set_input() with each
 /// client's input, tick() at tuning::tick_rate, then sends the world and the events of the
-/// tick (fired(), spawned(), damage(), awards(), lives_lost(), despawned(), game_over()).
-/// Not thread-safe: use it from the simulation thread only.
+/// tick (fired(), enemy_fired(), spawned(), damage(), awards(), lives_lost(), despawned(),
+/// game_over()). Not thread-safe: use it from the simulation thread only.
 class ServerGame {
 public:
     /// @brief Creates an empty game with its systems registered.
@@ -104,6 +105,10 @@ public:
     /// @return The new missiles, in the order of their shooters.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& fired() const noexcept;
 
+    /// @brief Missiles fired by the enemies during the last tick.
+    /// @return The new missiles, in the order of their shooters.
+    [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& enemy_fired() const noexcept;
+
     /// @brief Bydos slaves spawned at random during the last tick.
     /// @return The new Bydos, in spawn order.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& spawned() const noexcept;
@@ -140,6 +145,8 @@ private:
     aegis2d::ecs::CollisionGrid grid_;
     std::vector<aegis2d::ecs::Entity> shooters_;
     std::vector<aegis2d::ecs::Entity> fired_;
+    std::vector<aegis2d::ecs::Entity> gunners_;
+    std::vector<aegis2d::ecs::Entity> enemy_fired_;
     std::optional<std::uint64_t> seed_;
     aegis2d::ecs::RandomSpawner spawner_;
     std::vector<aegis2d::Vec2> spawn_points_;

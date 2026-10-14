@@ -55,6 +55,12 @@ inline constexpr std::uint32_t bydos_score = 100;
 inline constexpr float bydos_wave_amplitude = 48.0F;
 /// @brief Seconds for a Bydos slave to weave up, down and back to its line.
 inline constexpr float bydos_wave_period = 2.0F;
+/// @brief Seconds between two shots of a Bydos slave.
+inline constexpr float bydos_fire_cooldown = 2.0F;
+/// @brief Shortest time before the first shot of a Bydos slave, so that it fires once on
+/// screen (it enters about 0.3 s after spawning beyond the right edge). Random Bydos wait up
+/// to one more tuning::bydos_fire_cooldown, so they do not fire in step.
+inline constexpr float bydos_first_shot = 1.0F;
 
 /// @brief Shortest time between two random Bydos spawns, in seconds.
 inline constexpr float bydos_spawn_min_interval = 0.8F;
