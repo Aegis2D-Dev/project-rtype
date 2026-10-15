@@ -8,8 +8,10 @@ include(Catch)
 add_executable(rtype_tests
     entities_test.cpp
     server_game_test.cpp
+    server_test.cpp
     waves_test.cpp)
-target_link_libraries(rtype_tests PRIVATE rtype_game Catch2::Catch2WithMain aegis2d::warnings)
+target_link_libraries(rtype_tests PRIVATE rtype_game rtype_server Catch2::Catch2WithMain
+    aegis2d::warnings)
 # The tests read the waves files of the repository, not the copies next to r-type_server.
 target_compile_definitions(rtype_tests PRIVATE RTYPE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
 target_compile_features(rtype_tests PRIVATE cxx_std_26)

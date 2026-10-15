@@ -79,10 +79,23 @@ first configure.
 ./build/linux-debug/r-type_client
 ```
 
-Both binaries accept `--version`, which prints the version and exits. For now the server
-creates a game, loads its enemy waves (`assets/waves/stage1.json`, or the file given with
-`--waves <file>`) and lists its systems, and the client lists the engine modules it is built
-with; the network loop and the window come with the next tickets.
+Both binaries accept `--version`, which prints the version and exits. The server takes:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--tcp-port <port>` | `4242` | TCP port of the logins |
+| `--udp-port <port>` | `4243` | UDP port of the game |
+| `--waves <file>` | `assets/waves/stage1.json` | Enemy waves to play |
+| `--help` | | Prints the usage and exits |
+
+A port is a number from 0 to 65535; 0 lets the system pick a free one, printed at start. A
+bad command line exits with status 2, a bad waves file or a port already in use with
+status 1.
+
+For now the server creates a game, loads its waves, lists its systems, then listens on both
+ports until stopped with Ctrl+C: it closes TCP connections and drops datagrams, as logins
+and the game loop come with the next tickets. The client lists the engine modules it is
+built with; the window comes with the next tickets.
 
 ## Documentation
 

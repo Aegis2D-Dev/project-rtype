@@ -16,7 +16,9 @@ C++26 engine, developed alongside it.
 | `r-type_server` | Authoritative simulation of the game at 60 ticks per second | core, ecs, net |
 | `r-type_client` | Window, input, rendering and sound of one player | every module |
 
-Both accept `--version`, which prints the version and exits.
+Both accept `--version`, which prints the version and exits. The server listens on TCP port
+4242 and UDP port 4243, or on the ports given with `--tcp-port` and `--udp-port` (see
+[Getting started](docs/getting-started.md#run)).
 
 ## Requirements
 

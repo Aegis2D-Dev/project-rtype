@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#23](https://github.com/Aegis2D-Dev/project-rtype/pull/23) (opened 2026-10-14) |
 | Branch | `docs/add-enemy-type` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-14 (`8af5daf`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#37 how-to add a new enemy type |
 
@@ -38,9 +38,9 @@ and safer to follow.
 - `CHANGELOG.md` and its file: #22 marked as merged.
 
 ## Commits
-- feat(game): made the enemy type list grow with its names
-- feat(tests): checked that every enemy type can be spawned
-- feat(docs): added the add an enemy type guide and updated changelogs
+- `9c16579` feat(game): made the enemy type list grow with its names
+- `f345894` feat(tests): checked that every enemy type can be spawned
+- `a207699` feat(docs): added the add an enemy type guide and updated changelogs
 
 ## Notes
 - The example enemy is not added to the game: the guide is the deliverable. Following it
