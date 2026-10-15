@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#23](https://github.com/Aegis2D-Dev/project-rtype/pull/23) | Guide: add an enemy type | `docs/add-enemy-type` | Open | 2026-10-14 | [2026-10-14-add-enemy-type](changelogs/2026-10-14-add-enemy-type.md) |
+| [#24](https://github.com/Aegis2D-Dev/project-rtype/pull/24) | Server entry point with port arguments | `feat/server-entry-point` | Open | 2026-10-15 | [2026-10-15-server-entry-point](changelogs/2026-10-15-server-entry-point.md) |
+| [#23](https://github.com/Aegis2D-Dev/project-rtype/pull/23) | Guide: add an enemy type | `docs/add-enemy-type` | Merged | 2026-10-14 | [2026-10-14-add-enemy-type](changelogs/2026-10-14-add-enemy-type.md) |
 | [#22](https://github.com/Aegis2D-Dev/project-rtype/pull/22) | Enemy waves loaded from a JSON file | `feat/enemy-waves` | Merged | 2026-10-14 | [2026-10-14-enemy-waves](changelogs/2026-10-14-enemy-waves.md) |
 | [#21](https://github.com/Aegis2D-Dev/project-rtype/pull/21) | Bydos slaves fire enemy missiles | `feat/enemy-missiles` | Merged | 2026-10-14 | [2026-10-14-enemy-missiles](changelogs/2026-10-14-enemy-missiles.md) |
 | [#20](https://github.com/Aegis2D-Dev/project-rtype/pull/20) | Incremental Linux builds on pull requests | `ci/linux-build-cache` | Merged | 2026-10-13 | [2026-10-13-ci-linux-build-cache](changelogs/2026-10-13-ci-linux-build-cache.md) |
