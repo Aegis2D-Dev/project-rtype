@@ -6,15 +6,18 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
+#include <rtype/game_instance.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
+#include <rtype/sessions.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -50,13 +53,14 @@ int main(int argc, char** argv) {
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
 
     const std::filesystem::path waves_file = options.waves.value_or(rtype::default_waves_file());
-    rtype::ServerGame game;
+    std::optional<rtype::GameInstance> instance;
     try {
-        game.play_waves(rtype::load_waves(waves_file));
+        instance.emplace(std::nullopt, rtype::load_waves(waves_file));
     } catch (const aegis2d::core::ConfigError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
     }
+    const rtype::ServerGame& game = instance->game();
     const aegis2d::ecs::WaveSchedule& waves = game.waves();
     std::cout << "waves: " << waves_file.string() << " (" << waves.waves()
               << (waves.waves() == 1 ? " wave, " : " waves, ") << waves.spawns().size()
@@ -71,6 +75,9 @@ int main(int argc, char** argv) {
     aegis2d::net::NetworkContext context;
     try {
         rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
+        network.on_players(
+            [&instance](const rtype::Session& session) { instance->join(session.player); },
+            [&instance](const rtype::Session& session) { instance->leave(session.player); });
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << '\n'

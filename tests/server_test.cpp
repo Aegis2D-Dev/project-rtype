@@ -448,3 +448,45 @@ TEST_CASE("ending a session unbinds its endpoint", "[server][udp]") {
     CHECK(udp.received.size() == 1);
     CHECK(server.game_datagrams() == 0);
 }
+
+TEST_CASE("players join the game when bound and leave when their session ends", "[server][game]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<unsigned> joined;
+    std::vector<unsigned> left;
+    server.on_players([&](const rtype::Session& session) { joined.push_back(session.player); },
+                      [&](const rtype::Session& session) { left.push_back(session.player); });
+
+    // Four players log in and bind their endpoints: each joins once, with its number.
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::unique_ptr<Socket>> sockets;
+    std::vector<std::uint32_t> tokens;
+    for (int index = 0; index < 4; ++index) {
+        players.push_back(std::make_unique<Player>(context, server));
+        tokens.push_back(log_in(context, server, *players.back(), "p" + std::to_string(index)));
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.back()));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.back(), 1));
+    }
+    REQUIRE(pump(context, server, [&] { return joined.size() == 4; }));
+    REQUIRE(pump(context, server, [&] { return sockets.back()->received.size() == 2; }));
+    CHECK(joined == std::vector<unsigned>{0, 1, 2, 3});
+
+    // The fifth login gets a full-game rejection.
+    Player fifth{context, server};
+    fifth.send(rtype::write_login_request(request("p4")));
+    REQUIRE(pump(context, server, [&] { return fifth.closed; }));
+    REQUIRE(fifth.received.size() == 1);
+    CHECK(fifth.received.front() == rtype::write_login_rejected(LoginRejection::ServerFull));
+
+    // Player 1 leaves; a login that never binds its endpoint never joins.
+    players.at(1)->send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return left.size() == 1; }));
+    CHECK(left.front() == 1);
+    Player late{context, server};
+    static_cast<void>(log_in(context, server, late, "late"));
+    late.connection.close();
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == 3; }));
+    CHECK(joined.size() == 4);
+    CHECK(left.size() == 1);
+}

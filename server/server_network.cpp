@@ -79,10 +79,14 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     case BindResult::Taken:
         drop(from, datagram, "session or endpoint bound already");
         return;
-    case BindResult::Bound:
-        core::log_info("UDP: player {} plays from {}", sessions_.find(header.session)->player,
-                       from.to_string());
+    case BindResult::Bound: {
+        const Session& session = *sessions_.find(header.session);
+        core::log_info("UDP: player {} plays from {}", session.player, from.to_string());
+        if (joined_) {
+            joined_(session);
+        }
         break;
+    }
     case BindResult::AlreadyBound:
         break;
     }
@@ -102,7 +106,16 @@ void ServerNetwork::drop(const net::Endpoint& from, std::span<const std::byte> d
                     from.to_string(), reason);
 }
 
+void ServerNetwork::on_players(PlayerHandler joined, PlayerHandler left) {
+    joined_ = std::move(joined);
+    left_ = std::move(left);
+}
+
 void ServerNetwork::end_session(std::uint32_t token) {
+    const Session* const session = sessions_.find(token);
+    if (session != nullptr && session->endpoint && left_) {
+        left_(*session);
+    }
     sessions_.end(token);
     channels_.erase(token);
 }
