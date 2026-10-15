@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#28](https://github.com/Aegis2D-Dev/project-rtype/pull/28) (opened 2026-10-15) |
 | Branch | `feat/server-simulation-thread` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`5220b4a`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#112 60 Hz simulation thread |
 
@@ -34,6 +34,7 @@ server epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `0b752e0` feat(server): ran the game on a 60 hz simulation thread
+- `306e807` feat(changelog): updated changelogs
 
 ## Notes
 - The way back, from the simulation thread to the network (snapshots and events), comes
