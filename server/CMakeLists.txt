@@ -5,10 +5,12 @@ add_library(rtype_server STATIC
     login.cpp
     server_network.cpp
     server_options.cpp
-    sessions.cpp)
+    sessions.cpp
+    simulation.cpp)
 target_include_directories(rtype_server PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+find_package(Threads REQUIRED)
 target_link_libraries(rtype_server
-    PUBLIC rtype_game aegis2d::core aegis2d::net
+    PUBLIC rtype_game aegis2d::core aegis2d::net Threads::Threads
     PRIVATE aegis2d::warnings)
 target_compile_features(rtype_server PUBLIC cxx_std_26)
 set_target_properties(rtype_server PROPERTIES CXX_EXTENSIONS OFF)
