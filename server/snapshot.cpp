@@ -114,16 +114,19 @@ Snapshot take_snapshot(GameInstance& instance) {
 }
 
 std::vector<std::vector<std::byte>> write_snapshot(const Snapshot& snapshot) {
-    std::vector<std::vector<std::byte>> payloads;
     const std::span<const EntityRecord> entities{snapshot.entities};
-    std::size_t start = 0;
-    do {
-        const std::size_t count = std::min(max_entities_per_datagram, entities.size() - start);
+    // At least one payload, so a world with no entity still sends its players.
+    const std::size_t count = std::max<std::size_t>(
+        1, (entities.size() + max_entities_per_datagram - 1) / max_entities_per_datagram);
+    std::vector<std::vector<std::byte>> payloads;
+    payloads.reserve(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        const std::size_t first = index * max_entities_per_datagram;
+        const std::size_t size = std::min(max_entities_per_datagram, entities.size() - first);
         net::BinaryWriter writer;
-        write_records(writer, snapshot, entities.subspan(start, count));
+        write_records(writer, snapshot, entities.subspan(first, size));
         payloads.emplace_back(writer.data().begin(), writer.data().end());
-        start += count;
-    } while (start < entities.size());
+    }
     return payloads;
 }
 
