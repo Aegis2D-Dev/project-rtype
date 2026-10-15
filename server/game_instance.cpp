@@ -41,12 +41,16 @@ ecs::Entity GameInstance::join(std::uint8_t player) {
 }
 
 bool GameInstance::leave(std::uint8_t player) {
-    if (player >= ships_.size() || !ships_.at(player)) {
+    if (player >= ships_.size()) {
+        return false;
+    }
+    std::optional<ecs::Entity>& ship = ships_.at(player);
+    if (!ship.has_value()) {
         return false;
     }
     // A player out of lives has no ship left to remove, but still leaves its number.
-    game_->remove_player(*ships_.at(player));
-    ships_.at(player).reset();
+    game_->remove_player(*ship);
+    ship.reset();
     if (players() == 0) {
         start();
     }
@@ -54,10 +58,14 @@ bool GameInstance::leave(std::uint8_t player) {
 }
 
 std::optional<ecs::Entity> GameInstance::ship(std::uint8_t player) const {
-    if (player >= ships_.size() || !ships_.at(player) || !game_->slot_of(*ships_.at(player))) {
+    if (player >= ships_.size()) {
         return std::nullopt;
     }
-    return ships_.at(player);
+    const std::optional<ecs::Entity>& ship = ships_.at(player);
+    if (!ship.has_value() || !game_->slot_of(*ship)) {
+        return std::nullopt;
+    }
+    return ship;
 }
 
 std::size_t GameInstance::players() const noexcept {
