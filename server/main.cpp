@@ -12,12 +12,12 @@
 #include <rtype/waves.hpp>
 
 #include <cstddef>
-#include <expected>
 #include <filesystem>
 #include <iostream>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -27,24 +27,26 @@ constexpr std::string_view version = RTYPE_VERSION;
 int main(int argc, char** argv) {
     const std::span args{argv, static_cast<std::size_t>(argc)};
     const std::vector<std::string_view> arguments(args.begin() + 1, args.end());
-    const std::expected<rtype::ServerOptions, std::string> options =
+    const std::variant<rtype::ServerOptions, std::string> parsed =
         rtype::parse_server_options(arguments);
-    if (!options) {
-        std::cerr << "r-type_server: " << options.error() << '\n' << rtype::server_usage;
+    if (const std::string* const error = std::get_if<std::string>(&parsed)) {
+        std::cerr << "r-type_server: " << *error << '\n' << rtype::server_usage;
         return 2;
     }
-    if (options->command == rtype::ServerCommand::Help) {
+    // Not an error, so the options: get_if rather than get, which could throw.
+    const auto& options = *std::get_if<rtype::ServerOptions>(&parsed);
+    if (options.command == rtype::ServerCommand::Help) {
         std::cout << rtype::server_usage;
         return 0;
     }
-    if (options->command == rtype::ServerCommand::Version) {
+    if (options.command == rtype::ServerCommand::Version) {
         std::cout << "r-type_server " << version << '\n';
         return 0;
     }
     std::cout << "r-type_server " << version << " (engine modules: " << aegis2d::core::name()
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
 
-    const std::filesystem::path waves_file = options->waves.value_or(rtype::default_waves_file());
+    const std::filesystem::path waves_file = options.waves.value_or(rtype::default_waves_file());
     rtype::ServerGame game;
     try {
         game.play_waves(rtype::load_waves(waves_file));
@@ -65,7 +67,7 @@ int main(int argc, char** argv) {
 
     aegis2d::net::NetworkContext context;
     try {
-        const rtype::ServerNetwork network{context, options->tcp_port, options->udp_port};
+        const rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << '\n'

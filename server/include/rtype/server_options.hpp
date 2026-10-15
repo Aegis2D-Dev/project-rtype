@@ -2,12 +2,12 @@
 /// @brief Command line of `r-type_server`: ports, waves file, help and version.
 #pragma once
 #include <cstdint>
-#include <expected>
 #include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace rtype {
 
@@ -49,7 +49,7 @@ struct ServerOptions {
 /// a decimal number from 0 to 65535, 0 asking the system for a free port.
 /// @param args Arguments after the program name.
 /// @return The options, or a one-line message naming the faulty argument.
-[[nodiscard]] std::expected<ServerOptions, std::string>
+[[nodiscard]] std::variant<ServerOptions, std::string>
 parse_server_options(std::span<const std::string_view> args);
 
 } // namespace rtype

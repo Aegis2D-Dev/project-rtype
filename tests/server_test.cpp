@@ -11,13 +11,13 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
-#include <expected>
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 using aegis2d::net::Endpoint;
@@ -32,15 +32,21 @@ using rtype::ServerOptions;
 
 namespace {
 
-std::expected<ServerOptions, std::string> parse(std::initializer_list<std::string_view> args) {
+std::variant<ServerOptions, std::string> parse_args(std::initializer_list<std::string_view> args) {
     const std::vector<std::string_view> list{args};
     return rtype::parse_server_options(list);
 }
 
+ServerOptions parse(std::initializer_list<std::string_view> args) {
+    const std::variant<ServerOptions, std::string> result = parse_args(args);
+    REQUIRE(std::holds_alternative<ServerOptions>(result));
+    return std::get<ServerOptions>(result);
+}
+
 std::string error_of(std::initializer_list<std::string_view> args) {
-    const std::expected<ServerOptions, std::string> options = parse(args);
-    REQUIRE_FALSE(options.has_value());
-    return options.error();
+    const std::variant<ServerOptions, std::string> result = parse_args(args);
+    REQUIRE(std::holds_alternative<std::string>(result));
+    return std::get<std::string>(result);
 }
 
 // Runs the context until the condition holds, for at most two seconds.
@@ -59,31 +65,29 @@ bool run_until(NetworkContext& context, Condition condition) {
 } // namespace
 
 TEST_CASE("without arguments the server runs on the default ports", "[server][options]") {
-    const std::expected<ServerOptions, std::string> options = parse({});
-    REQUIRE(options.has_value());
-    CHECK(options->command == ServerCommand::Run);
-    CHECK(options->tcp_port == rtype::default_tcp_port);
-    CHECK(options->udp_port == rtype::default_udp_port);
-    CHECK_FALSE(options->waves.has_value());
+    const ServerOptions options = parse({});
+    CHECK(options.command == ServerCommand::Run);
+    CHECK(options.tcp_port == rtype::default_tcp_port);
+    CHECK(options.udp_port == rtype::default_udp_port);
+    CHECK_FALSE(options.waves.has_value());
 }
 
 TEST_CASE("ports and waves file are read in any order", "[server][options]") {
-    const std::expected<ServerOptions, std::string> options =
+    const ServerOptions options =
         parse({"--udp-port", "5000", "--waves", "stage2.json", "--tcp-port", "65535"});
-    REQUIRE(options.has_value());
-    CHECK(options->command == ServerCommand::Run);
-    CHECK(options->tcp_port == 65535);
-    CHECK(options->udp_port == 5000);
-    CHECK(options->waves == std::filesystem::path{"stage2.json"});
+    CHECK(options.command == ServerCommand::Run);
+    CHECK(options.tcp_port == 65535);
+    CHECK(options.udp_port == 5000);
+    CHECK(options.waves == std::filesystem::path{"stage2.json"});
 
-    CHECK(parse({"--tcp-port", "0"})->tcp_port == 0);
-    CHECK(parse({"--tcp-port", "1", "--tcp-port", "2"})->tcp_port == 2);
+    CHECK(parse({"--tcp-port", "0"}).tcp_port == 0);
+    CHECK(parse({"--tcp-port", "1", "--tcp-port", "2"}).tcp_port == 2);
 }
 
 TEST_CASE("help and version stop the reading", "[server][options]") {
-    CHECK(parse({"--help"})->command == ServerCommand::Help);
-    CHECK(parse({"--version"})->command == ServerCommand::Version);
-    CHECK(parse({"--tcp-port", "1", "--version", "--bad"})->command == ServerCommand::Version);
+    CHECK(parse({"--help"}).command == ServerCommand::Help);
+    CHECK(parse({"--version"}).command == ServerCommand::Version);
+    CHECK(parse({"--tcp-port", "1", "--version", "--bad"}).command == ServerCommand::Version);
 }
 
 TEST_CASE("bad command lines name the faulty argument", "[server][options]") {

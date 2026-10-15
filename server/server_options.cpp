@@ -1,13 +1,12 @@
 #include <rtype/server_options.hpp>
 
-#include <cstddef>
 #include <cstdint>
-#include <expected>
 #include <format>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace rtype {
 
@@ -34,11 +33,11 @@ std::optional<std::uint16_t> parse_port(std::string_view text) noexcept {
 
 } // namespace
 
-std::expected<ServerOptions, std::string>
+std::variant<ServerOptions, std::string>
 parse_server_options(std::span<const std::string_view> args) {
     ServerOptions options;
-    for (std::size_t index = 0; index < args.size(); ++index) {
-        const std::string_view arg = args.at(index);
+    for (auto next = args.begin(); next != args.end(); ++next) {
+        const std::string_view arg = *next;
         if (arg == "--help") {
             options.command = ServerCommand::Help;
             return options;
@@ -48,20 +47,19 @@ parse_server_options(std::span<const std::string_view> args) {
             return options;
         }
         if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves") {
-            return std::unexpected{std::format("unknown argument \"{}\"", arg)};
+            return std::format("unknown argument \"{}\"", arg);
         }
-        if (index + 1 == args.size()) {
-            return std::unexpected{std::format("{} needs a value", arg)};
+        if (++next == args.end()) {
+            return std::format("{} needs a value", arg);
         }
-        const std::string_view value = args.at(++index);
+        const std::string_view value = *next;
         if (arg == "--waves") {
             options.waves = value;
             continue;
         }
         const std::optional<std::uint16_t> port = parse_port(value);
         if (!port) {
-            return std::unexpected{
-                std::format("{}: \"{}\" is not a port (0 to 65535)", arg, value)};
+            return std::format("{}: \"{}\" is not a port (0 to 65535)", arg, value);
         }
         (arg == "--tcp-port" ? options.tcp_port : options.udp_port) = *port;
     }
