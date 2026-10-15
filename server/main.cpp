@@ -2,47 +2,49 @@
 #include <aegis2d/core/module.hpp>
 #include <aegis2d/ecs/module.hpp>
 #include <aegis2d/ecs/waves.hpp>
+#include <aegis2d/net/context.hpp>
 #include <aegis2d/net/module.hpp>
+#include <aegis2d/net/socket_error.hpp>
 
 #include <rtype/server_game.hpp>
+#include <rtype/server_network.hpp>
+#include <rtype/server_options.hpp>
 #include <rtype/waves.hpp>
 
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <iostream>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 constexpr std::string_view version = RTYPE_VERSION;
-constexpr std::string_view usage = "usage: r-type_server [--version] [--waves <file.json>]\n";
 } // namespace
 
 int main(int argc, char** argv) {
     const std::span args{argv, static_cast<std::size_t>(argc)};
-    std::filesystem::path waves_file = rtype::default_waves_file();
-    bool waves_next = false;
-    for (const std::string_view arg : args.subspan(1)) {
-        if (waves_next) {
-            waves_file = arg;
-            waves_next = false;
-        } else if (arg == "--version") {
-            std::cout << "r-type_server " << version << '\n';
-            return 0;
-        } else if (arg == "--waves") {
-            waves_next = true;
-        } else {
-            std::cerr << "r-type_server: unknown argument \"" << arg << "\"\n" << usage;
-            return 2;
-        }
-    }
-    if (waves_next) {
-        std::cerr << "r-type_server: --waves needs a file\n" << usage;
+    const std::vector<std::string_view> arguments(args.begin() + 1, args.end());
+    const std::expected<rtype::ServerOptions, std::string> options =
+        rtype::parse_server_options(arguments);
+    if (!options) {
+        std::cerr << "r-type_server: " << options.error() << '\n' << rtype::server_usage;
         return 2;
+    }
+    if (options->command == rtype::ServerCommand::Help) {
+        std::cout << rtype::server_usage;
+        return 0;
+    }
+    if (options->command == rtype::ServerCommand::Version) {
+        std::cout << "r-type_server " << version << '\n';
+        return 0;
     }
     std::cout << "r-type_server " << version << " (engine modules: " << aegis2d::core::name()
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
 
+    const std::filesystem::path waves_file = options->waves.value_or(rtype::default_waves_file());
     rtype::ServerGame game;
     try {
         game.play_waves(rtype::load_waves(waves_file));
@@ -60,5 +62,19 @@ int main(int argc, char** argv) {
         std::cout << ' ' << system;
     }
     std::cout << '\n';
+
+    aegis2d::net::NetworkContext context;
+    try {
+        const rtype::ServerNetwork network{context, options->tcp_port, options->udp_port};
+        // Flushed, so scripts waiting for the ports see it while the server runs.
+        std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
+                  << network.udp_endpoint().port() << '\n'
+                  << std::flush;
+        // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121.
+        context.run();
+    } catch (const aegis2d::net::SocketError& error) {
+        std::cerr << "r-type_server: " << error.what() << '\n';
+        return 1;
+    }
     return 0;
 }
