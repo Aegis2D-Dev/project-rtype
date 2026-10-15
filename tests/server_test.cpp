@@ -1,5 +1,7 @@
+#include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
+#include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/socket_error.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
@@ -26,6 +28,8 @@
 
 using aegis2d::net::Endpoint;
 using aegis2d::net::NetworkContext;
+using aegis2d::net::PacketHeader;
+using aegis2d::net::PacketType;
 using aegis2d::net::SocketError;
 using aegis2d::net::TcpCloseReason;
 using aegis2d::net::TcpConnection;
@@ -107,6 +111,40 @@ struct Player {
     }
 
     void send(const std::vector<std::byte>& message) { connection.send(message); }
+};
+
+// A datagram of the given type and token, with an optional payload.
+std::vector<std::byte> datagram(PacketType type, std::uint32_t session, std::uint16_t sequence = 0,
+                                std::vector<std::byte> payload = {}) {
+    aegis2d::net::BinaryWriter writer;
+    aegis2d::net::write_header(
+        writer,
+        PacketHeader{
+            .type = type, .sequence = sequence, .ack = 65535, .ack_bits = 0, .session = session});
+    writer.write_bytes(payload);
+    return {writer.data().begin(), writer.data().end()};
+}
+
+// A player's UDP socket, keeping the headers of the datagrams the server sends.
+struct Socket {
+    UdpSocket socket;
+    std::vector<PacketHeader> received;
+    std::vector<std::size_t> sizes;
+
+    explicit Socket(NetworkContext& context) : socket{context, Endpoint::loopback(0)} {
+        socket.start_receiving([this](const Endpoint& /*from*/, std::span<const std::byte> bytes) {
+            aegis2d::net::BinaryReader reader{bytes};
+            const auto header = aegis2d::net::read_header(reader);
+            if (const auto* const read = std::get_if<PacketHeader>(&header)) {
+                received.push_back(*read);
+                sizes.push_back(bytes.size());
+            }
+        });
+    }
+
+    void send(ServerNetwork& server, const std::vector<std::byte>& bytes) {
+        socket.send_to(Endpoint::loopback(server.udp_endpoint().port()), bytes);
+    }
 };
 
 LoginRequest request(std::string name) {
@@ -306,4 +344,107 @@ TEST_CASE("a logged-in player sending anything but a Logout loses its session", 
     REQUIRE(pump(context, server, [&] { return player.closed; }));
     CHECK(server.sessions().size() == 0);
     CHECK(player.received.size() == 1);
+}
+
+namespace {
+
+// Logs a player in over TCP and returns its token.
+std::uint32_t log_in(NetworkContext& context, ServerNetwork& server, Player& player,
+                     std::string name) {
+    const std::size_t before = server.sessions().size();
+    player.send(rtype::write_login_request(request(std::move(name))));
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == before + 1; }));
+    REQUIRE(pump(context, server, [&] { return !player.received.empty(); }));
+    const std::vector<std::byte>& reply = player.received.back();
+    REQUIRE(reply.size() == 8);
+    return std::to_integer<std::uint32_t>(reply.at(1)) |
+           (std::to_integer<std::uint32_t>(reply.at(2)) << 8U) |
+           (std::to_integer<std::uint32_t>(reply.at(3)) << 16U) |
+           (std::to_integer<std::uint32_t>(reply.at(4)) << 24U);
+}
+
+} // namespace
+
+TEST_CASE("a Connect binds the endpoint and gets an Accept", "[server][udp]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+    const PacketHeader& accept = udp.received.front();
+    CHECK(accept.type == PacketType::Accept);
+    CHECK(accept.session == token);
+    CHECK(accept.sequence == 0);
+    CHECK(accept.ack == 0); // the Connect of sequence 0
+    CHECK(udp.sizes.front() == PacketHeader::size);
+    REQUIRE(server.sessions().find(token) != nullptr);
+    CHECK(server.sessions().find(token)->endpoint == udp.socket.local_endpoint());
+
+    // The Accept was lost: the next Connect gets another one, numbered after it.
+    udp.send(server, datagram(PacketType::Connect, token, 1));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 2; }));
+    CHECK(udp.received.back().type == PacketType::Accept);
+    CHECK(udp.received.back().sequence == 1);
+    CHECK(udp.received.back().ack == 1);
+    CHECK(udp.received.back().ack_bits == 1U);
+
+    // Bound: its other datagrams reach the game.
+    udp.send(server, datagram(PacketType::Heartbeat, token, 2));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
+    CHECK(server.dropped_datagrams() == 0);
+}
+
+TEST_CASE("datagrams from unknown endpoints are dropped without an answer", "[server][udp]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket owner{context};
+    owner.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return owner.received.size() == 1; }));
+
+    Socket stranger{context};
+    const std::vector<std::vector<std::byte>> bad = {
+        datagram(PacketType::Input, token, 0, {std::byte{0x01}}), // endpoint not bound
+        datagram(PacketType::Connect, token),                     // session bound elsewhere
+        datagram(PacketType::Connect, token + 1),                 // unknown session
+        datagram(PacketType::Connect, 0),                         // 0 is never a token
+        datagram(PacketType::Snapshot, token),                    // wrong direction
+        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},      // truncated header
+    };
+    for (const std::vector<std::byte>& bytes : bad) {
+        stranger.send(server, bytes);
+    }
+    // From the bound endpoint: another session's token, and a Connect with a payload.
+    owner.send(server, datagram(PacketType::Heartbeat, token + 1, 1));
+    owner.send(server, datagram(PacketType::Connect, token, 2, {std::byte{0x00}}));
+    const std::uint64_t expected = bad.size() + 2;
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == expected; }));
+
+    context.run_for(std::chrono::milliseconds{50});
+    CHECK(stranger.received.empty());
+    CHECK(owner.received.size() == 1);
+    CHECK(server.game_datagrams() == 0);
+    CHECK(server.sessions().find(token)->endpoint == owner.socket.local_endpoint());
+}
+
+TEST_CASE("ending a session unbinds its endpoint", "[server][udp]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == 0; }));
+    udp.send(server, datagram(PacketType::Heartbeat, token, 1));
+    udp.send(server, datagram(PacketType::Connect, token, 2));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 2; }));
+    CHECK(udp.received.size() == 1);
+    CHECK(server.game_datagrams() == 0);
 }

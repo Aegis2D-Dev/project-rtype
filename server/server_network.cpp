@@ -1,6 +1,9 @@
 #include <aegis2d/core/log.hpp>
+#include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
+#include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
@@ -28,10 +31,80 @@ ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_por
     : listener_{context, tcp_port}, socket_{context, udp_port}, sessions_{std::move(sessions)} {
     listener_.start_accepting(
         [this](net::TcpConnection connection) { on_accept(std::move(connection)); });
-    socket_.start_receiving([](const net::Endpoint& from, std::span<const std::byte> datagram) {
-        core::log_debug("UDP: dropped a {}-byte datagram from {}: endpoints are not bound yet",
-                        datagram.size(), from.to_string());
+    socket_.start_receiving([this](const net::Endpoint& from, std::span<const std::byte> datagram) {
+        on_datagram(from, datagram);
     });
+}
+
+// RFC section 6.3, steps 2 to 4: header, direction, source. The payloads of the game
+// (Input, Event, Heartbeat, Disconnect) are checked by the game loop, which is not there yet.
+void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::byte> datagram) {
+    net::BinaryReader reader{datagram};
+    const std::variant<net::PacketHeader, net::HeaderError> read = net::read_header(reader);
+    if (const auto* const error = std::get_if<net::HeaderError>(&read)) {
+        drop(from, datagram, net::to_string(*error));
+        return;
+    }
+    const auto& header = *std::get_if<net::PacketHeader>(&read);
+    if (header.type == net::PacketType::Accept || header.type == net::PacketType::Snapshot) {
+        drop(from, datagram, "wrong direction");
+        return;
+    }
+    if (header.type == net::PacketType::Connect) {
+        on_connect(from, datagram, header, reader);
+        return;
+    }
+    const Session* const session = sessions_.find(from);
+    if (session == nullptr) {
+        drop(from, datagram, "endpoint not bound");
+        return;
+    }
+    if (session->token != header.session) {
+        drop(from, datagram, "wrong session");
+        return;
+    }
+    ++game_datagrams_;
+}
+
+void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::byte> datagram,
+                               const net::PacketHeader& header, const net::BinaryReader& payload) {
+    if (!payload.at_end()) {
+        drop(from, datagram, "malformed Connect");
+        return;
+    }
+    switch (sessions_.bind(header.session, from)) {
+    case BindResult::UnknownSession:
+        drop(from, datagram, "unknown session");
+        return;
+    case BindResult::Taken:
+        drop(from, datagram, "session or endpoint bound already");
+        return;
+    case BindResult::Bound:
+        core::log_info("UDP: player {} plays from {}", sessions_.find(header.session)->player,
+                       from.to_string());
+        break;
+    case BindResult::AlreadyBound:
+        break;
+    }
+    // The first Accept may be lost: each Connect from the bound endpoint gets one.
+    net::ReliableChannel& channel = channels_[header.session];
+    channel.receive(header);
+    net::BinaryWriter writer;
+    net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
+    socket_.send_to(from, writer.data());
+}
+
+// Never answered (RFC section 6.1), and only logged at the debug level (section 6.7).
+void ServerNetwork::drop(const net::Endpoint& from, std::span<const std::byte> datagram,
+                         std::string_view reason) {
+    ++dropped_;
+    core::log_debug("UDP: dropped a {}-byte datagram from {}: {}", datagram.size(),
+                    from.to_string(), reason);
+}
+
+void ServerNetwork::end_session(std::uint32_t token) {
+    sessions_.end(token);
+    channels_.erase(token);
 }
 
 void ServerNetwork::on_accept(net::TcpConnection connection) {
@@ -63,7 +136,7 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
     // Logged in: a Logout is the only message the client may send (RFC section 3.3).
     const Session* const session = sessions_.find(*client.token);
     const unsigned player = session != nullptr ? session->player : 0U;
-    sessions_.end(*client.token);
+    end_session(*client.token);
     if (read_logout(message)) {
         core::log_info("TCP: player {} logged out", player);
         close(client, {});
@@ -115,7 +188,7 @@ void ServerNetwork::on_close(std::uint64_t id, net::TcpCloseReason reason) {
         if (session != nullptr) {
             core::log_info("TCP: player {} disconnected", session->player);
         }
-        sessions_.end(*client.token);
+        end_session(*client.token);
     } else if (reason == net::TcpCloseReason::MessageTooLarge) {
         core::log_info("TCP: closed {}: message too large",
                        client.connection.remote_endpoint().to_string());
@@ -173,6 +246,14 @@ std::size_t ServerNetwork::open_connections() const noexcept {
 
 std::uint64_t ServerNetwork::datagrams() const noexcept {
     return socket_.stats().received;
+}
+
+std::uint64_t ServerNetwork::dropped_datagrams() const noexcept {
+    return dropped_;
+}
+
+std::uint64_t ServerNetwork::game_datagrams() const noexcept {
+    return game_datagrams_;
 }
 
 } // namespace rtype

@@ -1,8 +1,11 @@
 /// @file
 /// @brief Sockets of the R-Type server: the TCP port of the logins and the UDP port of the game.
 #pragma once
+#include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
+#include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
@@ -25,8 +28,14 @@ namespace rtype {
 /// closed once it is sent; a connection that sends anything else first, or nothing within
 /// login_timeout, is closed without a reply (section 6.5). Once logged in, a `Logout` or
 /// the closing of the connection ends the session; any other message is a protocol error
-/// that ends it too. The binding of UDP endpoints (#110) is not handled yet: datagrams are
-/// counted and dropped.
+/// that ends it too.
+///
+/// Each datagram is checked as RFC section 6.3 says (header, direction, source). A
+/// `Connect` with an empty payload and the token of a session binds its source endpoint
+/// to the session and is answered with `Accept`, again for each `Connect` from that
+/// endpoint (section 3.4). Every other datagram must come from a bound endpoint with the
+/// token of its session. Datagrams that fail a check are dropped without an answer and
+/// counted; the valid ones are counted until the game loop reads them (#112).
 ///
 /// Connections and datagrams are handled on the thread running the context; update() runs
 /// the timeouts and removes closed connections. Create, use and destroy it on that thread,
@@ -84,6 +93,14 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t datagrams() const noexcept;
 
+    /// @brief Number of UDP datagrams dropped for their header, direction or source.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t dropped_datagrams() const noexcept;
+
+    /// @brief Number of datagrams from bound endpoints, other than `Connect`, for the game.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t game_datagrams() const noexcept;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -98,6 +115,13 @@ private:
     void on_message(std::uint64_t id, std::span<const std::byte> message);
     void on_login(Client& client, std::span<const std::byte> message);
     void on_close(std::uint64_t id, aegis2d::net::TcpCloseReason reason);
+    void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
+    void on_connect(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram,
+                    const aegis2d::net::PacketHeader& header,
+                    const aegis2d::net::BinaryReader& payload);
+    void drop(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram,
+              std::string_view reason);
+    void end_session(std::uint32_t token);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
 
@@ -105,7 +129,11 @@ private:
     aegis2d::net::UdpSocket socket_;
     SessionTable sessions_;
     std::unordered_map<std::uint64_t, Client> clients_;
+    // Sequences and acknowledgements of each bound session's datagrams, by token.
+    std::unordered_map<std::uint32_t, aegis2d::net::ReliableChannel> channels_;
     std::uint64_t connections_ = 0;
+    std::uint64_t dropped_ = 0;
+    std::uint64_t game_datagrams_ = 0;
 };
 
 } // namespace rtype
