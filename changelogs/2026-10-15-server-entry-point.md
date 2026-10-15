@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#24](https://github.com/Aegis2D-Dev/project-rtype/pull/24) (opened 2026-10-15) |
 | Branch | `feat/server-entry-point` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`1c6d1d7`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#108 entry point with port arguments |
 
@@ -29,6 +29,9 @@ server epic (Aegis2D-Dev/aegis2d#107).
 - Tests (`tests/server_test.cpp`): the command line (defaults, order, repeats, 8 malformed
   ports, unknown options, missing values), a TCP connection and a datagram received on the
   ports asked for, and ports already in use.
+- After the first CI run: `parse_server_options()` returns a `std::variant` instead of a
+  `std::expected`, which the standard library of the CI image (Ubuntu 24.04) lacks, and
+  reads its arguments without `std::span::at()` (C++26), which Windows lacks too.
 
 ## Changed
 - `r-type_server` loads the waves, prints `listening: TCP port …, UDP port …` and runs until
@@ -42,6 +45,8 @@ server epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `915bd2a` feat(server): added tcp and udp port arguments
+- `aafd78a` feat(changelog): updated changelogs
+- `82b0480` feat(server): replaced std::expected for older standard libraries
 
 ## Notes
 - The clean shutdown on SIGINT and SIGTERM is Aegis2D-Dev/aegis2d#121: for now Ctrl+C ends
