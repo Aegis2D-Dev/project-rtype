@@ -11,6 +11,7 @@
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
 
 #include <array>
 #include <chrono>
@@ -556,4 +557,38 @@ TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[
     REQUIRE(pump(context, server, [&] { return player.closed; }));
     CHECK(server.sessions().size() == 0);
     CHECK(left == std::vector<unsigned>{0});
+}
+
+TEST_CASE("snapshots go to bound players, numbered and acknowledging their datagrams",
+          "[server][snapshot]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player bound_player{context, server};
+    const std::uint32_t token = log_in(context, server, bound_player, "R9");
+    Player unbound_player{context, server};
+    static_cast<void>(log_in(context, server, unbound_player, "R10"));
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+    udp.send(server, datagram(PacketType::Input, token, 1, {std::byte{0x08}}));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
+
+    rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
+    snapshot.entities.resize(60);
+    server.send_snapshot(rtype::write_snapshot(snapshot));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 3; }));
+
+    // Two datagrams (51 + 9 entities), after the Accept of sequence 0, acknowledging 1 and 0;
+    // only the bound player gets them.
+    CHECK(server.snapshots_sent() == 2);
+    for (std::size_t index = 1; index < 3; ++index) {
+        const PacketHeader& header = udp.received.at(index);
+        CHECK(header.type == PacketType::Snapshot);
+        CHECK(header.session == token);
+        CHECK(header.sequence == index);
+        CHECK(header.ack == 1);
+        CHECK(header.ack_bits == 1U);
+    }
+    CHECK(udp.sizes.at(1) == PacketHeader::size + 7 + (std::size_t{51} * 22));
+    CHECK(udp.sizes.at(2) == PacketHeader::size + 7 + (std::size_t{9} * 22));
 }

@@ -101,9 +101,9 @@ ends; when the last one leaves, a fresh game waits for the next players. The gam
 its own thread at 60 ticks per second, with or without players, and logs its measured rate
 every 10 seconds (`simulation: 600 ticks in 10.0 s (60.0 Hz)`). The most recent `Input` of
 each player steers its ship; `Heartbeat` keeps the session acknowledged and `Disconnect`
-ends it. Datagrams from unbound endpoints, or with a malformed payload, are dropped. The
-snapshots the clients draw come with the next tickets. The client lists the engine modules it is built with; the window
-comes with the next tickets.
+ends it. Datagrams from unbound endpoints, or with a malformed payload, are dropped. Every
+bound player receives a snapshot of the world 20 times per second. The client lists the
+engine modules it is built with; the window comes with the next tickets.
 
 ## Documentation
 

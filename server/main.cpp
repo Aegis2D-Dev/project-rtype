@@ -13,6 +13,8 @@
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/simulation.hpp>
+#include <rtype/snapshot.hpp>
+#include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -78,7 +80,15 @@ int main(int argc, char** argv) {
     try {
         rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
         // The game belongs to the simulation thread from now on: the network posts to it.
-        rtype::Simulation simulation{*instance};
+        // Every third tick, the state of the game goes to the network thread, which sends it.
+        rtype::Simulation simulation{
+            *instance, rtype::tuning::tick_rate, [&context, &network](rtype::GameInstance& game) {
+                if (!rtype::snapshot_due(game.game().ticks())) {
+                    return;
+                }
+                context.post([&network, payloads = rtype::write_snapshot(rtype::take_snapshot(
+                                            game))] { network.send_snapshot(payloads); });
+            }};
         network.on_players(
             [&simulation](const rtype::Session& session) {
                 simulation.post(

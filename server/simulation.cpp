@@ -16,9 +16,9 @@ namespace rtype {
 
 namespace core = aegis2d::core;
 
-Simulation::Simulation(GameInstance& instance, std::uint32_t rate)
-    : instance_{instance}, rate_{rate}, loop_{core::FixedTimestep{core::step_from_rate(rate)}},
-      thread_{[this] { run(); }} {}
+Simulation::Simulation(GameInstance& instance, std::uint32_t rate, TickHandler after_tick)
+    : instance_{instance}, rate_{rate}, after_tick_{std::move(after_tick)},
+      loop_{core::FixedTimestep{core::step_from_rate(rate)}}, thread_{[this] { run(); }} {}
 
 Simulation::~Simulation() {
     stop();
@@ -41,6 +41,9 @@ void Simulation::step(core::Duration step_duration) {
     run_commands();
     try {
         instance_.game().tick(step_duration);
+        if (after_tick_) {
+            after_tick_(instance_);
+        }
     } catch (const std::exception& error) {
         core::log_error("simulation: a tick threw: {}", error.what());
     }

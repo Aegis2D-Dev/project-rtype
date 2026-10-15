@@ -6,7 +6,8 @@ add_library(rtype_server STATIC
     server_network.cpp
     server_options.cpp
     sessions.cpp
-    simulation.cpp)
+    simulation.cpp
+    snapshot.cpp)
 target_include_directories(rtype_server PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(Threads REQUIRED)
 target_link_libraries(rtype_server

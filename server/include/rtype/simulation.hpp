@@ -31,6 +31,9 @@ public:
     /// @brief A change to make to the game, run on the simulation thread.
     using Command = std::function<void(GameInstance& instance)>;
 
+    /// @brief Called on the simulation thread after each tick, to read the game.
+    using TickHandler = std::function<void(GameInstance& instance)>;
+
     /// @brief How often the measured rate is logged.
     static constexpr std::chrono::seconds report_period{10};
 
@@ -38,7 +41,9 @@ public:
     /// @param instance Game to run; it must outlive this object and is only used by the
     /// thread from now on.
     /// @param rate Ticks per second, tuning::tick_rate by default.
-    explicit Simulation(GameInstance& instance, std::uint32_t rate = tuning::tick_rate);
+    /// @param after_tick Called after each tick (snapshots, events); may be empty.
+    explicit Simulation(GameInstance& instance, std::uint32_t rate = tuning::tick_rate,
+                        TickHandler after_tick = {});
 
     Simulation(const Simulation&) = delete;
     Simulation& operator=(const Simulation&) = delete;
@@ -72,6 +77,7 @@ private:
 
     GameInstance& instance_;
     std::uint32_t rate_;
+    TickHandler after_tick_;
     aegis2d::core::MainLoop loop_;
     std::mutex mutex_;
     std::vector<Command> commands_;
