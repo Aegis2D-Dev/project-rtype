@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#25](https://github.com/Aegis2D-Dev/project-rtype/pull/25) (opened 2026-10-15) |
 | Branch | `feat/server-login` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`d7ee3f6`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#109 TCP login handshake issuing a session token |
 
@@ -41,6 +41,7 @@ the game instance (#111) build on these sessions. Part of the game server epic
 
 ## Commits
 - `f038237` feat(server): added the tcp login handshake issuing session tokens
+- `28ecfa6` feat(changelog): updated changelogs
 
 ## Notes
 - The 5th login already gets `ServerFull`, the "done when" of #111; the game instance

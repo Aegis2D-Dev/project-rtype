@@ -1,4 +1,5 @@
 #include <aegis2d/core/random.hpp>
+#include <aegis2d/net/endpoint.hpp>
 
 #include <rtype/login.hpp>
 #include <rtype/sessions.hpp>
@@ -46,8 +47,24 @@ std::variant<Session, LoginRejection> SessionTable::login(const LoginRequest& re
     }
     *free = Session{.token = new_token(),
                     .player = static_cast<std::uint8_t>(free - slots_.begin()),
-                    .name = request.name};
+                    .name = request.name,
+                    .endpoint = std::nullopt};
     return **free;
+}
+
+BindResult SessionTable::bind(std::uint32_t token, const aegis2d::net::Endpoint& endpoint) {
+    Session* const session = find_mutable(token);
+    if (session == nullptr) {
+        return BindResult::UnknownSession;
+    }
+    if (session->endpoint == endpoint) {
+        return BindResult::AlreadyBound;
+    }
+    if (session->endpoint || find(endpoint) != nullptr) {
+        return BindResult::Taken;
+    }
+    session->endpoint = endpoint;
+    return BindResult::Bound;
 }
 
 bool SessionTable::end(std::uint32_t token) noexcept {
@@ -62,6 +79,24 @@ bool SessionTable::end(std::uint32_t token) noexcept {
 
 const Session* SessionTable::find(std::uint32_t token) const noexcept {
     for (const std::optional<Session>& slot : slots_) {
+        if (slot && slot->token == token) {
+            return &*slot;
+        }
+    }
+    return nullptr;
+}
+
+const Session* SessionTable::find(const aegis2d::net::Endpoint& endpoint) const noexcept {
+    for (const std::optional<Session>& slot : slots_) {
+        if (slot && slot->endpoint == endpoint) {
+            return &*slot;
+        }
+    }
+    return nullptr;
+}
+
+Session* SessionTable::find_mutable(std::uint32_t token) noexcept {
+    for (std::optional<Session>& slot : slots_) {
         if (slot && slot->token == token) {
             return &*slot;
         }

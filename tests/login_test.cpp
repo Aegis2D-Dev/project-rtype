@@ -1,3 +1,5 @@
+#include <aegis2d/net/endpoint.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/login.hpp>
 #include <rtype/sessions.hpp>
@@ -13,6 +15,8 @@
 #include <variant>
 #include <vector>
 
+using aegis2d::net::Endpoint;
+using rtype::BindResult;
 using rtype::LoginAccepted;
 using rtype::LoginRejection;
 using rtype::LoginRequest;
@@ -155,4 +159,34 @@ TEST_CASE("the same seed gives the same tokens", "[server][sessions]") {
     SessionTable first{99};
     SessionTable second{99};
     CHECK(accepted(first, "a").token == accepted(second, "a").token);
+}
+
+TEST_CASE("the first Connect binds its endpoint to the session", "[server][sessions]") {
+    SessionTable table{3};
+    const Session first = accepted(table, "R9");
+    const Session second = accepted(table, "R10");
+    const Endpoint home = Endpoint::v4({192, 168, 1, 10}, 50000);
+    const Endpoint other = Endpoint::v4({203, 0, 113, 7}, 50000);
+
+    CHECK(table.find(home) == nullptr);
+    CHECK(table.bind(0, home) == BindResult::UnknownSession);
+    CHECK(table.bind(first.token + second.token, home) == BindResult::UnknownSession);
+    CHECK(table.bind(first.token, home) == BindResult::Bound);
+    REQUIRE(table.find(home) != nullptr);
+    CHECK(table.find(home)->token == first.token);
+    CHECK(table.find(first.token)->endpoint == home);
+
+    // The Accept was lost: the same Connect binds nothing new and is answered again.
+    CHECK(table.bind(first.token, home) == BindResult::AlreadyBound);
+    // A third party with the token, or another session from the same endpoint: refused.
+    CHECK(table.bind(first.token, other) == BindResult::Taken);
+    CHECK(table.bind(second.token, home) == BindResult::Taken);
+    CHECK(table.find(other) == nullptr);
+    CHECK(table.bind(second.token, other) == BindResult::Bound);
+
+    // Ending the session frees its endpoint.
+    CHECK(table.end(first.token));
+    CHECK(table.find(home) == nullptr);
+    const Session third = accepted(table, "R11");
+    CHECK(table.bind(third.token, home) == BindResult::Bound);
 }
