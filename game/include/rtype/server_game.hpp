@@ -66,6 +66,20 @@ public:
     /// @throws std::length_error If tuning::max_players players are in the game.
     aegis2d::ecs::Entity add_player();
 
+    /// @brief Adds a player in a given slot, the player number of its session.
+    /// @param slot Slot, 0 to tuning::max_players - 1; it picks the spawn point.
+    /// @return The player's ship.
+    /// @throws std::out_of_range If @p slot is not below tuning::max_players.
+    /// @throws std::logic_error If the slot has a player still in the game.
+    aegis2d::ecs::Entity add_player(std::size_t slot);
+
+    /// @brief Removes a player who left: its ship is destroyed and its slot is free.
+    /// @details The game goes on for the others; once every player has left or is out,
+    /// game_over() is `true`.
+    /// @param player Ship returned by add_player().
+    /// @return `false` if it is not a player of this game any more.
+    bool remove_player(aegis2d::ecs::Entity player);
+
     /// @brief Slot of a player.
     /// @param player Ship returned by add_player().
     /// @return Its slot, or `std::nullopt` if it is not a player of this game any more.

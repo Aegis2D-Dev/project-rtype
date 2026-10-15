@@ -107,10 +107,30 @@ ecs::Entity ServerGame::add_player() {
     if (free == slots_.end()) {
         throw std::length_error{"rtype: the game already has four players"};
     }
-    const auto slot = static_cast<std::size_t>(std::distance(slots_.begin(), free));
-    *free = spawn_player(registry_, slot);
+    return add_player(static_cast<std::size_t>(std::distance(slots_.begin(), free)));
+}
+
+ecs::Entity ServerGame::add_player(std::size_t slot) {
+    if (slot >= slots_.size()) {
+        throw std::out_of_range{"rtype: player slots go from 0 to 3"};
+    }
+    ecs::Entity& ship = slots_.at(slot);
+    if (registry_.alive(ship)) {
+        throw std::logic_error{"rtype: this player slot is taken"};
+    }
+    ship = spawn_player(registry_, slot);
     started_ = true;
-    return *free;
+    return ship;
+}
+
+bool ServerGame::remove_player(ecs::Entity player) {
+    const std::optional<std::size_t> slot = slot_of(player);
+    if (!slot) {
+        return false;
+    }
+    registry_.destroy(player);
+    slots_.at(*slot) = ecs::Entity{};
+    return true;
 }
 
 std::optional<std::size_t> ServerGame::slot_of(ecs::Entity player) const noexcept {

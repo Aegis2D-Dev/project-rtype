@@ -1,5 +1,7 @@
-# Server code shared by r-type_server and the tests: command line, sessions and sockets.
+# Server code shared by r-type_server and the tests: command line, sessions, sockets and
+# the game instance.
 add_library(rtype_server STATIC
+    game_instance.cpp
     login.cpp
     server_network.cpp
     server_options.cpp

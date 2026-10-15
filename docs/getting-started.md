@@ -95,9 +95,11 @@ status 1.
 For now the server creates a game, loads its waves, lists its systems, then listens on both
 ports until stopped with Ctrl+C. Up to 4 players log in over TCP (`LoginRequest`, then
 `LoginAccepted` with a session token, or `LoginRejected`), then bind their UDP endpoint
-with a `Connect` answered by `Accept`, as section 3 of the protocol RFC specifies. Datagrams
-from unbound endpoints are dropped; those of bound players are counted, as the game loop
-comes with the next tickets. The client lists the engine modules it is built with; the window
+with a `Connect` answered by `Accept`, as section 3 of the protocol RFC specifies. A bound
+player joins the game with the ship of its player number, and leaves it when its session
+ends; when the last one leaves, a fresh game waits for the next players. Datagrams from
+unbound endpoints are dropped; those of bound players are counted, as the game loop comes
+with the next tickets. The client lists the engine modules it is built with; the window
 comes with the next tickets.
 
 ## Documentation

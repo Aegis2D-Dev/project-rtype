@@ -99,6 +99,26 @@ TEST_CASE("up to four players join in their own slots", "[rtype][server]") {
     CHECK_FALSE(game.slot_of(game.registry().create()));
 }
 
+TEST_CASE("players join the slot of their player number and can leave", "[rtype][server]") {
+    ServerGame game;
+    const Entity three = game.add_player(3);
+    const Entity one = game.add_player(1);
+    CHECK(game.slot_of(three) == 3);
+    CHECK(game.slot_of(one) == 1);
+    CHECK(position_of(game, three) == rtype::player_spawn(3));
+    CHECK_THROWS_AS(game.add_player(1), std::logic_error);
+    CHECK_THROWS_AS(game.add_player(tuning::max_players), std::out_of_range);
+    CHECK(game.slot_of(game.add_player()) == 0);
+
+    CHECK(game.remove_player(one));
+    CHECK(!game.registry().alive(one));
+    CHECK(!game.remove_player(one));
+    CHECK(!game.set_input(one, holding(Action::Fire)));
+    CHECK(game.players() == 2);
+    CHECK(!game.game_over());
+    CHECK(game.slot_of(game.add_player(1)) == 1);
+}
+
 TEST_CASE("a player ship moves at a fixed speed per second", "[rtype][server][131]") {
     ServerGame game;
     const Entity ship = game.add_player();

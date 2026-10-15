@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -45,6 +46,9 @@ public:
     /// @brief Clock of the login timeout.
     using Clock = std::chrono::steady_clock;
 
+    /// @brief Called with a session that joins or leaves the game.
+    using PlayerHandler = std::function<void(const Session& session)>;
+
     /// @brief Time a new connection has to send its `LoginRequest`.
     static constexpr std::chrono::seconds login_timeout{5};
 
@@ -62,6 +66,14 @@ public:
     ServerNetwork(ServerNetwork&&) = delete;
     ServerNetwork& operator=(ServerNetwork&&) = delete;
     ~ServerNetwork() = default;
+
+    /// @brief Sets what to do when a player joins or leaves the game.
+    /// @details A session joins once its UDP endpoint is bound (its first `Accept`), so a
+    /// client that cannot reach the UDP port never appears in the game. It leaves when it
+    /// ends (`Logout`, TCP closed, protocol error), if it had joined.
+    /// @param joined Called with the session, its endpoint bound.
+    /// @param left Called with the session, before it is forgotten.
+    void on_players(PlayerHandler joined, PlayerHandler left);
 
     /// @brief Closes the connections that did not log in within login_timeout, and those
     /// whose rejection is sent, then forgets the closed ones.
@@ -131,6 +143,8 @@ private:
     std::unordered_map<std::uint64_t, Client> clients_;
     // Sequences and acknowledgements of each bound session's datagrams, by token.
     std::unordered_map<std::uint32_t, aegis2d::net::ReliableChannel> channels_;
+    PlayerHandler joined_;
+    PlayerHandler left_;
     std::uint64_t connections_ = 0;
     std::uint64_t dropped_ = 0;
     std::uint64_t game_datagrams_ = 0;
