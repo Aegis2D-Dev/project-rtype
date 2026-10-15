@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#26](https://github.com/Aegis2D-Dev/project-rtype/pull/26) (opened 2026-10-15) |
 | Branch | `feat/server-udp-binding` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`155871a`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#110 bind UDP endpoint to session |
 
@@ -35,6 +35,7 @@ of the game server epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `b570d18` feat(server): bound udp endpoints to sessions
+- `f250658` feat(changelog): updated changelogs
 
 ## Notes
 - The payloads of game datagrams (step 5 of section 6.3) and their acknowledgements are
