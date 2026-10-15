@@ -1,10 +1,12 @@
-# Server code shared by r-type_server and the tests: command line and sockets.
+# Server code shared by r-type_server and the tests: command line, sessions and sockets.
 add_library(rtype_server STATIC
+    login.cpp
     server_network.cpp
-    server_options.cpp)
+    server_options.cpp
+    sessions.cpp)
 target_include_directories(rtype_server PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_server
-    PUBLIC aegis2d::core aegis2d::net
+    PUBLIC rtype_game aegis2d::core aegis2d::net
     PRIVATE aegis2d::warnings)
 target_compile_features(rtype_server PUBLIC cxx_std_26)
 set_target_properties(rtype_server PROPERTIES CXX_EXTENSIONS OFF)

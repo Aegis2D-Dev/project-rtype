@@ -11,6 +11,7 @@
 #include <rtype/server_options.hpp>
 #include <rtype/waves.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
@@ -22,6 +23,8 @@
 
 namespace {
 constexpr std::string_view version = RTYPE_VERSION;
+// How long the network runs between two checks of the login timeouts.
+constexpr std::chrono::milliseconds network_slice{50};
 } // namespace
 
 int main(int argc, char** argv) {
@@ -67,13 +70,17 @@ int main(int argc, char** argv) {
 
     aegis2d::net::NetworkContext context;
     try {
-        const rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
+        rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << '\n'
                   << std::flush;
-        // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121.
-        context.run();
+        // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121. The network
+        // handlers run in run_for(), the login timeouts in update() between two calls.
+        while (true) {
+            context.run_for(network_slice);
+            network.update(rtype::ServerNetwork::Clock::now());
+        }
     } catch (const aegis2d::net::SocketError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
