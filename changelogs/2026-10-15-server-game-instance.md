@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#27](https://github.com/Aegis2D-Dev/project-rtype/pull/27) (opened 2026-10-15) |
 | Branch | `feat/server-game-instance` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`38f0818`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#111 game instance with up to 4 players |
 
@@ -34,9 +34,14 @@ server epic (Aegis2D-Dev/aegis2d#107).
 - `r-type_server` creates the `GameInstance` with the waves and wires it to the sessions.
 - *Getting started*: what the server does now.
 - Changelog: #26 (`155871a`) marked as merged, with its commits.
+- After the first CI run: `GameInstance::leave()` and `ship()` read the slot through a
+  local reference, as clang-tidy with the standard library of the CI image could not see
+  that two `ships_.at(player)` calls were the same optional.
 
 ## Commits
 - `c9ef49c` feat(server): added the game instance with up to four players
+- `92d5108` feat(changelog): updated changelogs
+- `eb3d1de` feat(server): checked optional ships through local references
 
 ## Notes
 - The join and leave handlers run on the network thread: #112 moves the game to its own
