@@ -1,9 +1,11 @@
 #include <aegis2d/core/log.hpp>
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
@@ -25,6 +27,14 @@ namespace rtype {
 
 namespace net = aegis2d::net;
 namespace core = aegis2d::core;
+namespace ecs = aegis2d::ecs;
+
+namespace {
+
+// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
+constexpr std::uint8_t valid_actions = 0x1FU;
+
+} // namespace
 
 ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_port,
                              std::uint16_t udp_port, SessionTable sessions)
@@ -36,8 +46,7 @@ ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_por
     });
 }
 
-// RFC section 6.3, steps 2 to 4: header, direction, source. The payloads of the game
-// (Input, Event, Heartbeat, Disconnect) are checked by the game loop, which is not there yet.
+// RFC section 6.3: header, direction, source, payload, then sequence.
 void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::byte> datagram) {
     net::BinaryReader reader{datagram};
     const std::variant<net::PacketHeader, net::HeaderError> read = net::read_header(reader);
@@ -63,7 +72,68 @@ void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::
         drop(from, datagram, "wrong session");
         return;
     }
-    ++game_datagrams_;
+    on_game_datagram(*session, from, datagram, header, reader);
+}
+
+// Datagrams of a bound session: its payload is checked whole before anything changes, then
+// its sequence and acknowledgements are recorded (RFC section 5.1).
+void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint& from,
+                                     std::span<const std::byte> datagram,
+                                     const net::PacketHeader& header, net::BinaryReader& payload) {
+    Peer& peer = peers_[session.token];
+    switch (header.type) {
+    case net::PacketType::Input: {
+        // One byte of held actions, bits 5 to 7 clear (RFC section 4.2).
+        const std::optional<std::uint8_t> actions = payload.read_u8();
+        if (!actions || !payload.at_end() || (*actions & ~valid_actions) != 0U) {
+            drop(from, datagram, "malformed Input");
+            return;
+        }
+        const bool fresh = peer.channel.receive(header);
+        ++game_datagrams_;
+        // Only the most recent Input counts: a late or duplicated one is ignored.
+        if (!fresh ||
+            (peer.last_input && !net::sequence_greater_than(header.sequence, *peer.last_input))) {
+            return;
+        }
+        peer.last_input = header.sequence;
+        if (input_) {
+            input_(session, ecs::PlayerInput{.held = *actions});
+        }
+        return;
+    }
+    case net::PacketType::Event: {
+        // Only the server sends events in version 1: their framing is checked, they are
+        // acknowledged and ignored (RFC section 6.4).
+        std::vector<std::vector<std::byte>> events;
+        if (!peer.channel.read_events(header, payload, events)) {
+            drop(from, datagram, "malformed Event");
+            return;
+        }
+        ++game_datagrams_;
+        return;
+    }
+    case net::PacketType::Heartbeat:
+    case net::PacketType::Disconnect:
+        if (!payload.at_end()) {
+            drop(from, datagram,
+                 header.type == net::PacketType::Heartbeat ? "malformed Heartbeat"
+                                                           : "malformed Disconnect");
+            return;
+        }
+        peer.channel.receive(header);
+        ++game_datagrams_;
+        if (header.type == net::PacketType::Disconnect) {
+            // The client leaves (RFC section 5.5): its session ends, TCP connection included.
+            core::log_info("UDP: player {} disconnected", session.player);
+            disconnect(session.token);
+        }
+        return;
+    case net::PacketType::Connect:
+    case net::PacketType::Accept:
+    case net::PacketType::Snapshot:
+        break;
+    }
 }
 
 void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::byte> datagram,
@@ -91,7 +161,7 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
         break;
     }
     // The first Accept may be lost: each Connect from the bound endpoint gets one.
-    net::ReliableChannel& channel = channels_[header.session];
+    net::ReliableChannel& channel = peers_[header.session].channel;
     channel.receive(header);
     net::BinaryWriter writer;
     net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
@@ -111,13 +181,26 @@ void ServerNetwork::on_players(PlayerHandler joined, PlayerHandler left) {
     left_ = std::move(left);
 }
 
+void ServerNetwork::on_input(InputHandler input) {
+    input_ = std::move(input);
+}
+
+void ServerNetwork::disconnect(std::uint32_t token) {
+    for (auto& [id, client] : clients_) {
+        if (client.token == token && !client.closed) {
+            close(client, {});
+        }
+    }
+    end_session(token);
+}
+
 void ServerNetwork::end_session(std::uint32_t token) {
     const Session* const session = sessions_.find(token);
     if (session != nullptr && session->endpoint && left_) {
         left_(*session);
     }
     sessions_.end(token);
-    channels_.erase(token);
+    peers_.erase(token);
 }
 
 void ServerNetwork::on_accept(net::TcpConnection connection) {

@@ -1,6 +1,7 @@
 /// @file
 /// @brief The game run by the server, and the players of the sessions in it.
 #pragma once
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
@@ -39,6 +40,12 @@ public:
     /// @param player Player number of the session.
     /// @return `false` if the player was not in the game.
     bool leave(std::uint8_t player);
+
+    /// @brief Sets the actions a player holds, applied at every tick until the next call.
+    /// @param player Player number of the session.
+    /// @param input Held actions, from the player's most recent `Input`.
+    /// @return `false` if the player is not in the game or is out of lives.
+    bool set_input(std::uint8_t player, aegis2d::ecs::PlayerInput input);
 
     /// @brief Ship of a player.
     /// @param player Player number.

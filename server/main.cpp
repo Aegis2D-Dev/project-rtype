@@ -1,5 +1,6 @@
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/module.hpp>
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/module.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
@@ -86,6 +87,12 @@ int main(int argc, char** argv) {
             [&simulation](const rtype::Session& session) {
                 simulation.post(
                     [player = session.player](rtype::GameInstance& game) { game.leave(player); });
+            });
+        network.on_input(
+            [&simulation](const rtype::Session& session, aegis2d::ecs::PlayerInput input) {
+                simulation.post([player = session.player, input](rtype::GameInstance& game) {
+                    game.set_input(player, input);
+                });
             });
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "

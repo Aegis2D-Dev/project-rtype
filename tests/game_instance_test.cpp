@@ -15,7 +15,9 @@
 #include <stdexcept>
 
 using aegis2d::core::step_from_rate;
+using aegis2d::ecs::Action;
 using aegis2d::ecs::Entity;
+using aegis2d::ecs::PlayerInput;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::WaveSchedule;
 using rtype::GameInstance;
@@ -107,4 +109,27 @@ TEST_CASE("the last player leaving starts a fresh game", "[server][game]") {
     CHECK(instance.game().ticks() == 0);
     CHECK(!instance.game().game_over());
     CHECK(instance.game().slot_of(instance.join(0)) == 0);
+}
+
+TEST_CASE("a player's input moves its ship until the next one", "[server][game]") {
+    GameInstance instance = empty_instance();
+    const Entity ship = instance.join(1);
+    const auto x = [&] { return instance.game().registry().get<Transform>(ship).position.x; };
+    const float start = x();
+
+    PlayerInput right;
+    right.set(Action::Right, true);
+    CHECK(instance.set_input(1, right));
+    for (int tick = 0; tick < 10; ++tick) {
+        instance.game().tick(step_from_rate(tuning::tick_rate));
+    }
+    const float moved = x();
+    CHECK(moved > start);
+
+    CHECK(instance.set_input(1, PlayerInput{}));
+    instance.game().tick(step_from_rate(tuning::tick_rate));
+    CHECK(x() == moved);
+
+    CHECK(!instance.set_input(0, right));
+    CHECK(!instance.set_input(tuning::max_players, right));
 }
