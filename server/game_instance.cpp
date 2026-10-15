@@ -1,3 +1,4 @@
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
@@ -55,6 +56,11 @@ bool GameInstance::leave(std::uint8_t player) {
         start();
     }
     return true;
+}
+
+bool GameInstance::set_input(std::uint8_t player, ecs::PlayerInput input) {
+    const std::optional<ecs::Entity> found = ship(player);
+    return found.has_value() && game_->set_input(*found, input);
 }
 
 std::optional<ecs::Entity> GameInstance::ship(std::uint8_t player) const {

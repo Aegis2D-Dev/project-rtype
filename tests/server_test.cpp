@@ -490,3 +490,70 @@ TEST_CASE("players join the game when bound and leave when their session ends", 
     CHECK(joined.size() == 4);
     CHECK(left.size() == 1);
 }
+
+TEST_CASE("the most recent valid input of a bound player reaches the game", "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::uint8_t> inputs;
+    std::vector<unsigned> left;
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input) {
+        inputs.push_back(input.held);
+    });
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session) { left.push_back(session.player); });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    const auto input = [&](std::uint16_t sequence, std::vector<std::byte> payload) {
+        udp.send(server, datagram(PacketType::Input, token, sequence, std::move(payload)));
+    };
+    input(1, {std::byte{0x08}});               // right: applied
+    input(2, {std::byte{0x20}});               // bit 5 set: malformed
+    input(3, {std::byte{0x08}, std::byte{0}}); // two bytes: malformed
+    input(5, {std::byte{0x01}});               // up: applied
+    input(4, {std::byte{0x02}});               // older than 5: ignored
+    input(5, {std::byte{0x01}});               // duplicate: ignored
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 2; }));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 4; }));
+    CHECK(inputs == std::vector<std::uint8_t>{0x08, 0x01});
+
+    // The next datagram to the player acknowledges 6, 5, 4, 1 and 0, not the malformed 2 and 3.
+    udp.send(server, datagram(PacketType::Connect, token, 6));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 2; }));
+    CHECK(udp.received.back().ack == 6);
+    CHECK(udp.received.back().ack_bits == 0b110011U);
+}
+
+TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<unsigned> left;
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session) { left.push_back(session.player); });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    udp.send(server, datagram(PacketType::Heartbeat, token, 1));
+    udp.send(server, datagram(PacketType::Heartbeat, token, 2, {std::byte{0}}));
+    // An Event with one empty event (id 0, length 0), then one announcing no event.
+    udp.send(server,
+             datagram(PacketType::Event, token, 3,
+                      {std::byte{1}, std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}}));
+    udp.send(server, datagram(PacketType::Event, token, 4, {std::byte{0}}));
+    udp.send(server, datagram(PacketType::Disconnect, token, 5, {std::byte{0}}));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 3; }));
+    CHECK(server.game_datagrams() == 2);
+    CHECK(server.sessions().size() == 1);
+
+    // A Disconnect ends the session and closes its TCP connection.
+    udp.send(server, datagram(PacketType::Disconnect, token, 6));
+    REQUIRE(pump(context, server, [&] { return player.closed; }));
+    CHECK(server.sessions().size() == 0);
+    CHECK(left == std::vector<unsigned>{0});
+}

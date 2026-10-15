@@ -1,6 +1,7 @@
 /// @file
 /// @brief Sockets of the R-Type server: the TCP port of the logins and the UDP port of the game.
 #pragma once
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
@@ -35,8 +36,12 @@ namespace rtype {
 /// `Connect` with an empty payload and the token of a session binds its source endpoint
 /// to the session and is answered with `Accept`, again for each `Connect` from that
 /// endpoint (section 3.4). Every other datagram must come from a bound endpoint with the
-/// token of its session. Datagrams that fail a check are dropped without an answer and
-/// counted; the valid ones are counted until the game loop reads them (#112).
+/// token of its session, and a payload as its type requires: one byte of actions for
+/// `Input`, nothing for `Heartbeat` and `Disconnect`, a well-framed list for `Event`
+/// (whose events are ignored, as only the server sends events). Datagrams that fail a
+/// check are dropped without an answer and counted; the others are acknowledged in the
+/// next datagram sent to the player. The most recent `Input` goes to on_input(); a
+/// `Disconnect` ends the session like a `Logout`.
 ///
 /// Connections and datagrams are handled on the thread running the context; update() runs
 /// the timeouts and removes closed connections. Create, use and destroy it on that thread,
@@ -48,6 +53,10 @@ public:
 
     /// @brief Called with a session that joins or leaves the game.
     using PlayerHandler = std::function<void(const Session& session)>;
+
+    /// @brief Called with the actions a player holds, from its most recent `Input`.
+    using InputHandler =
+        std::function<void(const Session& session, aegis2d::ecs::PlayerInput input)>;
 
     /// @brief Time a new connection has to send its `LoginRequest`.
     static constexpr std::chrono::seconds login_timeout{5};
@@ -74,6 +83,13 @@ public:
     /// @param joined Called with the session, its endpoint bound.
     /// @param left Called with the session, before it is forgotten.
     void on_players(PlayerHandler joined, PlayerHandler left);
+
+    /// @brief Sets what to do with the inputs of the players.
+    /// @details Called for each valid `Input` from a bound endpoint that is more recent
+    /// than the last one applied (by `sequence`): late, duplicated and malformed ones are
+    /// not passed on (RFC section 4.2).
+    /// @param input Called with the session and the actions it holds.
+    void on_input(InputHandler input);
 
     /// @brief Closes the connections that did not log in within login_timeout, and those
     /// whose rejection is sent, then forgets the closed ones.
@@ -109,7 +125,7 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t dropped_datagrams() const noexcept;
 
-    /// @brief Number of datagrams from bound endpoints, other than `Connect`, for the game.
+    /// @brief Number of valid datagrams from bound endpoints, other than `Connect`.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t game_datagrams() const noexcept;
 
@@ -133,6 +149,11 @@ private:
                     const aegis2d::net::BinaryReader& payload);
     void drop(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram,
               std::string_view reason);
+    void on_game_datagram(const Session& session, const aegis2d::net::Endpoint& from,
+                          std::span<const std::byte> datagram,
+                          const aegis2d::net::PacketHeader& header,
+                          aegis2d::net::BinaryReader& payload);
+    void disconnect(std::uint32_t token);
     void end_session(std::uint32_t token);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
@@ -141,10 +162,15 @@ private:
     aegis2d::net::UdpSocket socket_;
     SessionTable sessions_;
     std::unordered_map<std::uint64_t, Client> clients_;
-    // Sequences and acknowledgements of each bound session's datagrams, by token.
-    std::unordered_map<std::uint32_t, aegis2d::net::ReliableChannel> channels_;
+    // What the server keeps of each bound session's datagrams, by token.
+    struct Peer {
+        aegis2d::net::ReliableChannel channel;
+        std::optional<std::uint16_t> last_input;
+    };
+    std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;
     PlayerHandler left_;
+    InputHandler input_;
     std::uint64_t connections_ = 0;
     std::uint64_t dropped_ = 0;
     std::uint64_t game_datagrams_ = 0;
