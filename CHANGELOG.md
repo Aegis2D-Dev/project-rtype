@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#29](https://github.com/Aegis2D-Dev/project-rtype/pull/29) | Client inputs applied to player ships | `feat/server-inputs` | Open | 2026-10-15 | [2026-10-15-server-inputs](changelogs/2026-10-15-server-inputs.md) |
+| [#30](https://github.com/Aegis2D-Dev/project-rtype/pull/30) | Snapshots broadcast at 20 Hz | `feat/server-snapshots` | Open | 2026-10-15 | [2026-10-15-server-snapshots](changelogs/2026-10-15-server-snapshots.md) |
+| [#29](https://github.com/Aegis2D-Dev/project-rtype/pull/29) | Client inputs applied to player ships | `feat/server-inputs` | Merged | 2026-10-15 | [2026-10-15-server-inputs](changelogs/2026-10-15-server-inputs.md) |
 | [#28](https://github.com/Aegis2D-Dev/project-rtype/pull/28) | 60 Hz simulation thread | `feat/server-simulation-thread` | Merged | 2026-10-15 | [2026-10-15-server-simulation-thread](changelogs/2026-10-15-server-simulation-thread.md) |
 | [#27](https://github.com/Aegis2D-Dev/project-rtype/pull/27) | Game instance with up to 4 players | `feat/server-game-instance` | Merged | 2026-10-15 | [2026-10-15-server-game-instance](changelogs/2026-10-15-server-game-instance.md) |
 | [#26](https://github.com/Aegis2D-Dev/project-rtype/pull/26) | UDP endpoints bound to sessions | `feat/server-udp-binding` | Merged | 2026-10-15 | [2026-10-15-server-udp-binding](changelogs/2026-10-15-server-udp-binding.md) |

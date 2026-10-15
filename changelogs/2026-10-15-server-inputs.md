@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#29](https://github.com/Aegis2D-Dev/project-rtype/pull/29) (opened 2026-10-15) |
 | Branch | `feat/server-inputs` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`0da9f65`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#113 apply client inputs to player entities |
 
@@ -35,6 +35,7 @@ like `Logout`. Part of the game server epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `7cef0a0` feat(server): applied client inputs to player ships
+- `959c64e` feat(changelog): updated changelogs
 
 ## Notes
 - The acknowledgements reach the player in the server's next datagram: `Accept` for now,
