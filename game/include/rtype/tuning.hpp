@@ -12,6 +12,10 @@ namespace rtype::tuning {
 /// @brief Simulation rate of the server, in ticks per second.
 inline constexpr std::uint32_t tick_rate = 60;
 
+/// @brief Snapshots the server sends each client per second (RFC section 4.3).
+inline constexpr std::uint32_t snapshot_rate = 20;
+static_assert(tick_rate % snapshot_rate == 0, "a snapshot every whole number of ticks");
+
 /// @brief Width of the play area (logical resolution).
 inline constexpr float area_width = 1280.0F;
 /// @brief Height of the play area (logical resolution).

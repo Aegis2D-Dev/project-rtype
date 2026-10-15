@@ -16,6 +16,16 @@
 
 namespace rtype {
 
+/// @brief What the game says of a player, for the snapshots.
+struct PlayerState {
+    /// @brief Its ship, or `std::nullopt` once out of lives.
+    std::optional<aegis2d::ecs::Entity> ship;
+    /// @brief Lives left, 0 once out.
+    std::uint32_t lives = 0;
+    /// @brief Score; once out, the last score of its ship.
+    std::uint32_t score = 0;
+};
+
 /// @brief The one game of the server, with up to tuning::max_players players.
 /// @details A session joins when its UDP endpoint is bound (RFC section 3.4) and leaves
 /// when it ends. Each player gets the ship of its player number, the `player` of
@@ -52,6 +62,13 @@ public:
     /// @return The ship, or `std::nullopt` if the player is not in the game or is out.
     [[nodiscard]] std::optional<aegis2d::ecs::Entity> ship(std::uint8_t player) const;
 
+    /// @brief State of a player.
+    /// @details Remembers the score of each living ship, which the ship takes with it when it
+    /// is destroyed, so a player out of lives keeps its score.
+    /// @param player Player number.
+    /// @return Its ship, lives and score, or `std::nullopt` if it is not in the game.
+    [[nodiscard]] std::optional<PlayerState> player_state(std::uint8_t player);
+
     /// @brief Players in the game, out of lives or not.
     /// @return 0 to tuning::max_players.
     [[nodiscard]] std::size_t players() const noexcept;
@@ -75,6 +92,7 @@ private:
     // ServerGame cannot move: each game is a new object.
     std::unique_ptr<ServerGame> game_;
     std::array<std::optional<aegis2d::ecs::Entity>, tuning::max_players> ships_;
+    std::array<std::uint32_t, tuning::max_players> scores_{};
     std::uint64_t games_ = 0;
 };
 

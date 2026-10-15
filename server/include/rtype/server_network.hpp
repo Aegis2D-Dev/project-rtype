@@ -20,6 +20,7 @@
 #include <span>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace rtype {
 
@@ -90,6 +91,16 @@ public:
     /// not passed on (RFC section 4.2).
     /// @param input Called with the session and the actions it holds.
     void on_input(InputHandler input);
+
+    /// @brief Sends a snapshot to every player whose endpoint is bound.
+    /// @details Each payload goes in its own `Snapshot` datagram, whose header takes the
+    /// next sequence of the player's channel and acknowledges its datagrams (RFC 5.1).
+    /// @param payloads Payloads from write_snapshot(), header excluded.
+    void send_snapshot(std::span<const std::vector<std::byte>> payloads);
+
+    /// @brief Number of `Snapshot` datagrams sent, all players together.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t snapshots_sent() const noexcept;
 
     /// @brief Closes the connections that did not log in within login_timeout, and those
     /// whose rejection is sent, then forgets the closed ones.
@@ -174,6 +185,7 @@ private:
     std::uint64_t connections_ = 0;
     std::uint64_t dropped_ = 0;
     std::uint64_t game_datagrams_ = 0;
+    std::uint64_t snapshots_sent_ = 0;
 };
 
 } // namespace rtype

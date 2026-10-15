@@ -181,6 +181,30 @@ void ServerNetwork::on_players(PlayerHandler joined, PlayerHandler left) {
     left_ = std::move(left);
 }
 
+void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads) {
+    for (auto& [token, peer] : peers_) {
+        const Session* const session = sessions_.find(token);
+        if (session == nullptr) {
+            continue;
+        }
+        if (!session->endpoint.has_value()) {
+            continue;
+        }
+        const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
+        for (const std::vector<std::byte>& payload : payloads) {
+            net::BinaryWriter writer;
+            net::write_header(writer, peer.channel.next_header(net::PacketType::Snapshot, token));
+            writer.write_bytes(payload);
+            socket_.send_to(endpoint, writer.data());
+            ++snapshots_sent_;
+        }
+    }
+}
+
+std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
+    return snapshots_sent_;
+}
+
 void ServerNetwork::on_input(InputHandler input) {
     input_ = std::move(input);
 }
