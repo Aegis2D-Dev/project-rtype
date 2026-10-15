@@ -97,8 +97,10 @@ ports until stopped with Ctrl+C. Up to 4 players log in over TCP (`LoginRequest`
 `LoginAccepted` with a session token, or `LoginRejected`), then bind their UDP endpoint
 with a `Connect` answered by `Accept`, as section 3 of the protocol RFC specifies. A bound
 player joins the game with the ship of its player number, and leaves it when its session
-ends; when the last one leaves, a fresh game waits for the next players. Datagrams from
-unbound endpoints are dropped; those of bound players are counted, as the game loop comes
+ends; when the last one leaves, a fresh game waits for the next players. The game runs on
+its own thread at 60 ticks per second, with or without players, and logs its measured rate
+every 10 seconds (`simulation: 600 ticks in 10.0 s (60.0 Hz)`). Datagrams from unbound
+endpoints are dropped; those of bound players are counted, as inputs and snapshots come
 with the next tickets. The client lists the engine modules it is built with; the window
 comes with the next tickets.
 

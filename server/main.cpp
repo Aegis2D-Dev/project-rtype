@@ -11,6 +11,7 @@
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/simulation.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -75,12 +76,21 @@ int main(int argc, char** argv) {
     aegis2d::net::NetworkContext context;
     try {
         rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
+        // The game belongs to the simulation thread from now on: the network posts to it.
+        rtype::Simulation simulation{*instance};
         network.on_players(
-            [&instance](const rtype::Session& session) { instance->join(session.player); },
-            [&instance](const rtype::Session& session) { instance->leave(session.player); });
+            [&simulation](const rtype::Session& session) {
+                simulation.post(
+                    [player = session.player](rtype::GameInstance& game) { game.join(player); });
+            },
+            [&simulation](const rtype::Session& session) {
+                simulation.post(
+                    [player = session.player](rtype::GameInstance& game) { game.leave(player); });
+            });
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
-                  << network.udp_endpoint().port() << '\n'
+                  << network.udp_endpoint().port() << ", simulation at " << simulation.rate()
+                  << " Hz\n"
                   << std::flush;
         // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121. The network
         // handlers run in run_for(), the login timeouts in update() between two calls.

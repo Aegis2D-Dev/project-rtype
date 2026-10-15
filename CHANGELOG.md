@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#27](https://github.com/Aegis2D-Dev/project-rtype/pull/27) | Game instance with up to 4 players | `feat/server-game-instance` | Open | 2026-10-15 | [2026-10-15-server-game-instance](changelogs/2026-10-15-server-game-instance.md) |
+| [#28](https://github.com/Aegis2D-Dev/project-rtype/pull/28) | 60 Hz simulation thread | `feat/server-simulation-thread` | Open | 2026-10-15 | [2026-10-15-server-simulation-thread](changelogs/2026-10-15-server-simulation-thread.md) |
+| [#27](https://github.com/Aegis2D-Dev/project-rtype/pull/27) | Game instance with up to 4 players | `feat/server-game-instance` | Merged | 2026-10-15 | [2026-10-15-server-game-instance](changelogs/2026-10-15-server-game-instance.md) |
 | [#26](https://github.com/Aegis2D-Dev/project-rtype/pull/26) | UDP endpoints bound to sessions | `feat/server-udp-binding` | Merged | 2026-10-15 | [2026-10-15-server-udp-binding](changelogs/2026-10-15-server-udp-binding.md) |
 | [#25](https://github.com/Aegis2D-Dev/project-rtype/pull/25) | TCP login issuing a session token | `feat/server-login` | Merged | 2026-10-15 | [2026-10-15-server-login](changelogs/2026-10-15-server-login.md) |
 | [#24](https://github.com/Aegis2D-Dev/project-rtype/pull/24) | Server entry point with port arguments | `feat/server-entry-point` | Merged | 2026-10-15 | [2026-10-15-server-entry-point](changelogs/2026-10-15-server-entry-point.md) |
