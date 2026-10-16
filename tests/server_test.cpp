@@ -30,6 +30,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -465,7 +466,9 @@ TEST_CASE("players join the game when bound and leave when their session ends", 
     std::vector<unsigned> joined;
     std::vector<unsigned> left;
     server.on_players([&](const rtype::Session& session) { joined.push_back(session.player); },
-                      [&](const rtype::Session& session) { left.push_back(session.player); });
+                      [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
+                          left.push_back(session.player);
+                      });
 
     // Four players log in and bind their endpoints: each joins once, with its number.
     std::vector<std::unique_ptr<Player>> players;
@@ -510,7 +513,9 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
         inputs.push_back(input.held);
     });
     server.on_players([](const rtype::Session& /*session*/) {},
-                      [&](const rtype::Session& session) { left.push_back(session.player); });
+                      [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
+                          left.push_back(session.player);
+                      });
     Player player{context, server};
     const std::uint32_t token = log_in(context, server, player, "R9");
     Socket udp{context};
@@ -542,7 +547,9 @@ TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[
     ServerNetwork server{context, 0, 0};
     std::vector<unsigned> left;
     server.on_players([](const rtype::Session& /*session*/) {},
-                      [&](const rtype::Session& session) { left.push_back(session.player); });
+                      [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
+                          left.push_back(session.player);
+                      });
     Player player{context, server};
     const std::uint32_t token = log_in(context, server, player, "R9");
     Socket udp{context};
@@ -778,7 +785,9 @@ TEST_CASE("a bound player silent for 5 seconds loses its session", "[server][tim
     ServerNetwork server{context, 0, 0};
     std::vector<unsigned> left;
     server.on_players([](const rtype::Session& /*session*/) {},
-                      [&](const rtype::Session& session) { left.push_back(session.player); });
+                      [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
+                          left.push_back(session.player);
+                      });
     Player talking_player{context, server};
     const std::uint32_t talking = log_in(context, server, talking_player, "R9");
     Player silent_player{context, server};
@@ -889,4 +898,151 @@ TEST_CASE("a player whose UDP traffic stops is gone from the game", "[server][ti
     CHECK(server.timeouts() == 1);
     CHECK(server.sessions().size() == 1);
     REQUIRE(pump(context, server, [&] { return blocked_player.closed; }));
+}
+
+TEST_CASE("the game is told why each player left", "[server][leave]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::pair<unsigned, rtype::LeaveReason>> left;
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session, rtype::LeaveReason reason) {
+                          left.emplace_back(session.player, reason);
+                      });
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::unique_ptr<Socket>> sockets;
+    std::vector<std::uint32_t> tokens;
+    const auto bind_player = [&](const std::string& name) {
+        players.push_back(std::make_unique<Player>(context, server));
+        tokens.push_back(log_in(context, server, *players.back(), name));
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.back()));
+        REQUIRE(pump(context, server, [&] { return sockets.back()->received.size() == 1; }));
+    };
+    for (const std::string name : {"p0", "p1", "p2", "p3"}) {
+        bind_player(name);
+    }
+
+    // Player 0 logs out, 1 breaks the TCP rules, 2 sends Disconnect, 3's connection closes.
+    players.at(0)->send(rtype::write_logout(LogoutReason::Left));
+    players.at(1)->send(rtype::write_login_request(request("again")));
+    sockets.at(2)->send(server, datagram(PacketType::Disconnect, tokens.at(2), 1));
+    players.at(3)->connection.close();
+    REQUIRE(pump(context, server, [&] { return left.size() == 4; }));
+    std::ranges::sort(left);
+    CHECK(left ==
+          std::vector<std::pair<unsigned, rtype::LeaveReason>>{{0, rtype::LeaveReason::Left},
+                                                               {1, rtype::LeaveReason::Kicked},
+                                                               {2, rtype::LeaveReason::Left},
+                                                               {3, rtype::LeaveReason::Left}});
+
+    // A silent player times out.
+    left.clear();
+    bind_player("p4");
+    REQUIRE(pump(context, server, [&] { return left.size() == 1; }, ServerNetwork::udp_timeout));
+    CHECK(left.front().second == rtype::LeaveReason::TimedOut);
+}
+
+namespace {
+
+// The events a client reads from the Event datagrams of its socket.
+struct EventLog {
+    aegis2d::net::ReliableChannel channel;
+    std::vector<rtype::GameEvent> events;
+    std::size_t read = 0;
+
+    void update(const Socket& socket) {
+        for (; read < socket.datagrams.size(); ++read) {
+            if (socket.received.at(read).type != PacketType::Event) {
+                continue;
+            }
+            for (const std::vector<std::byte>& bytes :
+                 events_of(channel, socket.datagrams.at(read))) {
+                if (const std::optional<rtype::GameEvent> event = rtype::read_event(bytes)) {
+                    events.push_back(*event);
+                }
+            }
+        }
+    }
+
+    // Index of the first event matching the predicate, or nothing.
+    template <typename Event, typename Predicate>
+    [[nodiscard]] std::optional<std::size_t> find(const Predicate& predicate) const {
+        for (std::size_t index = 0; index < events.size(); ++index) {
+            const auto* const event = std::get_if<Event>(&events.at(index));
+            if (event != nullptr && predicate(*event)) {
+                return index;
+            }
+        }
+        return std::nullopt;
+    }
+};
+
+} // namespace
+
+TEST_CASE("players learn who joins, and who leaves before its ship is destroyed",
+          "[server][leave]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    Socket first_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first));
+    EventLog first_log;
+    const auto ship_of = [](const EventLog& log, std::uint8_t player) {
+        return log.find<rtype::SpawnEvent>([&](const rtype::SpawnEvent& spawn) {
+            return spawn.owner == player &&
+                   spawn.kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip);
+        });
+    };
+    REQUIRE(pump(context, server, [&] {
+        first_log.update(first_udp);
+        return ship_of(first_log, 0).has_value();
+    }));
+
+    // The second player: the first one learns its name, it learns the first one's, before
+    // the world, and never gets its own.
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket second_udp{context};
+    second_udp.send(server, datagram(PacketType::Connect, second));
+    EventLog second_log;
+    REQUIRE(pump(context, server, [&] {
+        first_log.update(first_udp);
+        second_log.update(second_udp);
+        return ship_of(first_log, 1) && ship_of(second_log, 0) && ship_of(second_log, 1);
+    }));
+    const auto joined = [](std::uint8_t player, const std::string& name) {
+        return [=](const rtype::PlayerJoinedEvent& event) {
+            return event.player == player && event.name == name;
+        };
+    };
+    CHECK(first_log.find<rtype::PlayerJoinedEvent>(joined(1, "R10")).has_value());
+    CHECK(!first_log.find<rtype::PlayerJoinedEvent>(joined(0, "R9")).has_value());
+    const std::optional<std::size_t> knows_first =
+        second_log.find<rtype::PlayerJoinedEvent>(joined(0, "R9"));
+    REQUIRE(knows_first.has_value());
+    CHECK(knows_first < ship_of(second_log, 0));
+    CHECK(!second_log.find<rtype::PlayerJoinedEvent>(joined(1, "R10")).has_value());
+
+    // The second player breaks the TCP rules: the first one learns it was kicked, then sees
+    // its ship go.
+    const std::uint32_t ship =
+        std::get<rtype::SpawnEvent>(first_log.events.at(ship_of(first_log, 1).value_or(0))).id;
+    second_player.send(rtype::write_login_request(request("again")));
+    const auto destroyed = [&](const rtype::DestroyEvent& event) {
+        return event.id == ship && event.reason == rtype::DestroyReason::PlayerLeft;
+    };
+    REQUIRE(pump(context, server, [&] {
+        first_log.update(first_udp);
+        return first_log.find<rtype::DestroyEvent>(destroyed).has_value();
+    }));
+    const std::optional<std::size_t> left_at =
+        first_log.find<rtype::PlayerLeftEvent>([](const rtype::PlayerLeftEvent& event) {
+            return event.player == 1 && event.reason == rtype::LeaveReason::Kicked;
+        });
+    REQUIRE(left_at.has_value());
+    CHECK(left_at < first_log.find<rtype::DestroyEvent>(destroyed));
 }

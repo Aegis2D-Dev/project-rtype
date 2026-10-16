@@ -10,17 +10,22 @@
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
 
+#include <array>
 #include <cstdint>
+#include <optional>
+#include <string>
 
 namespace rtype {
 
 /// @brief Runs a game for the players of its sockets, as `r-type_server` does.
 /// @details The sockets work on the caller's context, the game on its own Simulation
 /// thread, and they only talk through posted tasks:
-/// - a player whose UDP endpoint is bound joins the game, and first gets a `Spawn` of every
-///   entity already there (RFC section 4.6);
-/// - a player whose session ends (`Logout`, `Disconnect`, TCP closed, protocol error) leaves
-///   it: its ship is removed at the next tick, and the others get its `Destroy`;
+/// - a player whose UDP endpoint is bound joins the game: the others get its `PlayerJoined`,
+///   and it gets a `PlayerJoined` of every player already there, then a `Spawn` of every
+///   entity (RFC section 4.6);
+/// - a player whose session ends (`Logout`, `Disconnect`, TCP closed, UDP timeout, protocol
+///   error) leaves it: the others get its `PlayerLeft` with the reason, then, at the next
+///   tick, the `Destroy` of its ship;
 /// - the most recent `Input` of each player steers its ship;
 /// - after each tick, the events of the tick go to every bound player, and every third tick
 ///   a snapshot.
@@ -60,11 +65,14 @@ public:
 private:
     void after_tick(GameInstance& instance);
     void on_joined(const Session& session);
+    void on_left(const Session& session, LeaveReason reason);
 
     aegis2d::net::NetworkContext& context_;
     ServerNetwork network_;
     // Used by the simulation thread only.
     EventTracker events_;
+    // Names of the players in the game, by number; used by the simulation thread only.
+    std::array<std::optional<std::string>, tuning::max_players> names_{};
     // Last: its thread starts once the rest is ready, and stops first.
     Simulation simulation_;
 };

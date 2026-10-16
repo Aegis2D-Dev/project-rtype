@@ -16,6 +16,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -33,6 +34,9 @@ using rtype::EntityKind;
 using rtype::EventTracker;
 using rtype::GameEvent;
 using rtype::GameInstance;
+using rtype::LeaveReason;
+using rtype::PlayerJoinedEvent;
+using rtype::PlayerLeftEvent;
 using rtype::SpawnEvent;
 namespace tuning = rtype::tuning;
 
@@ -84,6 +88,10 @@ const SpawnEvent spawn_example{
 const DestroyEvent destroy_example{
     .tick = 601, .id = 7, .reason = DestroyReason::Killed, .x = 640.0F, .y = 200.0F};
 const DeathEvent death_example{.tick = 602, .player = 3, .lives = 2, .x = 50.0F, .y = 25.0F};
+PlayerJoinedEvent joined_example() {
+    return PlayerJoinedEvent{.tick = 603, .player = 1, .name = "R9"};
+}
+const PlayerLeftEvent left_example{.tick = 604, .player = 2, .reason = LeaveReason::TimedOut};
 
 } // namespace
 
@@ -144,7 +152,8 @@ TEST_CASE("events follow the RFC layout byte by byte", "[server][events]") {
 
 TEST_CASE("events read back as they were written", "[server][events]") {
     for (const GameEvent& event :
-         {GameEvent{spawn_example}, GameEvent{destroy_example}, GameEvent{death_example}}) {
+         {GameEvent{spawn_example}, GameEvent{destroy_example}, GameEvent{death_example},
+          GameEvent{joined_example()}, GameEvent{left_example}}) {
         CHECK(rtype::read_event(rtype::write_event(event)) == event);
     }
     // Unknown kinds and reasons are not errors: the client applies their rules (4.1, 4.4).
@@ -167,7 +176,8 @@ TEST_CASE("events read back as they were written", "[server][events]") {
 TEST_CASE("malformed events are rejected", "[server][events]") {
     // Every truncation, and a byte too many (RFC section 6.4).
     for (const GameEvent& event :
-         {GameEvent{spawn_example}, GameEvent{destroy_example}, GameEvent{death_example}}) {
+         {GameEvent{spawn_example}, GameEvent{destroy_example}, GameEvent{death_example},
+          GameEvent{joined_example()}, GameEvent{left_example}}) {
         const std::vector<std::byte> valid = rtype::write_event(event);
         for (std::size_t size = 0; size < valid.size(); ++size) {
             CAPTURE(size);
@@ -177,8 +187,8 @@ TEST_CASE("malformed events are rejected", "[server][events]") {
         longer.push_back(std::byte{0});
         CHECK(!rtype::read_event(longer));
     }
-    // Types this server never sends, or reserved.
-    for (const unsigned type : {0U, 4U, 5U, 6U, 7U, 255U}) {
+    // GameOver, which this server never sends, and the reserved types.
+    for (const unsigned type : {0U, 6U, 7U, 255U}) {
         std::vector<std::byte> event = rtype::write_event(death_example);
         event.front() = static_cast<std::byte>(type);
         CAPTURE(type);
@@ -364,4 +374,52 @@ TEST_CASE("a player who joins gets a Spawn of every entity alive", "[server][eve
     REQUIRE(next.size() == 1);
     CHECK(next.front().id == second.id());
     CHECK(next.front().owner == 1);
+}
+
+TEST_CASE("players joining and leaving follow the RFC layout", "[server][events]") {
+    CHECK(rtype::write_event(joined_example()) == bytes({
+                                                      0x04, // type   PlayerJoined
+                                                      0x5B,
+                                                      0x02,
+                                                      0x00,
+                                                      0x00, // tick   603
+                                                      0x01, // player 1
+                                                      0x02,
+                                                      0x00,
+                                                      'R',
+                                                      '9', // name   "R9"
+                                                  }));
+    CHECK(rtype::write_event(left_example) == bytes({
+                                                  0x05, // type   PlayerLeft
+                                                  0x5C,
+                                                  0x02,
+                                                  0x00,
+                                                  0x00, // tick   604
+                                                  0x02, // player 2
+                                                  0x01, // reason TimedOut
+                                              }));
+    CHECK(rtype::write_event(left_example).size() == rtype::player_left_event_size);
+    CHECK(rtype::write_event(joined_example()).size() == 8 + joined_example().name.size());
+
+    // An unknown reason is kept: the client reads it as Left (RFC section 4.4).
+    std::vector<std::byte> unknown_reason = rtype::write_event(left_example);
+    unknown_reason.back() = std::byte{9};
+    const GameEvent left = rtype::read_event(unknown_reason).value_or(GameEvent{});
+    const auto* const read = std::get_if<PlayerLeftEvent>(&left);
+    REQUIRE(read != nullptr);
+    CHECK(std::to_underlying(read->reason) == 9);
+
+    // A name that breaks the rules of LoginRequest, or a player above 3 (RFC section 6.4).
+    for (const std::string& name :
+         {std::string{}, std::string(17, 'x'), std::string{"a\nb"}, std::string{"\xFF"}}) {
+        PlayerJoinedEvent bad_name = joined_example();
+        bad_name.name = name;
+        CHECK(!rtype::read_event(rtype::write_event(bad_name)));
+    }
+    PlayerJoinedEvent bad_player = joined_example();
+    bad_player.player = 4;
+    CHECK(!rtype::read_event(rtype::write_event(bad_player)));
+    PlayerLeftEvent bad_left = left_example;
+    bad_left.player = 255;
+    CHECK(!rtype::read_event(rtype::write_event(bad_left)));
 }

@@ -10,6 +10,7 @@
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/events.hpp>
 #include <rtype/sessions.hpp>
 
 #include <chrono>
@@ -54,8 +55,13 @@ public:
     /// @brief Clock of the login and UDP timeouts.
     using Clock = std::chrono::steady_clock;
 
-    /// @brief Called with a session that joins or leaves the game.
+    /// @brief Called with a session that joins the game.
     using PlayerHandler = std::function<void(const Session& session)>;
+
+    /// @brief Called with a session that leaves the game, and why: `Left` for a `Logout`, a
+    /// `Disconnect` or a closed TCP connection, `TimedOut` for a silent player or one that
+    /// acknowledges no event, `Kicked` for a protocol error.
+    using LeaveHandler = std::function<void(const Session& session, LeaveReason reason)>;
 
     /// @brief Called with the actions a player holds, from its most recent `Input`.
     using InputHandler =
@@ -88,8 +94,8 @@ public:
     /// client that cannot reach the UDP port never appears in the game. It leaves when it
     /// ends (`Logout`, `Disconnect`, TCP closed, UDP timeout, protocol error), if it had joined.
     /// @param joined Called with the session, its endpoint bound.
-    /// @param left Called with the session, before it is forgotten.
-    void on_players(PlayerHandler joined, PlayerHandler left);
+    /// @param left Called with the session and why it ended, before it is forgotten.
+    void on_players(PlayerHandler joined, LeaveHandler left);
 
     /// @brief Sets what to do with the inputs of the players.
     /// @details Called for each valid `Input` from a bound endpoint that is more recent
@@ -119,6 +125,13 @@ public:
     /// every bound player by default.
     void send_events(std::span<const std::vector<std::byte>> events,
                      std::optional<std::uint32_t> token = std::nullopt);
+
+    /// @brief Sends gameplay events, reliably, to every bound player but one, as send_events().
+    /// @details For the `PlayerJoined` of a player who joins, which the others get (RFC
+    /// section 4.6).
+    /// @param events Events from write_event(), in order.
+    /// @param token Session that does not get them.
+    void send_events_to_others(std::span<const std::vector<std::byte>> events, std::uint32_t token);
 
     /// @brief Number of `Event` datagrams sent, first sends and resends, all players together.
     /// @return The count since the construction.
@@ -191,8 +204,10 @@ private:
                           std::span<const std::byte> datagram,
                           const aegis2d::net::PacketHeader& header,
                           aegis2d::net::BinaryReader& payload);
-    void disconnect(std::uint32_t token);
-    void end_session(std::uint32_t token);
+    void disconnect(std::uint32_t token, LeaveReason reason);
+    void end_session(std::uint32_t token, LeaveReason reason);
+    void queue_events(std::span<const std::vector<std::byte>> events,
+                      const std::function<bool(std::uint32_t token)>& receives);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
     void flush_events(Clock::time_point now);
@@ -211,7 +226,7 @@ private:
     };
     std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;
-    PlayerHandler left_;
+    LeaveHandler left_;
     InputHandler input_;
     std::uint64_t connections_ = 0;
     std::uint64_t dropped_ = 0;
