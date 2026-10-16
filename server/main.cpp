@@ -1,4 +1,5 @@
 #include <aegis2d/core/config.hpp>
+#include <aegis2d/core/log.hpp>
 #include <aegis2d/core/module.hpp>
 #include <aegis2d/ecs/module.hpp>
 #include <aegis2d/ecs/waves.hpp>
@@ -15,6 +16,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -84,8 +86,14 @@ int main(int argc, char** argv) {
         // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121. The network
         // handlers run in run_for(), the login timeouts in update() between two calls.
         while (true) {
-            context.run_for(network_slice);
-            network.update(rtype::ServerNetwork::Clock::now());
+            // The handling of each client is contained by ServerNetwork; anything else that
+            // throws (a task posted by the game) is logged, and the server goes on.
+            try {
+                context.run_for(network_slice);
+                network.update(rtype::ServerNetwork::Clock::now());
+            } catch (const std::exception& error) {
+                aegis2d::core::log_error("server: {}", error.what());
+            }
         }
     } catch (const aegis2d::net::SocketError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';

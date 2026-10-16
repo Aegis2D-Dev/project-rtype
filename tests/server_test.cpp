@@ -1,3 +1,4 @@
+#include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
@@ -27,6 +28,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -1045,4 +1047,134 @@ TEST_CASE("players learn who joins, and who leaves before its ship is destroyed"
         });
     REQUIRE(left_at.has_value());
     CHECK(left_at < first_log.find<rtype::DestroyEvent>(destroyed));
+}
+
+TEST_CASE("an exception while handling a client kicks that client only", "[server][errors]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::pair<unsigned, rtype::LeaveReason>> left;
+    std::vector<unsigned> inputs;
+    bool throw_on_leave = false;
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session, rtype::LeaveReason reason) {
+                          left.emplace_back(session.player, reason);
+                          if (throw_on_leave) {
+                              throw std::runtime_error{"left handler failed"};
+                          }
+                      });
+    // A bug in the game's handling of player 1's inputs, standing for any exception.
+    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/) {
+        if (session.player == 1) {
+            throw std::runtime_error{"input handler failed"};
+        }
+        inputs.push_back(session.player);
+    });
+    Player good_player{context, server};
+    const std::uint32_t good = log_in(context, server, good_player, "R9");
+    Player bad_player{context, server};
+    const std::uint32_t bad = log_in(context, server, bad_player, "R10");
+    Socket good_udp{context};
+    Socket bad_udp{context};
+    good_udp.send(server, datagram(PacketType::Connect, good));
+    bad_udp.send(server, datagram(PacketType::Connect, bad));
+    REQUIRE(pump(context, server,
+                 [&] { return good_udp.received.size() == 1 && bad_udp.received.size() == 1; }));
+
+    // Over UDP: the datagram that threw kicks its sender (RFC section 6.6), not the others.
+    bad_udp.send(server, datagram(PacketType::Input, bad, 1, {std::byte{0x01}}));
+    REQUIRE(pump(context, server, [&] { return bad_player.closed; }));
+    CHECK(server.errors() == 1);
+    REQUIRE(!bad_player.received.empty());
+    CHECK(bad_player.received.back() == rtype::write_logout(LogoutReason::ProtocolError));
+    CHECK(left ==
+          std::vector<std::pair<unsigned, rtype::LeaveReason>>{{1, rtype::LeaveReason::Kicked}});
+    good_udp.send(server, datagram(PacketType::Input, good, 1, {std::byte{0x01}}));
+    REQUIRE(pump(context, server, [&] { return inputs.size() == 1; }));
+    CHECK(inputs.front() == 0);
+
+    // Over TCP: the session is gone even though the handler threw, and the server goes on.
+    throw_on_leave = true;
+    good_player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return good_player.closed; }));
+    CHECK(server.errors() == 2);
+    CHECK(server.sessions().size() == 0);
+    throw_on_leave = false;
+    Player next_player{context, server};
+    static_cast<void>(log_in(context, server, next_player, "R11"));
+    CHECK(server.sessions().size() == 1);
+}
+
+TEST_CASE("a flood of forged packets from players in the game crashes nothing",
+          "[server][errors]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+
+    // An honest player, which must go on playing.
+    Player honest_player{context, server};
+    const std::uint32_t honest = log_in(context, server, honest_player, "R9");
+    Socket honest_udp{context};
+    honest_udp.send(server, datagram(PacketType::Connect, honest));
+    REQUIRE(pump(context, server, [&] { return honest_udp.received.size() >= 2; }));
+
+    // Three attackers, logged in and bound, so their forgeries pass the source check.
+    std::vector<std::unique_ptr<Player>> attackers;
+    std::vector<std::unique_ptr<Socket>> sockets;
+    std::vector<std::uint32_t> tokens;
+    for (const std::string name : {"a1", "a2", "a3"}) {
+        attackers.push_back(std::make_unique<Player>(context, server));
+        tokens.push_back(log_in(context, server, *attackers.back(), name));
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.back()));
+    }
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == 4; }));
+
+    aegis2d::core::Random random{119};
+    const auto random_bytes = [&](std::size_t size) {
+        std::vector<std::byte> bytes(size);
+        for (std::byte& byte : bytes) {
+            byte = static_cast<std::byte>(random.below(256));
+        }
+        return bytes;
+    };
+    const std::vector<PacketType> types{
+        PacketType::Connect, PacketType::Accept,    PacketType::Input,     PacketType::Snapshot,
+        PacketType::Event,   PacketType::Heartbeat, PacketType::Disconnect};
+    for (int round = 0; round < 10000; ++round) {
+        const std::size_t attacker = random.below(3);
+        std::vector<std::byte> forged;
+        switch (random.below(3)) {
+        case 0:                                        // noise
+            forged = random_bytes(random.below(1201)); // the most a socket sends
+            break;
+        case 1: // a valid header of the attacker, any payload
+            forged = datagram(types.at(random.below(types.size())), tokens.at(attacker),
+                              static_cast<std::uint16_t>(round), random_bytes(random.below(64)));
+            break;
+        default: { // a valid datagram with a few bytes changed
+            forged = datagram(types.at(random.below(types.size())), tokens.at(attacker),
+                              static_cast<std::uint16_t>(round), random_bytes(random.below(8)));
+            for (std::uint32_t flips = 1 + random.below(3); flips > 0; --flips) {
+                forged.at(random.below(static_cast<std::uint32_t>(forged.size()))) =
+                    static_cast<std::byte>(random.below(256));
+            }
+            break;
+        }
+        }
+        sockets.at(attacker)->send(server, forged);
+        if (round % 100 == 0) {
+            // And garbage over TCP, which closes the attacker's connection.
+            attackers.at(attacker)->send(random_bytes(1 + random.below(64)));
+            context.run_for(std::chrono::milliseconds{1});
+            server.update(ServerNetwork::Clock::now());
+        }
+    }
+
+    // The honest player still gets its snapshots and its session; nothing threw.
+    const std::size_t before = honest_udp.received.size();
+    REQUIRE(pump(context, server, [&] { return honest_udp.received.size() > before + 5; }));
+    CHECK(server.sessions().find(honest) != nullptr);
+    CHECK(!honest_player.closed);
+    CHECK(server.errors() == 0);
 }

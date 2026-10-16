@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#34](https://github.com/Aegis2D-Dev/project-rtype/pull/34) | Players told who joins and who leaves | `feat/server-player-left` | Open | 2026-10-16 | [2026-10-16-server-player-left](changelogs/2026-10-16-server-player-left.md) |
+| [#35](https://github.com/Aegis2D-Dev/project-rtype/pull/35) | Errors of one client contained | `fix/server-client-errors` | Open | 2026-10-16 | [2026-10-16-server-client-errors](changelogs/2026-10-16-server-client-errors.md) |
+| [#34](https://github.com/Aegis2D-Dev/project-rtype/pull/34) | Players told who joins and who leaves | `feat/server-player-left` | Merged | 2026-10-16 | [2026-10-16-server-player-left](changelogs/2026-10-16-server-player-left.md) |
 | [#33](https://github.com/Aegis2D-Dev/project-rtype/pull/33) | Disconnect detected when UDP goes silent | `feat/server-udp-timeout` | Merged | 2026-10-16 | [2026-10-16-server-udp-timeout](changelogs/2026-10-16-server-udp-timeout.md) |
 | [#32](https://github.com/Aegis2D-Dev/project-rtype/pull/32) | Disconnect detected when the TCP connection closes | `feat/server-tcp-disconnect` | Merged | 2026-10-16 | [2026-10-16-server-tcp-disconnect](changelogs/2026-10-16-server-tcp-disconnect.md) |
 | [#31](https://github.com/Aegis2D-Dev/project-rtype/pull/31) | Gameplay events sent to the players | `feat/server-events` | Merged | 2026-10-16 | [2026-10-16-server-events](changelogs/2026-10-16-server-events.md) |

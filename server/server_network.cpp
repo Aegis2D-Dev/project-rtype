@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <iterator>
 #include <optional>
@@ -36,15 +37,45 @@ namespace {
 // Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
 constexpr std::uint8_t valid_actions = 0x1FU;
 
+// Runs the handling of one packet; an exception is logged and reported, never let out, so a
+// client can only break its own session (RFC section 6.6).
+template <typename Handling>
+bool contained(std::string_view what, Handling&& handling) noexcept {
+    try {
+        std::forward<Handling>(handling)();
+        return true;
+    } catch (const std::exception& error) {
+        try {
+            core::log_error("{}: {}", what, error.what());
+        } catch (...) { // NOLINT(bugprone-empty-catch): nothing left to report it with
+        }
+    } catch (...) {
+        try {
+            core::log_error("{}: unknown exception", what);
+        } catch (...) { // NOLINT(bugprone-empty-catch): nothing left to report it with
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_port,
                              std::uint16_t udp_port, SessionTable sessions)
     : listener_{context, tcp_port}, socket_{context, udp_port}, sessions_{std::move(sessions)} {
-    listener_.start_accepting(
-        [this](net::TcpConnection connection) { on_accept(std::move(connection)); });
+    listener_.start_accepting([this](net::TcpConnection connection) {
+        static_cast<void>(contained("TCP: accepting a connection failed",
+                                    [&] { on_accept(std::move(connection)); }));
+    });
     socket_.start_receiving([this](const net::Endpoint& from, std::span<const std::byte> datagram) {
-        on_datagram(from, datagram);
+        if (!contained("UDP: handling a datagram failed", [&] { on_datagram(from, datagram); })) {
+            ++errors_;
+            static_cast<void>(contained("UDP: kicking a player failed", [&] {
+                if (const Session* const session = sessions_.find(from)) {
+                    kick(session->token);
+                }
+            }));
+        }
     });
 }
 
@@ -286,13 +317,18 @@ void ServerNetwork::disconnect(std::uint32_t token, LeaveReason reason) {
     end_session(token, reason);
 }
 
+// Forgotten first, so a left handler that throws never leaves a session behind.
 void ServerNetwork::end_session(std::uint32_t token, LeaveReason reason) {
-    const Session* const session = sessions_.find(token);
-    if (session != nullptr && session->endpoint && left_) {
-        left_(*session, reason);
+    std::optional<Session> left;
+    if (const Session* const session = sessions_.find(token);
+        session != nullptr && session->endpoint) {
+        left = *session;
     }
     sessions_.end(token);
     peers_.erase(token);
+    if (left && left_) {
+        left_(*left, reason);
+    }
 }
 
 void ServerNetwork::on_accept(net::TcpConnection connection) {
@@ -307,8 +343,19 @@ void ServerNetwork::on_accept(net::TcpConnection connection) {
                          .first->second;
     // The handlers find the client by id: it may be gone when a late handler runs.
     client.connection.start(
-        [this, id](std::span<const std::byte> message) { on_message(id, message); },
-        [this, id](net::TcpCloseReason reason) { on_close(id, reason); });
+        [this, id](std::span<const std::byte> message) {
+            if (!contained("TCP: handling a message failed", [&] { on_message(id, message); })) {
+                ++errors_;
+                static_cast<void>(
+                    contained("TCP: kicking a player failed", [&] { kick_client(id); }));
+            }
+        },
+        [this, id](net::TcpCloseReason reason) {
+            if (!contained("TCP: handling a closed connection failed",
+                           [&] { on_close(id, reason); })) {
+                ++errors_;
+            }
+        });
 }
 
 void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> message) {
@@ -462,19 +509,51 @@ std::uint64_t ServerNetwork::game_datagrams() const noexcept {
 // The player gets Logout (TimedOut), and its connection closes once it is sent (RFC
 // section 3.2); a client that is really gone never reads it.
 void ServerNetwork::time_out(std::uint32_t token) {
-    const Session* const session = sessions_.find(token);
-    if (session != nullptr) {
+    if (const Session* const session = sessions_.find(token)) {
         core::log_info("UDP: player {} sent nothing for {} s: session timed out", session->player,
                        udp_timeout.count());
     }
+    end_with_logout(token, LogoutReason::TimedOut, LeaveReason::TimedOut);
+    ++timeouts_;
+}
+
+// RFC section 6.6: the session of a client whose packet the server could not handle ends
+// with Logout (ProtocolError); the others play on.
+void ServerNetwork::kick(std::uint32_t token) {
+    if (const Session* const session = sessions_.find(token)) {
+        core::log_warn("player {} ({}) kicked: its packet could not be handled", session->player,
+                       session->endpoint ? session->endpoint->to_string() : "not bound");
+    }
+    end_with_logout(token, LogoutReason::ProtocolError, LeaveReason::Kicked);
+}
+
+// A client whose TCP message could not be handled: kicked if logged in, closed otherwise.
+void ServerNetwork::kick_client(std::uint64_t id) {
+    const auto found = clients_.find(id);
+    if (found == clients_.end() || found->second.closed) {
+        return;
+    }
+    if (found->second.token) {
+        kick(*found->second.token);
+    } else {
+        close(found->second, "its message could not be handled");
+    }
+}
+
+// The player gets Logout with the reason, its connection closes once it is sent (RFC section
+// 3.2), and it leaves the game.
+void ServerNetwork::end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave) {
     for (auto& [id, client] : clients_) {
         if (client.token == token && !client.closed && !client.close_when_sent) {
-            send(client, write_logout(LogoutReason::TimedOut));
+            send(client, write_logout(logout));
             client.close_when_sent = true;
         }
     }
-    end_session(token, LeaveReason::TimedOut);
-    ++timeouts_;
+    end_session(token, leave);
+}
+
+std::uint64_t ServerNetwork::errors() const noexcept {
+    return errors_;
 }
 
 std::uint64_t ServerNetwork::timeouts() const noexcept {

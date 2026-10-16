@@ -72,8 +72,15 @@ posted between them. A bound player joins the game: the others get its `PlayerJo
 world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid
 datagram for 5 seconds, as when its UDP is blocked): the others get its `PlayerLeft`, with
-the reason `Left`, `TimedOut` or `Kicked`, and its ship is removed at the next tick. After
-each tick, the simulation thread hands the network thread two things:
+the reason `Left`, `TimedOut` or `Kicked`, and its ship is removed at the next tick.
+
+A client can only break its own session. `ServerNetwork` contains the handling of each
+datagram and TCP message: an exception is logged, the client that sent the packet is
+kicked (`Logout` with `ProtocolError`, `Kicked` for the others), and the sockets go on
+serving the rest. The simulation thread does the same for its commands and ticks, and the
+loop of `r-type_server` logs anything else that throws and goes on.
+
+After each tick, the simulation thread hands the network thread two things:
 
 - **Events** (`rtype/events.hpp`, RFC section 4.4): `EventTracker` compares the replicated
   entities with those of the previous tick. A new one is a `Spawn` (the shot of a missile
