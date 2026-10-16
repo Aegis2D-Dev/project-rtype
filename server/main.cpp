@@ -1,21 +1,16 @@
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/module.hpp>
-#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/module.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
-#include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
+#include <rtype/game_server.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
-#include <rtype/sessions.hpp>
-#include <rtype/simulation.hpp>
-#include <rtype/snapshot.hpp>
-#include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -26,7 +21,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -80,59 +74,12 @@ int main(int argc, char** argv) {
 
     aegis2d::net::NetworkContext context;
     try {
-        rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
-        // Used by the simulation thread only, declared first so it outlives the thread.
-        rtype::EventTracker events;
-        // The game belongs to the simulation thread from now on: the network posts to it.
-        // After each tick, what changed goes to the network thread as events; every third
-        // tick, the state of the game goes too, as a snapshot.
-        rtype::Simulation simulation{*instance, rtype::tuning::tick_rate,
-                                     [&context, &network, &events](rtype::GameInstance& game) {
-                                         if (std::vector<std::vector<std::byte>> changes =
-                                                 rtype::write_events(events.update(game));
-                                             !changes.empty()) {
-                                             context.post([&network, changes = std::move(changes)] {
-                                                 network.send_events(changes);
-                                             });
-                                         }
-                                         if (!rtype::snapshot_due(game.game().ticks())) {
-                                             return;
-                                         }
-                                         context.post([&network, payloads = rtype::write_snapshot(
-                                                                     rtype::take_snapshot(game))] {
-                                             network.send_snapshot(payloads);
-                                         });
-                                     }};
-        network.on_players(
-            // The new player starts from the world as it is (RFC section 4.6); its own ship
-            // comes with the next tick's events, like for the others.
-            [&simulation, &context, &network, &events](const rtype::Session& session) {
-                simulation.post([&context, &network, &events, player = session.player,
-                                 token = session.token](rtype::GameInstance& game) {
-                    game.join(player);
-                    if (std::vector<std::vector<std::byte>> world =
-                            rtype::write_events(events.spawns(game));
-                        !world.empty()) {
-                        context.post([&network, token, world = std::move(world)] {
-                            network.send_events(world, token);
-                        });
-                    }
-                });
-            },
-            [&simulation](const rtype::Session& session) {
-                simulation.post(
-                    [player = session.player](rtype::GameInstance& game) { game.leave(player); });
-            });
-        network.on_input(
-            [&simulation](const rtype::Session& session, aegis2d::ecs::PlayerInput input) {
-                simulation.post([player = session.player, input](rtype::GameInstance& game) {
-                    game.set_input(player, input);
-                });
-            });
+        rtype::GameServer server{context, *instance, options.tcp_port, options.udp_port};
+        rtype::ServerNetwork& network = server.network();
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
-                  << network.udp_endpoint().port() << ", simulation at " << simulation.rate()
-                  << " Hz\n"
+                  << network.udp_endpoint().port() << ", simulation at "
+                  << server.simulation().rate() << " Hz\n"
                   << std::flush;
         // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121. The network
         // handlers run in run_for(), the login timeouts in update() between two calls.

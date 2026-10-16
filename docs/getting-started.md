@@ -101,7 +101,9 @@ ends; when the last one leaves, a fresh game waits for the next players. The gam
 its own thread at 60 ticks per second, with or without players, and logs its measured rate
 every 10 seconds (`simulation: 600 ticks in 10.0 s (60.0 Hz)`). The most recent `Input` of
 each player steers its ship; `Heartbeat` keeps the session acknowledged and `Disconnect`
-ends it. Datagrams from unbound endpoints, or with a malformed payload, are dropped. Every
+ends it. A client whose TCP connection closes, even a killed process, leaves the game at
+once and its ship disappears for the others. Datagrams from unbound endpoints, or with a
+malformed payload, are dropped. Every
 bound player receives a snapshot of the world 20 times per second and, resent until they
 are acknowledged, the events of the game: each entity that appears (a shot is the `Spawn`
 of its missile) or disappears, and each life lost; a player who joins first gets every
