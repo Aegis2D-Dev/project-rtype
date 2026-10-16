@@ -34,8 +34,9 @@ sent, and the player leaves the game: its ship is removed and the others get its
 - Changelog: #32 (`c962c4a`) marked as merged, with its commits.
 
 ## Commits
-- feat(server): ended sessions silent on udp for 5 seconds
-- feat(docs): documented the udp timeout and updated changelogs
+- `1328931` feat(server): ended sessions silent on udp for 5 seconds
+- `013cf5d` feat(docs): documented the udp timeout and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - Only bound players time out. A logged-in client that never binds its endpoint keeps its
