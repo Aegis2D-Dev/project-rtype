@@ -90,6 +90,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             return;
         }
         const bool fresh = peer.channel.receive(header);
+        peer.heard = Clock::now();
         ++game_datagrams_;
         // Only the most recent Input counts: a late or duplicated one is ignored.
         if (!fresh ||
@@ -110,6 +111,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             drop(from, datagram, "malformed Event");
             return;
         }
+        peer.heard = Clock::now();
         ++game_datagrams_;
         return;
     }
@@ -122,6 +124,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             return;
         }
         peer.channel.receive(header);
+        peer.heard = Clock::now();
         ++game_datagrams_;
         if (header.type == net::PacketType::Disconnect) {
             // The client leaves (RFC section 5.5): its session ends, TCP connection included.
@@ -161,7 +164,9 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
         break;
     }
     // The first Accept may be lost: each Connect from the bound endpoint gets one.
-    net::ReliableChannel& channel = peers_[header.session].channel;
+    Peer& peer = peers_[header.session];
+    peer.heard = Clock::now();
+    net::ReliableChannel& channel = peer.channel;
     channel.receive(header);
     net::BinaryWriter writer;
     net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
@@ -381,6 +386,18 @@ void ServerNetwork::close(Client& client, std::string_view reason) {
 }
 
 void ServerNetwork::update(Clock::time_point now) {
+    // RFC section 5.5: a bound player silent for udp_timeout has lost its session. Ended once
+    // the loop is over: ending a session erases its peer.
+    std::vector<std::uint32_t> silent;
+    for (const auto& [token, peer] : peers_) {
+        if (now - peer.heard >= udp_timeout) {
+            silent.push_back(token);
+        }
+    }
+    for (const std::uint32_t token : silent) {
+        time_out(token);
+    }
+
     for (auto& [id, client] : clients_) {
         if (client.closed) {
             continue;
@@ -426,6 +443,28 @@ std::uint64_t ServerNetwork::dropped_datagrams() const noexcept {
 
 std::uint64_t ServerNetwork::game_datagrams() const noexcept {
     return game_datagrams_;
+}
+
+// The player gets Logout (TimedOut), and its connection closes once it is sent (RFC
+// section 3.2); a client that is really gone never reads it.
+void ServerNetwork::time_out(std::uint32_t token) {
+    const Session* const session = sessions_.find(token);
+    if (session != nullptr) {
+        core::log_info("UDP: player {} sent nothing for {} s: session timed out", session->player,
+                       udp_timeout.count());
+    }
+    for (auto& [id, client] : clients_) {
+        if (client.token == token && !client.closed && !client.close_when_sent) {
+            send(client, write_logout(LogoutReason::TimedOut));
+            client.close_when_sent = true;
+        }
+    }
+    end_session(token);
+    ++timeouts_;
+}
+
+std::uint64_t ServerNetwork::timeouts() const noexcept {
+    return timeouts_;
 }
 
 } // namespace rtype

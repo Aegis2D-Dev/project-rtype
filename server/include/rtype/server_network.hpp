@@ -42,14 +42,16 @@ namespace rtype {
 /// (whose events are ignored, as only the server sends events). Datagrams that fail a
 /// check are dropped without an answer and counted; the others are acknowledged in the
 /// next datagram sent to the player. The most recent `Input` goes to on_input(); a
-/// `Disconnect` ends the session like a `Logout`.
+/// `Disconnect` ends the session like a `Logout`. A bound player that sends no valid
+/// datagram for udp_timeout has lost its session (RFC section 5.5): it gets `Logout` with
+/// the reason `TimedOut`, its connection is closed once it is sent, and it leaves the game.
 ///
 /// Connections and datagrams are handled on the thread running the context; update() runs
 /// the timeouts and removes closed connections. Create, use and destroy it on that thread,
 /// or while the context is not running.
 class ServerNetwork {
 public:
-    /// @brief Clock of the login timeout.
+    /// @brief Clock of the login and UDP timeouts.
     using Clock = std::chrono::steady_clock;
 
     /// @brief Called with a session that joins or leaves the game.
@@ -61,6 +63,10 @@ public:
 
     /// @brief Time a new connection has to send its `LoginRequest`.
     static constexpr std::chrono::seconds login_timeout{5};
+
+    /// @brief Time a bound player may send no valid datagram before its session is lost
+    /// (RFC section 5.5).
+    static constexpr std::chrono::seconds udp_timeout{5};
 
     /// @brief Listens on both ports, on every IPv4 interface.
     /// @param context Context that runs the sockets; it must outlive this object.
@@ -80,7 +86,7 @@ public:
     /// @brief Sets what to do when a player joins or leaves the game.
     /// @details A session joins once its UDP endpoint is bound (its first `Accept`), so a
     /// client that cannot reach the UDP port never appears in the game. It leaves when it
-    /// ends (`Logout`, TCP closed, protocol error), if it had joined.
+    /// ends (`Logout`, `Disconnect`, TCP closed, UDP timeout, protocol error), if it had joined.
     /// @param joined Called with the session, its endpoint bound.
     /// @param left Called with the session, before it is forgotten.
     void on_players(PlayerHandler joined, PlayerHandler left);
@@ -118,9 +124,9 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t event_datagrams_sent() const noexcept;
 
-    /// @brief Closes the connections that did not log in within login_timeout, and those
-    /// whose rejection is sent, then forgets the closed ones; resends the events that are
-    /// due.
+    /// @brief Ends the sessions of the bound players silent for udp_timeout, closes the
+    /// connections that did not log in within login_timeout and those whose rejection or
+    /// `Logout` is sent, then forgets the closed ones; resends the events that are due.
     /// @details Call it regularly, a few times per second at least.
     /// @param now Current time.
     void update(Clock::time_point now);
@@ -157,6 +163,10 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t game_datagrams() const noexcept;
 
+    /// @brief Number of sessions ended because their player sent nothing for udp_timeout.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t timeouts() const noexcept;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -186,6 +196,7 @@ private:
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
     void flush_events(Clock::time_point now);
+    void time_out(std::uint32_t token);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
@@ -195,6 +206,8 @@ private:
     struct Peer {
         aegis2d::net::ReliableChannel channel;
         std::optional<std::uint16_t> last_input;
+        // When its last valid datagram arrived, for the UDP timeout.
+        Clock::time_point heard = Clock::now();
     };
     std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;
@@ -205,6 +218,7 @@ private:
     std::uint64_t game_datagrams_ = 0;
     std::uint64_t snapshots_sent_ = 0;
     std::uint64_t event_datagrams_sent_ = 0;
+    std::uint64_t timeouts_ = 0;
 };
 
 } // namespace rtype
