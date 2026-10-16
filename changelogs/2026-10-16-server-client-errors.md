@@ -36,8 +36,9 @@ others), and the server goes on. Part of the game server epic (Aegis2D-Dev/aegis
 - Changelog: #34 (`070bdf1`) marked as merged, with its commits.
 
 ## Commits
-- feat(server): contained the errors of each client
-- feat(docs): documented error isolation and updated changelogs
+- `483b2e8` feat(server): contained the errors of each client
+- `48a793d` feat(docs): documented error isolation and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - The parsing itself never throws on bad input (checked reads, fuzzed in the engine, #104
