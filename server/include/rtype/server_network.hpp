@@ -102,8 +102,25 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t snapshots_sent() const noexcept;
 
+    /// @brief Sends gameplay events, reliably, to the players whose endpoint is bound.
+    /// @details Each event is queued on the player's channel, which numbers it and resends
+    /// it until it is acknowledged (RFC section 5.3): the events leave at once in `Event`
+    /// datagrams, the resends in update(). A player who leaves
+    /// `net::max_events_in_flight` events unacknowledged is lost (RFC section 6.2): its
+    /// session ends.
+    /// @param events Events from write_event(), in order.
+    /// @param token Only to this session, for a player who joins (RFC section 4.6); to
+    /// every bound player by default.
+    void send_events(std::span<const std::vector<std::byte>> events,
+                     std::optional<std::uint32_t> token = std::nullopt);
+
+    /// @brief Number of `Event` datagrams sent, first sends and resends, all players together.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t event_datagrams_sent() const noexcept;
+
     /// @brief Closes the connections that did not log in within login_timeout, and those
-    /// whose rejection is sent, then forgets the closed ones.
+    /// whose rejection is sent, then forgets the closed ones; resends the events that are
+    /// due.
     /// @details Call it regularly, a few times per second at least.
     /// @param now Current time.
     void update(Clock::time_point now);
@@ -168,6 +185,7 @@ private:
     void end_session(std::uint32_t token);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
+    void flush_events(Clock::time_point now);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
@@ -186,6 +204,7 @@ private:
     std::uint64_t dropped_ = 0;
     std::uint64_t game_datagrams_ = 0;
     std::uint64_t snapshots_sent_ = 0;
+    std::uint64_t event_datagrams_sent_ = 0;
 };
 
 } // namespace rtype

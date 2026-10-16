@@ -57,13 +57,26 @@ sequenceDiagram
     loop every 1/60 s
         G->>G: tick(step): every system in order
     end
-    G->>N: world and events of the tick
-    N->>C: snapshot, spawns, hits, kills, scores
+    G->>N: events of the tick, and every third tick the world
+    N->>C: events (Spawn, Destroy, Death), resent until acknowledged
+    N->>C: snapshot, 20 times per second
 ```
 
-The network side (#112 to #115) is being written; [`ServerGame`](gameplay.md#the-server-game)
-already exposes everything it needs: `add_player()`, `set_input()`, `tick()` and the events
-of the last tick.
+The server's network side lives in `server/`, around
+[`ServerGame`](gameplay.md#the-server-game), which exposes what it needs: `add_player()`,
+`set_input()`, `tick()` and the reports of the last tick. After each tick, the simulation
+thread hands the network thread two things:
+
+- **Events** (`rtype/events.hpp`, RFC section 4.4): `EventTracker` compares the replicated
+  entities with those of the previous tick. A new one is a `Spawn` (the shot of a missile
+  is its `Spawn`, owned by the shooter's player), a vanished one a `Destroy` at its last
+  position, whose reason comes from the tick's reports (killed, missile spent, off screen,
+  player left), and each life lost a `Death`. Each player's `ReliableChannel` resends them
+  until they are acknowledged. A player who joins first gets a `Spawn` of every entity
+  already there.
+- **Snapshots** (`rtype/snapshot.hpp`, RFC section 4.3), every third tick: the position,
+  velocity and frame of every entity, and each player's lives and score. They are not
+  resent: the next one replaces a lost one.
 
 ## The code
 

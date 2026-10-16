@@ -7,6 +7,7 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
+#include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
@@ -25,6 +26,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -79,20 +81,43 @@ int main(int argc, char** argv) {
     aegis2d::net::NetworkContext context;
     try {
         rtype::ServerNetwork network{context, options.tcp_port, options.udp_port};
+        // Used by the simulation thread only, declared first so it outlives the thread.
+        rtype::EventTracker events;
         // The game belongs to the simulation thread from now on: the network posts to it.
-        // Every third tick, the state of the game goes to the network thread, which sends it.
-        rtype::Simulation simulation{
-            *instance, rtype::tuning::tick_rate, [&context, &network](rtype::GameInstance& game) {
-                if (!rtype::snapshot_due(game.game().ticks())) {
-                    return;
-                }
-                context.post([&network, payloads = rtype::write_snapshot(rtype::take_snapshot(
-                                            game))] { network.send_snapshot(payloads); });
-            }};
+        // After each tick, what changed goes to the network thread as events; every third
+        // tick, the state of the game goes too, as a snapshot.
+        rtype::Simulation simulation{*instance, rtype::tuning::tick_rate,
+                                     [&context, &network, &events](rtype::GameInstance& game) {
+                                         if (std::vector<std::vector<std::byte>> changes =
+                                                 rtype::write_events(events.update(game));
+                                             !changes.empty()) {
+                                             context.post([&network, changes = std::move(changes)] {
+                                                 network.send_events(changes);
+                                             });
+                                         }
+                                         if (!rtype::snapshot_due(game.game().ticks())) {
+                                             return;
+                                         }
+                                         context.post([&network, payloads = rtype::write_snapshot(
+                                                                     rtype::take_snapshot(game))] {
+                                             network.send_snapshot(payloads);
+                                         });
+                                     }};
         network.on_players(
-            [&simulation](const rtype::Session& session) {
-                simulation.post(
-                    [player = session.player](rtype::GameInstance& game) { game.join(player); });
+            // The new player starts from the world as it is (RFC section 4.6); its own ship
+            // comes with the next tick's events, like for the others.
+            [&simulation, &context, &network, &events](const rtype::Session& session) {
+                simulation.post([&context, &network, &events, player = session.player,
+                                 token = session.token](rtype::GameInstance& game) {
+                    game.join(player);
+                    if (std::vector<std::vector<std::byte>> world =
+                            rtype::write_events(events.spawns(game));
+                        !world.empty()) {
+                        context.post([&network, token, world = std::move(world)] {
+                            network.send_events(world, token);
+                        });
+                    }
+                });
             },
             [&simulation](const rtype::Session& session) {
                 simulation.post(

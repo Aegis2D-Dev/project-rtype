@@ -2,11 +2,13 @@
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/socket_error.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
@@ -126,11 +128,13 @@ std::vector<std::byte> datagram(PacketType type, std::uint32_t session, std::uin
     return {writer.data().begin(), writer.data().end()};
 }
 
-// A player's UDP socket, keeping the headers of the datagrams the server sends.
+// A player's UDP socket, keeping the headers of the datagrams the server sends, and the
+// datagrams themselves.
 struct Socket {
     UdpSocket socket;
     std::vector<PacketHeader> received;
     std::vector<std::size_t> sizes;
+    std::vector<std::vector<std::byte>> datagrams;
 
     explicit Socket(NetworkContext& context) : socket{context, Endpoint::loopback(0)} {
         socket.start_receiving([this](const Endpoint& /*from*/, std::span<const std::byte> bytes) {
@@ -139,6 +143,7 @@ struct Socket {
             if (const auto* const read = std::get_if<PacketHeader>(&header)) {
                 received.push_back(*read);
                 sizes.push_back(bytes.size());
+                datagrams.emplace_back(bytes.begin(), bytes.end());
             }
         });
     }
@@ -591,4 +596,90 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     }
     CHECK(udp.sizes.at(1) == PacketHeader::size + 7 + (std::size_t{51} * 22));
     CHECK(udp.sizes.at(2) == PacketHeader::size + 7 + (std::size_t{9} * 22));
+}
+
+namespace {
+
+// The events of an Event datagram, read as a client does with its channel.
+std::vector<std::vector<std::byte>> events_of(aegis2d::net::ReliableChannel& channel,
+                                              std::span<const std::byte> bytes) {
+    aegis2d::net::BinaryReader reader{bytes};
+    const auto header = aegis2d::net::read_header(reader);
+    const auto* const read = std::get_if<PacketHeader>(&header);
+    REQUIRE(read != nullptr);
+    REQUIRE(read->type == PacketType::Event);
+    std::vector<std::vector<std::byte>> events;
+    REQUIRE(channel.read_events(*read, reader, events));
+    return events;
+}
+
+// A Heartbeat acknowledging the server's datagram of the given sequence and the 32 before.
+std::vector<std::byte> acknowledging(std::uint32_t session, std::uint16_t sequence,
+                                     std::uint16_t ack) {
+    aegis2d::net::BinaryWriter writer;
+    aegis2d::net::write_header(writer, PacketHeader{.type = PacketType::Heartbeat,
+                                                    .sequence = sequence,
+                                                    .ack = ack,
+                                                    .ack_bits = 0xFFFFFFFFU,
+                                                    .session = session});
+    return {writer.data().begin(), writer.data().end()};
+}
+
+} // namespace
+
+TEST_CASE("events reach bound players and are resent until acknowledged", "[server][events]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket first_udp{context};
+    Socket second_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first, 0));
+    second_udp.send(server, datagram(PacketType::Connect, second, 0));
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 1 && second_udp.received.size() == 1;
+    }));
+
+    const std::vector<std::vector<std::byte>> spawns{
+        rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 5, .kind = 3}),
+        rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 6, .kind = 3})};
+    server.send_events(spawns);
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 2 && second_udp.received.size() == 2;
+    }));
+    CHECK(server.event_datagrams_sent() == 2); // one datagram each, both events in it
+    aegis2d::net::ReliableChannel first_client;
+    aegis2d::net::ReliableChannel second_client;
+    CHECK(events_of(first_client, first_udp.datagrams.at(1)) == spawns);
+    CHECK(events_of(second_client, second_udp.datagrams.at(1)) == spawns);
+
+    // To the player who joins only.
+    const std::vector<std::vector<std::byte>> world{
+        rtype::write_event(rtype::SpawnEvent{.tick = 2, .id = 7, .kind = 4})};
+    server.send_events(world, second);
+    REQUIRE(pump(context, server, [&] { return second_udp.received.size() == 3; }));
+    CHECK(events_of(second_client, second_udp.datagrams.at(2)) == world);
+    context.run_for(std::chrono::milliseconds{50});
+    CHECK(first_udp.received.size() == 2);
+
+    // Not acknowledged: resent after the delay, as the same events (RFC section 5.3).
+    const auto later = std::chrono::milliseconds{150};
+    REQUIRE(pump(context, server, [&] { return first_udp.received.size() == 3; }, later));
+    CHECK(first_udp.received.at(2).type == PacketType::Event);
+    CHECK(first_udp.received.at(2).sequence != first_udp.received.at(1).sequence);
+    aegis2d::net::ReliableChannel fresh_client;
+    CHECK(events_of(fresh_client, first_udp.datagrams.at(2)) == spawns);
+
+    // Acknowledged: never sent again.
+    first_udp.send(server, acknowledging(first, 1, first_udp.received.at(2).sequence));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() >= 1; }));
+    const std::size_t received = first_udp.received.size();
+    for (int round = 0; round < 5; ++round) {
+        context.run_for(std::chrono::milliseconds{10});
+        server.update(ServerNetwork::Clock::now() + std::chrono::seconds{1});
+    }
+    context.run_for(std::chrono::milliseconds{50});
+    CHECK(first_udp.received.size() == received);
 }

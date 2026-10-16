@@ -30,22 +30,6 @@ const Component* find(const ecs::Registry& world, ecs::Entity entity) {
     return component.has_value() ? &component->get() : nullptr;
 }
 
-// The kind follows the collision layer: each layer holds one kind of entity for now.
-std::optional<EntityKind> kind_of(std::uint32_t layer) noexcept {
-    switch (layer) {
-    case layer::player:
-        return EntityKind::PlayerShip;
-    case layer::player_missile:
-        return EntityKind::PlayerMissile;
-    case layer::enemy:
-        return EntityKind::BydosSlave;
-    case layer::enemy_missile:
-        return EntityKind::EnemyMissile;
-    default:
-        return std::nullopt;
-    }
-}
-
 template <typename T>
 std::uint8_t clamp_u8(T value) noexcept {
     return static_cast<std::uint8_t>(std::min<T>(value, T{0xFF}));
@@ -75,6 +59,22 @@ void write_records(net::BinaryWriter& writer, const Snapshot& snapshot,
 
 } // namespace
 
+// The kind follows the collision layer: each layer holds one kind of entity for now.
+std::optional<EntityKind> kind_of_layer(std::uint32_t layer) noexcept {
+    switch (layer) {
+    case layer::player:
+        return EntityKind::PlayerShip;
+    case layer::player_missile:
+        return EntityKind::PlayerMissile;
+    case layer::enemy:
+        return EntityKind::BydosSlave;
+    case layer::enemy_missile:
+        return EntityKind::EnemyMissile;
+    default:
+        return std::nullopt;
+    }
+}
+
 Snapshot take_snapshot(GameInstance& instance) {
     ecs::Registry& world = instance.game().registry();
     Snapshot snapshot{
@@ -94,7 +94,7 @@ Snapshot take_snapshot(GameInstance& instance) {
     world.view<ecs::NetworkId, ecs::Transform, ecs::Collider>().each(
         [&](ecs::Entity entity, const ecs::NetworkId& id, const ecs::Transform& transform,
             const ecs::Collider& collider) {
-            const std::optional<EntityKind> kind = kind_of(collider.layer);
+            const std::optional<EntityKind> kind = kind_of_layer(collider.layer);
             if (!kind) {
                 return;
             }

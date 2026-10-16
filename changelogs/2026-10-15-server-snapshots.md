@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#30](https://github.com/Aegis2D-Dev/project-rtype/pull/30) (opened 2026-10-15) |
 | Branch | `feat/server-snapshots` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-15 (`b50f80e`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#114 broadcast snapshots at 20 Hz |
 
@@ -35,6 +35,8 @@ epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `58a7fae` feat(server): broadcast snapshots at 20 hz
+- `3817639` feat(changelog): updated changelogs
+- `46ccf68` feat(server): split snapshots with a for loop
 
 ## Notes
 - The kind follows the collision layer, which holds one kind each today; a second enemy

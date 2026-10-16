@@ -7,6 +7,7 @@ include(Catch)
 
 add_executable(rtype_tests
     entities_test.cpp
+    events_test.cpp
     game_instance_test.cpp
     login_test.cpp
     server_game_test.cpp

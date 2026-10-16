@@ -102,7 +102,10 @@ its own thread at 60 ticks per second, with or without players, and logs its mea
 every 10 seconds (`simulation: 600 ticks in 10.0 s (60.0 Hz)`). The most recent `Input` of
 each player steers its ship; `Heartbeat` keeps the session acknowledged and `Disconnect`
 ends it. Datagrams from unbound endpoints, or with a malformed payload, are dropped. Every
-bound player receives a snapshot of the world 20 times per second. The client lists the
+bound player receives a snapshot of the world 20 times per second and, resent until they
+are acknowledged, the events of the game: each entity that appears (a shot is the `Spawn`
+of its missile) or disappears, and each life lost; a player who joins first gets every
+entity already there. The client lists the
 engine modules it is built with; the window comes with the next tickets.
 
 ## Documentation
