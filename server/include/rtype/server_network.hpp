@@ -11,6 +11,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/events.hpp>
+#include <rtype/login.hpp>
 #include <rtype/sessions.hpp>
 
 #include <chrono>
@@ -46,6 +47,10 @@ namespace rtype {
 /// `Disconnect` ends the session like a `Logout`. A bound player that sends no valid
 /// datagram for udp_timeout has lost its session (RFC section 5.5): it gets `Logout` with
 /// the reason `TimedOut`, its connection is closed once it is sent, and it leaves the game.
+///
+/// The handling of each datagram and TCP message is contained: an exception is logged, the
+/// client that sent the packet is kicked (`Logout` with the reason `ProtocolError`, then
+/// `Kicked` for the game, RFC section 6.6), and the sockets go on serving the others.
 ///
 /// Connections and datagrams are handled on the thread running the context; update() runs
 /// the timeouts and removes closed connections. Create, use and destroy it on that thread,
@@ -94,7 +99,7 @@ public:
     /// client that cannot reach the UDP port never appears in the game. It leaves when it
     /// ends (`Logout`, `Disconnect`, TCP closed, UDP timeout, protocol error), if it had joined.
     /// @param joined Called with the session, its endpoint bound.
-    /// @param left Called with the session and why it ended, before it is forgotten.
+    /// @param left Called with the session and why it ended, once it is forgotten.
     void on_players(PlayerHandler joined, LeaveHandler left);
 
     /// @brief Sets what to do with the inputs of the players.
@@ -180,6 +185,10 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t timeouts() const noexcept;
 
+    /// @brief Number of datagrams and TCP messages whose handling threw.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t errors() const noexcept;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -212,6 +221,9 @@ private:
     void close(Client& client, std::string_view reason);
     void flush_events(Clock::time_point now);
     void time_out(std::uint32_t token);
+    void kick(std::uint32_t token);
+    void kick_client(std::uint64_t id);
+    void end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
@@ -234,6 +246,7 @@ private:
     std::uint64_t snapshots_sent_ = 0;
     std::uint64_t event_datagrams_sent_ = 0;
     std::uint64_t timeouts_ = 0;
+    std::uint64_t errors_ = 0;
 };
 
 } // namespace rtype
