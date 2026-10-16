@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#34](https://github.com/Aegis2D-Dev/project-rtype/pull/34) (opened 2026-10-16) |
 | Branch | `feat/server-player-left` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-16 (`070bdf1`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#118 notify players when a client disconnects |
 
@@ -39,7 +39,7 @@ epic (Aegis2D-Dev/aegis2d#107).
 ## Commits
 - `d3d4a20` feat(server): told players who joins and who leaves
 - `99af4c5` feat(docs): documented player notices and updated changelogs
-- feat(changelog): updated changelogs
+- `8210516` feat(changelog): updated changelogs
 
 ## Notes
 - The ticket's "remaining clients display the notice" needs the client's networking (#124

@@ -105,7 +105,8 @@ ends it. A client whose TCP connection closes, even a killed process, leaves the
 once and its ship disappears for the others; so does a player that sends no valid datagram
 for 5 seconds (its UDP blocked, its machine frozen), after a `Logout` with the reason
 `TimedOut`. The other players are told who joins (`PlayerJoined`, with the name) and who
-leaves and why (`PlayerLeft`), before its ship disappears. Datagrams from unbound
+leaves and why (`PlayerLeft`), before its ship disappears. A packet the server cannot
+handle only gets its sender kicked: the others play on. Datagrams from unbound
 endpoints, or with a
 malformed payload, are dropped. Every
 bound player receives a snapshot of the world 20 times per second and, resent until they
