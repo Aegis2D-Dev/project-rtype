@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#31](https://github.com/Aegis2D-Dev/project-rtype/pull/31) (opened 2026-10-16) |
 | Branch | `feat/server-events` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-16 (`b7565e5`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#115 send gameplay events |
 
@@ -51,7 +51,7 @@ Part of the game server epic (Aegis2D-Dev/aegis2d#107).
 ## Commits
 - `9e66041` feat(server): sent gameplay events to the players
 - `52d071d` feat(docs): documented gameplay events and updated changelogs
-- feat(changelog): updated changelogs
+- `b536615` feat(changelog): updated changelogs
 
 ## Notes
 - `PlayerJoined`, `PlayerLeft` and `GameOver` are not sent yet: the notices of joining and

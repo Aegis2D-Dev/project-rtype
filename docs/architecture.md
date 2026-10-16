@@ -64,8 +64,13 @@ sequenceDiagram
 
 The server's network side lives in `server/`, around
 [`ServerGame`](gameplay.md#the-server-game), which exposes what it needs: `add_player()`,
-`set_input()`, `tick()` and the reports of the last tick. After each tick, the simulation
-thread hands the network thread two things:
+`set_input()`, `tick()` and the reports of the last tick. `GameServer`
+(`rtype/game_server.hpp`) puts the pieces together, for `r-type_server` and for the tests:
+`ServerNetwork` on the network thread, the game on the `Simulation` thread, and tasks
+posted between them. A bound player joins the game; a player whose session ends leaves
+it, whatever ended it (`Logout`, `Disconnect`, protocol error, or its TCP connection
+closing, as when its process is killed), and its ship is removed at the next tick. After
+each tick, the simulation thread hands the network thread two things:
 
 - **Events** (`rtype/events.hpp`, RFC section 4.4): `EventTracker` compares the replicated
   entities with those of the previous tick. A new one is a `Spawn` (the shot of a missile
