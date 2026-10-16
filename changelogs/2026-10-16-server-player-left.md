@@ -37,8 +37,9 @@ epic (Aegis2D-Dev/aegis2d#107).
 - Changelog: #33 (`49cff6a`) marked as merged, with its commits.
 
 ## Commits
-- feat(server): told players who joins and who leaves
-- feat(docs): documented player notices and updated changelogs
+- `d3d4a20` feat(server): told players who joins and who leaves
+- `99af4c5` feat(docs): documented player notices and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - The ticket's "remaining clients display the notice" needs the client's networking (#124
