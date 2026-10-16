@@ -28,6 +28,12 @@ enum class EntityKind : std::uint8_t {
     EnemyMissile = 4,
 };
 
+/// @brief Kind of the entities of a collision layer, for snapshots and events.
+/// @details Each layer holds one kind of entity for now.
+/// @param layer `ecs::Collider::layer`, one of the values of `rtype::layer`.
+/// @return The kind, or `std::nullopt` for a layer whose entities are not replicated.
+[[nodiscard]] std::optional<EntityKind> kind_of_layer(std::uint32_t layer) noexcept;
+
 /// @brief Network id that names no entity, for a player out of lives.
 inline constexpr std::uint32_t no_entity = 0xFFFFFFFF;
 

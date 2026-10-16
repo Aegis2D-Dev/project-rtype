@@ -205,6 +205,57 @@ std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
     return snapshots_sent_;
 }
 
+void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events,
+                                std::optional<std::uint32_t> token) {
+    std::vector<std::uint32_t> lost;
+    for (auto& [peer_token, peer] : peers_) {
+        if (token && *token != peer_token) {
+            continue;
+        }
+        const Session* const session = sessions_.find(peer_token);
+        if (session == nullptr || !session->endpoint) {
+            continue;
+        }
+        for (const std::vector<std::byte>& event : events) {
+            if (!peer.channel.send(event)) {
+                lost.push_back(peer_token);
+                break;
+            }
+        }
+    }
+    // Ended once the loop is over: ending a session erases its peer.
+    for (const std::uint32_t lost_token : lost) {
+        if (const Session* const session = sessions_.find(lost_token)) {
+            core::log_warn("UDP: player {} acknowledges no event: session lost", session->player);
+        }
+        disconnect(lost_token);
+    }
+    flush_events(Clock::now());
+}
+
+std::uint64_t ServerNetwork::event_datagrams_sent() const noexcept {
+    return event_datagrams_sent_;
+}
+
+// The events due of each bound player, new or to resend, in as many datagrams as they need.
+void ServerNetwork::flush_events(Clock::time_point now) {
+    for (auto& [token, peer] : peers_) {
+        const Session* const session = sessions_.find(token);
+        if (session == nullptr || !session->endpoint) {
+            continue;
+        }
+        const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
+        while (peer.channel.has_due_events(now)) {
+            net::BinaryWriter writer;
+            if (peer.channel.write_events(writer, token, now) == 0) {
+                break;
+            }
+            socket_.send_to(endpoint, writer.data());
+            ++event_datagrams_sent_;
+        }
+    }
+}
+
 void ServerNetwork::on_input(InputHandler input) {
     input_ = std::move(input);
 }
@@ -342,6 +393,7 @@ void ServerNetwork::update(Clock::time_point now) {
         }
     }
     std::erase_if(clients_, [](const auto& entry) { return entry.second.closed; });
+    flush_events(now);
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {
