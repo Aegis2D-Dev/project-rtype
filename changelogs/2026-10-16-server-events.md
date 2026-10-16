@@ -49,8 +49,9 @@ Part of the game server epic (Aegis2D-Dev/aegis2d#107).
 - Changelog: #30 (`b50f80e`) marked as merged, with its commits.
 
 ## Commits
-- feat(server): sent gameplay events to the players
-- feat(docs): documented gameplay events and updated changelogs
+- `9e66041` feat(server): sent gameplay events to the players
+- `52d071d` feat(docs): documented gameplay events and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - `PlayerJoined`, `PlayerLeft` and `GameOver` are not sent yet: the notices of joining and
