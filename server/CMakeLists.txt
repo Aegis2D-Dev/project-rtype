@@ -3,6 +3,7 @@
 add_library(rtype_server STATIC
     events.cpp
     game_instance.cpp
+    game_server.cpp
     login.cpp
     server_network.cpp
     server_options.cpp

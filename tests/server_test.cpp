@@ -1,3 +1,4 @@
+#include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
@@ -9,12 +10,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/events.hpp>
+#include <rtype/game_instance.hpp>
+#include <rtype/game_server.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -682,4 +686,89 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     }
     context.run_for(std::chrono::milliseconds{50});
     CHECK(first_udp.received.size() == received);
+}
+
+TEST_CASE("a player whose TCP connection closes is gone from the game within a second",
+          "[server][disconnect]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+
+    Player staying_player{context, server};
+    const std::uint32_t staying = log_in(context, server, staying_player, "R9");
+    Player leaving_player{context, server};
+    const std::uint32_t leaving = log_in(context, server, leaving_player, "R10");
+    Socket staying_udp{context};
+    Socket leaving_udp{context};
+    staying_udp.send(server, datagram(PacketType::Connect, staying));
+    leaving_udp.send(server, datagram(PacketType::Connect, leaving));
+
+    // What the staying player sees, read from its Event datagrams as a client does.
+    aegis2d::net::ReliableChannel client;
+    std::vector<rtype::GameEvent> seen;
+    std::size_t read = 0;
+    const auto watch = [&] {
+        for (; read < staying_udp.datagrams.size(); ++read) {
+            if (staying_udp.received.at(read).type != PacketType::Event) {
+                continue;
+            }
+            for (const std::vector<std::byte>& bytes :
+                 events_of(client, staying_udp.datagrams.at(read))) {
+                if (const std::optional<rtype::GameEvent> event = rtype::read_event(bytes)) {
+                    seen.push_back(*event);
+                }
+            }
+        }
+    };
+    const auto ships_of = [&](std::uint8_t player) {
+        std::vector<std::uint32_t> ships;
+        for (const rtype::GameEvent& event : seen) {
+            const auto* const spawn = std::get_if<rtype::SpawnEvent>(&event);
+            if (spawn != nullptr && spawn->owner == player &&
+                spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip)) {
+                ships.push_back(spawn->id);
+            }
+        }
+        return ships;
+    };
+    const auto left_with = [&](std::uint32_t ship) {
+        return std::ranges::any_of(seen, [&](const rtype::GameEvent& event) {
+            const auto* const destroy = std::get_if<rtype::DestroyEvent>(&event);
+            return destroy != nullptr && destroy->id == ship &&
+                   destroy->reason == rtype::DestroyReason::PlayerLeft;
+        });
+    };
+    REQUIRE(pump(context, server, [&] {
+        watch();
+        return !ships_of(0).empty() && !ships_of(1).empty();
+    }));
+    const std::uint32_t ship = ships_of(1).front();
+
+    // The client process dies: the system closes its connection, and the game removes its
+    // ship for the others.
+    const auto closed_at = std::chrono::steady_clock::now();
+    leaving_player.connection.close();
+    REQUIRE(pump(context, server, [&] {
+        watch();
+        return left_with(ship);
+    }));
+    CHECK(std::chrono::steady_clock::now() - closed_at < std::chrono::seconds{1});
+    CHECK(server.sessions().size() == 1);
+
+    // Its UDP endpoint is unbound with the session: its datagrams are dropped.
+    const std::uint64_t dropped = server.dropped_datagrams();
+    leaving_udp.send(server, datagram(PacketType::Heartbeat, leaving, 1));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+
+    // The player number is free again: a new client gets it, with a new ship.
+    Player back_player{context, server};
+    const std::uint32_t back = log_in(context, server, back_player, "R10");
+    Socket back_udp{context};
+    back_udp.send(server, datagram(PacketType::Connect, back));
+    REQUIRE(pump(context, server, [&] {
+        watch();
+        return ships_of(1).size() == 2;
+    }));
+    CHECK(ships_of(1).back() != ship);
 }
