@@ -9,12 +9,14 @@
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <span>
@@ -129,7 +131,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         if (header.type == net::PacketType::Disconnect) {
             // The client leaves (RFC section 5.5): its session ends, TCP connection included.
             core::log_info("UDP: player {} disconnected", session.player);
-            disconnect(session.token);
+            disconnect(session.token, LeaveReason::Left);
         }
         return;
     case net::PacketType::Connect:
@@ -181,7 +183,7 @@ void ServerNetwork::drop(const net::Endpoint& from, std::span<const std::byte> d
                     from.to_string(), reason);
 }
 
-void ServerNetwork::on_players(PlayerHandler joined, PlayerHandler left) {
+void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
     joined_ = std::move(joined);
     left_ = std::move(left);
 }
@@ -212,9 +214,19 @@ std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
 
 void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events,
                                 std::optional<std::uint32_t> token) {
+    queue_events(events, [&](std::uint32_t peer) { return !token || *token == peer; });
+}
+
+void ServerNetwork::send_events_to_others(std::span<const std::vector<std::byte>> events,
+                                          std::uint32_t token) {
+    queue_events(events, [&](std::uint32_t peer) { return peer != token; });
+}
+
+void ServerNetwork::queue_events(std::span<const std::vector<std::byte>> events,
+                                 const std::function<bool(std::uint32_t token)>& receives) {
     std::vector<std::uint32_t> lost;
     for (auto& [peer_token, peer] : peers_) {
-        if (token && *token != peer_token) {
+        if (!receives(peer_token)) {
             continue;
         }
         const Session* const session = sessions_.find(peer_token);
@@ -233,7 +245,7 @@ void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events,
         if (const Session* const session = sessions_.find(lost_token)) {
             core::log_warn("UDP: player {} acknowledges no event: session lost", session->player);
         }
-        disconnect(lost_token);
+        disconnect(lost_token, LeaveReason::TimedOut);
     }
     flush_events(Clock::now());
 }
@@ -265,19 +277,19 @@ void ServerNetwork::on_input(InputHandler input) {
     input_ = std::move(input);
 }
 
-void ServerNetwork::disconnect(std::uint32_t token) {
+void ServerNetwork::disconnect(std::uint32_t token, LeaveReason reason) {
     for (auto& [id, client] : clients_) {
         if (client.token == token && !client.closed) {
             close(client, {});
         }
     }
-    end_session(token);
+    end_session(token, reason);
 }
 
-void ServerNetwork::end_session(std::uint32_t token) {
+void ServerNetwork::end_session(std::uint32_t token, LeaveReason reason) {
     const Session* const session = sessions_.find(token);
     if (session != nullptr && session->endpoint && left_) {
-        left_(*session);
+        left_(*session, reason);
     }
     sessions_.end(token);
     peers_.erase(token);
@@ -312,8 +324,10 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
     // Logged in: a Logout is the only message the client may send (RFC section 3.3).
     const Session* const session = sessions_.find(*client.token);
     const unsigned player = session != nullptr ? session->player : 0U;
-    end_session(*client.token);
-    if (read_logout(message)) {
+    // Anything but a Logout is a protocol error: the player is kicked.
+    const bool logged_out = read_logout(message).has_value();
+    end_session(*client.token, logged_out ? LeaveReason::Left : LeaveReason::Kicked);
+    if (logged_out) {
         core::log_info("TCP: player {} logged out", player);
         close(client, {});
         return;
@@ -364,7 +378,7 @@ void ServerNetwork::on_close(std::uint64_t id, net::TcpCloseReason reason) {
         if (session != nullptr) {
             core::log_info("TCP: player {} disconnected", session->player);
         }
-        end_session(*client.token);
+        end_session(*client.token, LeaveReason::Left);
     } else if (reason == net::TcpCloseReason::MessageTooLarge) {
         core::log_info("TCP: closed {}: message too large",
                        client.connection.remote_endpoint().to_string());
@@ -459,7 +473,7 @@ void ServerNetwork::time_out(std::uint32_t token) {
             client.close_when_sent = true;
         }
     }
-    end_session(token);
+    end_session(token, LeaveReason::TimedOut);
     ++timeouts_;
 }
 

@@ -7,6 +7,7 @@
 
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
+#include <rtype/login.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/tuning.hpp>
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -62,6 +64,20 @@ void write_death(net::BinaryWriter& writer, const DeathEvent& event) {
     writer.write_u8(event.lives);
     writer.write_f32(event.x);
     writer.write_f32(event.y);
+}
+
+void write_player_joined(net::BinaryWriter& writer, const PlayerJoinedEvent& event) {
+    writer.write_u8(static_cast<std::uint8_t>(EventType::PlayerJoined));
+    writer.write_u32(event.tick);
+    writer.write_u8(event.player);
+    writer.write_string(event.name);
+}
+
+void write_player_left(net::BinaryWriter& writer, const PlayerLeftEvent& event) {
+    writer.write_u8(static_cast<std::uint8_t>(EventType::PlayerLeft));
+    writer.write_u32(event.tick);
+    writer.write_u8(event.player);
+    writer.write_u8(static_cast<std::uint8_t>(event.reason));
 }
 
 bool finite(std::initializer_list<float> values) {
@@ -117,6 +133,28 @@ std::optional<GameEvent> read_death(net::BinaryReader& reader, std::uint32_t tic
         return std::nullopt;
     }
     return DeathEvent{.tick = tick, .player = *player, .lives = *lives, .x = *x, .y = *y};
+}
+
+// The name follows the rules of LoginRequest (RFC section 6.4).
+std::optional<GameEvent> read_player_joined(net::BinaryReader& reader, std::uint32_t tick) {
+    const std::optional<std::uint8_t> player = reader.read_u8();
+    std::optional<std::string> name = reader.read_string();
+    if (!player || !name || !reader.at_end() || !valid_player(*player) ||
+        !valid_player_name(*name)) {
+        return std::nullopt;
+    }
+    return PlayerJoinedEvent{.tick = tick, .player = *player, .name = std::move(*name)};
+}
+
+std::optional<GameEvent> read_player_left(net::BinaryReader& reader, std::uint32_t tick) {
+    const std::optional<std::uint8_t> player = reader.read_u8();
+    const std::optional<std::uint8_t> reason = reader.read_u8();
+    if (!player || !reason || !reader.at_end() || !valid_player(*player)) {
+        return std::nullopt;
+    }
+    // An unknown reason is kept: the client reads it as Left (RFC section 4.4).
+    return PlayerLeftEvent{
+        .tick = tick, .player = *player, .reason = static_cast<LeaveReason>(*reason)};
 }
 
 // Player number of a ship of the game, or no_player.
@@ -183,10 +221,13 @@ std::uint8_t clamp_lives(std::uint32_t lives) {
 
 std::vector<std::byte> write_event(const GameEvent& event) {
     net::BinaryWriter writer;
-    std::visit(Overloaded{[&](const SpawnEvent& spawn) { write_spawn(writer, spawn); },
-                          [&](const DestroyEvent& destroy) { write_destroy(writer, destroy); },
-                          [&](const DeathEvent& death) { write_death(writer, death); }},
-               event);
+    std::visit(
+        Overloaded{[&](const SpawnEvent& spawn) { write_spawn(writer, spawn); },
+                   [&](const DestroyEvent& destroy) { write_destroy(writer, destroy); },
+                   [&](const DeathEvent& death) { write_death(writer, death); },
+                   [&](const PlayerJoinedEvent& joined) { write_player_joined(writer, joined); },
+                   [&](const PlayerLeftEvent& left) { write_player_left(writer, left); }},
+        event);
     return {writer.data().begin(), writer.data().end()};
 }
 
@@ -214,7 +255,9 @@ std::optional<GameEvent> read_event(std::span<const std::byte> bytes) {
     case EventType::Death:
         return read_death(reader, *tick);
     case EventType::PlayerJoined:
+        return read_player_joined(reader, *tick);
     case EventType::PlayerLeft:
+        return read_player_left(reader, *tick);
     case EventType::GameOver:
         break;
     }

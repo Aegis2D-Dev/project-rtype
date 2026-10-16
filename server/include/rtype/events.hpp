@@ -1,6 +1,6 @@
 /// @file
-/// @brief Gameplay events sent to the clients (RFC section 4.4): spawns, destructions and
-/// deaths.
+/// @brief Gameplay events sent to the clients (RFC section 4.4): spawns, destructions,
+/// deaths, and the players who join and leave.
 #pragma once
 #include <aegis2d/ecs/entity.hpp>
 
@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -48,6 +49,17 @@ enum class DestroyReason : std::uint8_t {
     PlayerLeft = 3,
 };
 
+/// @brief Why a player left the game, in `PlayerLeft`.
+/// @details The values are part of the protocol: never renumber them.
+enum class LeaveReason : std::uint8_t {
+    /// @brief It quit: `Logout`, `Disconnect`, or its TCP connection closed.
+    Left = 0,
+    /// @brief No valid datagram for too long, or no event acknowledged (RFC section 5.5).
+    TimedOut = 1,
+    /// @brief A protocol error ended its session (RFC section 3.2).
+    Kicked = 2,
+};
+
 /// @brief Player number meaning "no player", as the `owner` of an enemy.
 inline constexpr std::uint8_t no_player = 255;
 
@@ -57,6 +69,8 @@ inline constexpr std::size_t spawn_event_size = 27;
 inline constexpr std::size_t destroy_event_size = 18;
 /// @brief Size of a `Death` event, type and tick included.
 inline constexpr std::size_t death_event_size = 15;
+/// @brief Size of a `PlayerLeft` event, type and tick included.
+inline constexpr std::size_t player_left_event_size = 7;
 
 /// @brief An entity appears, with its kind, position and velocity.
 struct SpawnEvent {
@@ -118,12 +132,42 @@ struct DeathEvent {
     bool operator==(const DeathEvent&) const = default;
 };
 
+/// @brief A player joined the game.
+struct PlayerJoinedEvent {
+    /// @brief Server tick at which it joined.
+    std::uint32_t tick = 0;
+    /// @brief Player number, 0 to 3.
+    std::uint8_t player = 0;
+    /// @brief Name given at login, valid as valid_player_name() says.
+    std::string name;
+
+    /// @brief Field-by-field equality.
+    /// @return `true` if every field is equal.
+    bool operator==(const PlayerJoinedEvent&) const = default;
+};
+
+/// @brief A player left the game; the `Destroy` of its ship follows if it had one.
+struct PlayerLeftEvent {
+    /// @brief Server tick at which it left.
+    std::uint32_t tick = 0;
+    /// @brief Player number, 0 to 3.
+    std::uint8_t player = 0;
+    /// @brief Why it left.
+    LeaveReason reason = LeaveReason::Left;
+
+    /// @brief Field-by-field equality.
+    /// @return `true` if every field is equal.
+    bool operator==(const PlayerLeftEvent&) const = default;
+};
+
 /// @brief One of the gameplay events the server sends.
-using GameEvent = std::variant<SpawnEvent, DestroyEvent, DeathEvent>;
+using GameEvent =
+    std::variant<SpawnEvent, DestroyEvent, DeathEvent, PlayerJoinedEvent, PlayerLeftEvent>;
 
 /// @brief Encodes an event as the bytes of RFC section 4.4: type, tick, then its fields.
 /// @param event Event to encode.
-/// @return spawn_event_size, destroy_event_size or death_event_size bytes.
+/// @return spawn_event_size, destroy_event_size, death_event_size or
+/// player_left_event_size bytes; 8 plus the name for `PlayerJoined`.
 [[nodiscard]] std::vector<std::byte> write_event(const GameEvent& event);
 
 /// @brief Encodes events with write_event(), for ServerNetwork::send_events().
@@ -133,10 +177,11 @@ using GameEvent = std::variant<SpawnEvent, DestroyEvent, DeathEvent>;
 
 /// @brief Decodes the bytes of one event, as a client does (RFC section 6.4).
 /// @param bytes Bytes of the event, as handed over by `ReliableChannel::read_events()`.
-/// @return The event, or `std::nullopt` if its type is not one of the three above or its
+/// @return The event, or `std::nullopt` if its type is not one of the five above or its
 /// bytes do not match the type: a wrong size, a non-finite position or velocity, an
-/// `owner` other than 0 to 3 and 255, or a `player` above 3. Unknown kinds and reasons are
-/// kept, for the caller to apply its rules.
+/// `owner` other than 0 to 3 and 255, a `player` above 3, or a name that breaks the rules
+/// of valid_player_name(). Unknown kinds and reasons are kept, for the caller to apply its
+/// rules.
 [[nodiscard]] std::optional<GameEvent> read_event(std::span<const std::byte> bytes);
 
 /// @brief Finds what changed in the game at each tick, as events.
