@@ -104,7 +104,9 @@ each player steers its ship; `Heartbeat` keeps the session acknowledged and `Dis
 ends it. A client whose TCP connection closes, even a killed process, leaves the game at
 once and its ship disappears for the others; so does a player that sends no valid datagram
 for 5 seconds (its UDP blocked, its machine frozen), after a `Logout` with the reason
-`TimedOut`. Datagrams from unbound endpoints, or with a
+`TimedOut`. The other players are told who joins (`PlayerJoined`, with the name) and who
+leaves and why (`PlayerLeft`), before its ship disappears. Datagrams from unbound
+endpoints, or with a
 malformed payload, are dropped. Every
 bound player receives a snapshot of the world 20 times per second and, resent until they
 are acknowledged, the events of the game: each entity that appears (a shot is the `Spawn`

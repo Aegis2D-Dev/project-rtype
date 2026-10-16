@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#33](https://github.com/Aegis2D-Dev/project-rtype/pull/33) (opened 2026-10-16) |
 | Branch | `feat/server-udp-timeout` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-16 (`49cff6a`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#117 detect disconnect on UDP heartbeat timeout |
 
@@ -36,7 +36,7 @@ sent, and the player leaves the game: its ship is removed and the others get its
 ## Commits
 - `1328931` feat(server): ended sessions silent on udp for 5 seconds
 - `013cf5d` feat(docs): documented the udp timeout and updated changelogs
-- feat(changelog): updated changelogs
+- `ff5d7b4` feat(changelog): updated changelogs
 
 ## Notes
 - Only bound players time out. A logged-in client that never binds its endpoint keeps its
