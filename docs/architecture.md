@@ -68,8 +68,9 @@ The server's network side lives in `server/`, around
 (`rtype/game_server.hpp`) puts the pieces together, for `r-type_server` and for the tests:
 `ServerNetwork` on the network thread, the game on the `Simulation` thread, and tasks
 posted between them. A bound player joins the game; a player whose session ends leaves
-it, whatever ended it (`Logout`, `Disconnect`, protocol error, or its TCP connection
-closing, as when its process is killed), and its ship is removed at the next tick. After
+it, whatever ended it (`Logout`, `Disconnect`, protocol error, its TCP connection
+closing, as when its process is killed, or no valid datagram for 5 seconds, as when its
+UDP is blocked), and its ship is removed at the next tick. After
 each tick, the simulation thread hands the network thread two things:
 
 - **Events** (`rtype/events.hpp`, RFC section 4.4): `EventTracker` compares the replicated

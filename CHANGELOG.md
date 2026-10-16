@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#32](https://github.com/Aegis2D-Dev/project-rtype/pull/32) | Disconnect detected when the TCP connection closes | `feat/server-tcp-disconnect` | Open | 2026-10-16 | [2026-10-16-server-tcp-disconnect](changelogs/2026-10-16-server-tcp-disconnect.md) |
+| [#33](https://github.com/Aegis2D-Dev/project-rtype/pull/33) | Disconnect detected when UDP goes silent | `feat/server-udp-timeout` | Open | 2026-10-16 | [2026-10-16-server-udp-timeout](changelogs/2026-10-16-server-udp-timeout.md) |
+| [#32](https://github.com/Aegis2D-Dev/project-rtype/pull/32) | Disconnect detected when the TCP connection closes | `feat/server-tcp-disconnect` | Merged | 2026-10-16 | [2026-10-16-server-tcp-disconnect](changelogs/2026-10-16-server-tcp-disconnect.md) |
 | [#31](https://github.com/Aegis2D-Dev/project-rtype/pull/31) | Gameplay events sent to the players | `feat/server-events` | Merged | 2026-10-16 | [2026-10-16-server-events](changelogs/2026-10-16-server-events.md) |
 | [#30](https://github.com/Aegis2D-Dev/project-rtype/pull/30) | Snapshots broadcast at 20 Hz | `feat/server-snapshots` | Merged | 2026-10-15 | [2026-10-15-server-snapshots](changelogs/2026-10-15-server-snapshots.md) |
 | [#29](https://github.com/Aegis2D-Dev/project-rtype/pull/29) | Client inputs applied to player ships | `feat/server-inputs` | Merged | 2026-10-15 | [2026-10-15-server-inputs](changelogs/2026-10-15-server-inputs.md) |

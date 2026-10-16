@@ -772,3 +772,121 @@ TEST_CASE("a player whose TCP connection closes is gone from the game within a s
     }));
     CHECK(ships_of(1).back() != ship);
 }
+
+TEST_CASE("a bound player silent for 5 seconds loses its session", "[server][timeout]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<unsigned> left;
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session) { left.push_back(session.player); });
+    Player talking_player{context, server};
+    const std::uint32_t talking = log_in(context, server, talking_player, "R9");
+    Player silent_player{context, server};
+    const std::uint32_t silent = log_in(context, server, silent_player, "R10");
+    Socket talking_udp{context};
+    Socket silent_udp{context};
+    talking_udp.send(server, datagram(PacketType::Connect, talking, 0));
+    silent_udp.send(server, datagram(PacketType::Connect, silent, 0));
+    REQUIRE(pump(context, server, [&] {
+        return talking_udp.received.size() == 1 && silent_udp.received.size() == 1;
+    }));
+    const auto bound_at = ServerNetwork::Clock::now();
+
+    // Just under the timeout since the binding: nobody is lost.
+    server.update(bound_at + ServerNetwork::udp_timeout - std::chrono::milliseconds{100});
+    CHECK(server.timeouts() == 0);
+
+    // Half a second later, one player sends a Heartbeat, the other only a malformed
+    // datagram, which does not keep a session alive (RFC section 5.5).
+    context.run_for(std::chrono::milliseconds{500});
+    talking_udp.send(server, datagram(PacketType::Heartbeat, talking, 1));
+    silent_udp.send(server, datagram(PacketType::Heartbeat, silent, 1, {std::byte{0}}));
+    REQUIRE(pump(context, server,
+                 [&] { return server.game_datagrams() == 1 && server.dropped_datagrams() == 1; }));
+
+    // The timeout is past for the silent player only.
+    const auto later = ServerNetwork::udp_timeout - std::chrono::milliseconds{250};
+    REQUIRE(pump(context, server, [&] { return silent_player.closed; }, later));
+    CHECK(server.timeouts() == 1);
+    CHECK(left == std::vector<unsigned>{1});
+    CHECK(server.sessions().size() == 1);
+    CHECK(server.sessions().find(talking) != nullptr);
+    CHECK(!talking_player.closed);
+    // Told why before the connection closed (RFC section 3.2).
+    REQUIRE(!silent_player.received.empty());
+    CHECK(silent_player.received.back() == rtype::write_logout(LogoutReason::TimedOut));
+
+    // Its endpoint is unbound: what it sends now is dropped.
+    const std::uint64_t dropped = server.dropped_datagrams();
+    silent_udp.send(server, datagram(PacketType::Heartbeat, silent, 2));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+}
+
+TEST_CASE("a player whose UDP traffic stops is gone from the game", "[server][timeout]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+
+    Player staying_player{context, server};
+    const std::uint32_t staying = log_in(context, server, staying_player, "R9");
+    Player blocked_player{context, server};
+    const std::uint32_t blocked = log_in(context, server, blocked_player, "R10");
+    Socket staying_udp{context};
+    Socket blocked_udp{context};
+    staying_udp.send(server, datagram(PacketType::Connect, staying));
+    blocked_udp.send(server, datagram(PacketType::Connect, blocked));
+
+    // The staying player keeps talking, and reads its events as a client does.
+    aegis2d::net::ReliableChannel client;
+    std::vector<rtype::GameEvent> seen;
+    std::size_t read = 0;
+    std::uint16_t sequence = 1;
+    const auto talk_and_watch = [&] {
+        staying_udp.send(server, datagram(PacketType::Heartbeat, staying, sequence++));
+        for (; read < staying_udp.datagrams.size(); ++read) {
+            if (staying_udp.received.at(read).type != PacketType::Event) {
+                continue;
+            }
+            for (const std::vector<std::byte>& bytes :
+                 events_of(client, staying_udp.datagrams.at(read))) {
+                if (const std::optional<rtype::GameEvent> event = rtype::read_event(bytes)) {
+                    seen.push_back(*event);
+                }
+            }
+        }
+    };
+    const auto ship_of = [&](std::uint8_t player) -> std::optional<std::uint32_t> {
+        for (const rtype::GameEvent& event : seen) {
+            const auto* const spawn = std::get_if<rtype::SpawnEvent>(&event);
+            if (spawn != nullptr && spawn->owner == player &&
+                spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip)) {
+                return spawn->id;
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(pump(context, server, [&] {
+        talk_and_watch();
+        return ship_of(0) && ship_of(1);
+    }));
+    const std::uint32_t ship = ship_of(1).value_or(0);
+
+    // The blocked player's datagrams stop; past the timeout, its ship leaves the game.
+    context.run_for(std::chrono::milliseconds{500});
+    const auto later = ServerNetwork::udp_timeout - std::chrono::milliseconds{250};
+    REQUIRE(pump(
+        context, server,
+        [&] {
+            talk_and_watch();
+            return std::ranges::any_of(seen, [&](const rtype::GameEvent& event) {
+                const auto* const destroy = std::get_if<rtype::DestroyEvent>(&event);
+                return destroy != nullptr && destroy->id == ship &&
+                       destroy->reason == rtype::DestroyReason::PlayerLeft;
+            });
+        },
+        later));
+    CHECK(server.timeouts() == 1);
+    CHECK(server.sessions().size() == 1);
+    REQUIRE(pump(context, server, [&] { return blocked_player.closed; }));
+}

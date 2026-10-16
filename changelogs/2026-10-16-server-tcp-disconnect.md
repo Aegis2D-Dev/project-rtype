@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#32](https://github.com/Aegis2D-Dev/project-rtype/pull/32) (opened 2026-10-16) |
 | Branch | `feat/server-tcp-disconnect` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-16 (`c962c4a`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#116 detect disconnect on TCP close |
 
@@ -33,7 +33,7 @@ ticket's criterion end to end. Part of the game server epic (Aegis2D-Dev/aegis2d
 ## Commits
 - `81cc6b3` feat(server): removed players whose tcp connection closes
 - `b1612e7` feat(docs): documented tcp disconnects and updated changelogs
-- feat(changelog): updated changelogs
+- `4c30222` feat(changelog): updated changelogs
 
 ## Notes
 - A connection that dies without closing (a cable pulled, a machine frozen) sends nothing
