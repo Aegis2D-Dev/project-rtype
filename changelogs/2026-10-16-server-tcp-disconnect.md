@@ -31,8 +31,9 @@ ticket's criterion end to end. Part of the game server epic (Aegis2D-Dev/aegis2d
 - Changelog: #31 (`b7565e5`) marked as merged, with its commits.
 
 ## Commits
-- feat(server): removed players whose tcp connection closes
-- feat(docs): documented tcp disconnects and updated changelogs
+- `81cc6b3` feat(server): removed players whose tcp connection closes
+- `b1612e7` feat(docs): documented tcp disconnects and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - A connection that dies without closing (a cable pulled, a machine frozen) sends nothing
