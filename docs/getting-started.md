@@ -86,11 +86,18 @@ Both binaries accept `--version`, which prints the version and exits. The server
 | `--tcp-port <port>` | `4242` | TCP port of the logins |
 | `--udp-port <port>` | `4243` | UDP port of the game |
 | `--waves <file>` | `assets/waves/stage1.json` | Enemy waves to play |
+| `--max-packet-rate <n>` | `300` | UDP datagrams accepted per second from one IP address (1 to 100000) |
 | `--help` | | Prints the usage and exits |
 
 A port is a number from 0 to 65535; 0 lets the system pick a free one, printed at start. A
 bad command line exits with status 2, a bad waves file or a port already in use with
 status 1.
+
+Each IP address may send `--max-packet-rate` datagrams per second and hold 8 TCP connections
+at once; past that, its datagrams are dropped before being read and its new connections
+closed, so a flood does not slow the game. Dropped datagrams are summed up in the log at
+most every 10 seconds per address (`UDP: 203.0.113.7: 1150 dropped in 10 s (1150 rate
+limit)`), never one line per datagram.
 
 Ctrl+C (SIGINT) or SIGTERM stops the server cleanly: every player gets `Logout` with the
 reason `Shutdown`, each connection closes once it has left (1 second at most), then the
