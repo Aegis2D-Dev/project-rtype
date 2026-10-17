@@ -64,6 +64,7 @@ validation:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Play: play.md
   - Architecture: architecture.md
   - Gameplay: gameplay.md
   - How-to guides:

@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -311,6 +312,32 @@ TEST_CASE("the client reads its server and name from the command line", "[client
           "--port: \"0\" is not a port (1 to 65535)");
     CHECK(std::get<std::string>(parse_client({"--name"})) == "--name needs a value");
     CHECK(std::get<std::string>(parse_client({"--server"})) == "unknown argument \"--server\"");
+}
+
+TEST_CASE("the client reads its window options from the command line", "[client][options]") {
+    const auto defaults = std::get<rtype::ClientOptions>(parse_client({}));
+    CHECK_FALSE(defaults.join);
+    CHECK_FALSE(defaults.settings_file.has_value());
+    CHECK(defaults.frames == 0);
+    CHECK_FALSE(defaults.screenshot.has_value());
+
+    const auto given = std::get<rtype::ClientOptions>(parse_client(
+        {"--join", "--settings", "me.json", "--frames", "90", "--screenshot", "shot.png"}));
+    CHECK(given.join);
+    CHECK(given.settings_file == std::filesystem::path{"me.json"});
+    CHECK(given.frames == 90);
+    CHECK(given.screenshot == std::filesystem::path{"shot.png"});
+
+    // A screenshot without --frames is taken after 300 frames.
+    CHECK(std::get<rtype::ClientOptions>(parse_client({"--screenshot", "a.png"})).frames == 300);
+    CHECK(std::get<std::string>(parse_client({"--frames", "0"})) ==
+          "--frames: \"0\" is not a number of frames");
+    CHECK(std::get<std::string>(parse_client({"--frames", "ten"})) ==
+          "--frames: \"ten\" is not a number of frames");
+
+    CHECK(rtype::parse_port("4242") == std::uint16_t{4242});
+    CHECK_FALSE(rtype::parse_port("+42").has_value());
+    CHECK_FALSE(rtype::parse_port("65536").has_value());
 }
 
 namespace {

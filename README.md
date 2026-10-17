@@ -5,9 +5,9 @@ own client, fight waves of Bydos on a server that has the final say on everythin
 happens. The game is built on [Aegis2D](https://github.com/Aegis2D-Dev/aegis2d), our own
 C++26 engine, developed alongside it.
 
-> **Status:** early development. The server simulation (movement, play area, fire,
-> collisions, damage, score, lives) is written and tested; the network loop and the
-> client's rendering are next (see the [changelog](CHANGELOG.md)).
+> **Status:** playable. Up to four players join a server from their own client and fight
+> the waves of the first stage together (see [how to play](docs/play.md) and the
+> [changelog](CHANGELOG.md)).
 
 ## Binaries
 
@@ -19,6 +19,11 @@ C++26 engine, developed alongside it.
 Both accept `--version`, which prints the version and exits. The server listens on TCP port
 4242 and UDP port 4243, or on the ports given with `--tcp-port` and `--udp-port` (see
 [Getting started](docs/getting-started.md#run)).
+
+Each [release](https://github.com/Aegis2D-Dev/project-rtype/releases) has a package for
+Linux (`.tar.gz`) and Windows (`.zip`): unpack it and run the binaries from its `bin`
+folder, next to their assets and the engine libraries they need. `cpack` in a build folder
+makes the same package in `packages/`.
 
 ## Requirements
 
@@ -89,7 +94,9 @@ Builds go to `build/<preset>/`. If CMake does not find Jinja2, add
 game/           rtype_game: entities, collision layers, tuning, the server simulation
 protocol/       rtype_protocol: the messages, snapshots and events shared by server and client
 server/         r-type_server
-client/         r-type_client; client/network: its session with the server
+client/         r-type_client: window, screens, drawing; client/network: its session
+                with the server, its copy of the world, the connect form
+assets/         enemy waves (server), sprites and sounds (client)
 tests/          Catch2 unit tests of the game
 docs/           documentation site and Doxygen configuration
 tools/          format and lint scripts, pinned tool versions

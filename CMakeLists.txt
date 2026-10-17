@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(rtype VERSION 0.1.0 LANGUAGES CXX)
+project(rtype VERSION 0.2.0 LANGUAGES CXX)
 
 option(RTYPE_BUILD_CLIENT "Build r-type_client (needs SDL3 and OpenGL)" ON)
 option(RTYPE_BUILD_TESTS "Build the game unit tests" ${PROJECT_IS_TOP_LEVEL})
@@ -62,6 +62,29 @@ add_subdirectory(client/network)
 if(RTYPE_BUILD_CLIENT)
     add_subdirectory(client)
 endif()
+
+# What `cpack` puts in r-type-<version>-<system>-<cpu>.tar.gz (.zip on Windows): bin/ with the
+# executables and their assets, and the engine libraries they need (lib/, or bin/ on Windows).
+set(rtype_installed r-type_server)
+if(RTYPE_BUILD_CLIENT)
+    list(APPEND rtype_installed r-type_client)
+endif()
+aegis2d_install(TARGETS ${rtype_installed} ASSETS "${PROJECT_SOURCE_DIR}/assets")
+# The engine's master sets the run path to the libraries in its own folder's scope, which a
+# game fetched with FetchContent does not see: set it here, or the packaged binaries do not
+# find the engine libraries.
+if(APPLE)
+    set_target_properties(${rtype_installed} PROPERTIES
+        INSTALL_RPATH "@executable_path/../${CMAKE_INSTALL_LIBDIR}")
+elseif(NOT WIN32)
+    set_target_properties(${rtype_installed} PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
+if(PROJECT_IS_TOP_LEVEL)
+    aegis2d_package(NAME r-type VENDOR Aegis2D-Dev
+        DESCRIPTION "R-Type: the authoritative server and the client of a four-player shoot'em up")
+endif()
+
 if(RTYPE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

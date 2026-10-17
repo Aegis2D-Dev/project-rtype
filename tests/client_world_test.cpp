@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
+#include <vector>
 
 using aegis2d::ecs::Entity;
 using aegis2d::ecs::Transform;
@@ -27,8 +29,11 @@ using rtype::ClientWorld;
 using rtype::DestroyEvent;
 using rtype::EntityKind;
 using rtype::EntityRecord;
+using rtype::GameEvent;
 using rtype::Snapshot;
 using rtype::SpawnEvent;
+using rtype::Trail;
+using rtype::TrailPoint;
 using namespace std::chrono_literals;
 
 namespace {
@@ -212,4 +217,82 @@ TEST_CASE("the client's entities mirror the server's", "[client][world]") {
     const rtype::RemotePlayer me = world.players().at(0).value_or(rtype::RemotePlayer{});
     CHECK(me.name == "R9");
     CHECK(me.ship == truth.players.at(0).ship);
+}
+
+TEST_CASE("interpolate draws an entity between the positions of its trail", "[client][world]") {
+    Trail trail;
+    CHECK(rtype::interpolate(trail, 10.0).x == 0.0F);
+
+    trail.push(TrailPoint{.tick = 0, .position = {0.0F, 10.0F}});
+    trail.push(TrailPoint{.tick = 3, .position = {30.0F, 40.0F}});
+    trail.push(TrailPoint{.tick = 6, .position = {30.0F, 100.0F}});
+    trail.push(TrailPoint{.tick = 6, .position = {999.0F, 999.0F}}); // same tick: ignored
+    REQUIRE(trail.count == 3);
+
+    CHECK(rtype::interpolate(trail, -5.0).x == 0.0F); // before the oldest: the oldest
+    CHECK(std::abs(rtype::interpolate(trail, 1.5).x - 15.0F) < 0.001F);
+    CHECK(std::abs(rtype::interpolate(trail, 1.5).y - 25.0F) < 0.001F);
+    CHECK(std::abs(rtype::interpolate(trail, 4.0).y - 60.0F) < 0.001F);
+    CHECK(rtype::interpolate(trail, 50.0).y == 100.0F); // after the newest: the newest
+
+    for (std::uint32_t tick = 9; tick <= 18; tick += 3) {
+        trail.push(TrailPoint{.tick = tick, .position = {static_cast<float>(tick), 0.0F}});
+    }
+    CHECK(trail.count == Trail::capacity);
+    CHECK(trail.points.front().tick == 9);
+}
+
+TEST_CASE("remote entities move smoothly between snapshots sent at 20 Hz", "[client][world]") {
+    ClientWorld world;
+    const ClientWorld::Clock::time_point start{};
+    world.apply(GameEvent{spawn(0, 7, 600.0F)}, start);
+    CHECK_FALSE(world.render_tick(start).has_value());
+
+    // A snapshot every 3 ticks (20 Hz), the Bydos moving 5 pixels a tick, 30 ms on the way.
+    constexpr auto interval = std::chrono::milliseconds{50};
+    for (std::uint32_t index = 1; index <= 10; ++index) {
+        const std::uint32_t tick = index * 3;
+        world.apply(snapshot(tick, 7, 600.0F - (5.0F * static_cast<float>(tick))),
+                    start + 30ms + (interval * index));
+    }
+    const Entity bydos_entity = world.entity(7).value_or(Entity{});
+
+    // Every 16 ms frame, drawn 100 ms behind: the position goes down by the same step each
+    // frame instead of jumping 15 pixels every third frame.
+    const auto now = start + 30ms + (interval * 10);
+    float previous = 0.0F;
+    for (int frame = 0; frame < 6; ++frame) {
+        const auto at = now + std::chrono::milliseconds{16 * frame};
+        const std::optional<double> tick = world.render_tick(at);
+        REQUIRE(tick.has_value());
+        const float x = world.position_at(bydos_entity, tick.value_or(0.0)).x;
+        if (frame > 0) {
+            CHECK(std::abs((previous - x) - (16.0F * 0.3F)) < 0.01F); // 300 px/s
+        }
+        previous = x;
+    }
+
+    // A late datagram does not move the clock back.
+    const std::optional<double> before = world.server_tick(now);
+    world.apply(snapshot(33, 7, 435.0F), now + 400ms);
+    const std::optional<double> after = world.server_tick(now);
+    REQUIRE(before.has_value());
+    REQUIRE(after.has_value());
+    CHECK(std::abs(before.value_or(0.0) - after.value_or(0.0)) < 1.0);
+}
+
+TEST_CASE("the applied events are handed out once, the ignored ones are not", "[client][world]") {
+    ClientWorld world;
+    const ClientWorld::Clock::time_point now{};
+    world.apply(GameEvent{spawn(10, 7, 600.0F)}, now);
+    world.apply(GameEvent{destroy(20, 7)}, now);
+    world.apply(GameEvent{spawn(15, 7, 600.0F)}, now); // late Spawn after its Destroy
+    world.apply(GameEvent{rtype::PlayerJoinedEvent{.tick = 21, .player = 1, .name = "Lolo"}}, now);
+
+    const std::vector<GameEvent> events = world.take_events();
+    REQUIRE(events.size() == 3);
+    CHECK(std::holds_alternative<SpawnEvent>(events.at(0)));
+    CHECK(std::holds_alternative<DestroyEvent>(events.at(1)));
+    CHECK(std::holds_alternative<rtype::PlayerJoinedEvent>(events.at(2)));
+    CHECK(world.take_events().empty());
 }

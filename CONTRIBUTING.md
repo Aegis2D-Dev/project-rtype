@@ -69,6 +69,14 @@ To hunt memory errors and undefined behavior, configure with the engine's saniti
   clang-tidy on Linux, build + tests on Windows, and tests under ASan and UBSan; so must
   the *Documentation* workflow when the docs or the game's headers change.
 - **Merge**: with a merge commit, never squash, after one approval.
+- **Delivery**: a pull request from `develop` to `master`; merging it asks the engine's
+  *Epitech mirror* to publish the game and the engine's `master` to the Epitech repository.
+- **Release**: on the delivered commit of `master`, push an annotated, signed tag
+  (`git tag -s v0.2.0 -m "R-Type v0.2.0"`, then `git push origin v0.2.0`) whose version
+  matches `project()` in `CMakeLists.txt`. The *Release* workflow builds the packages of
+  the server and the client with the engine's `master`, for Linux (`.tar.gz`) and Windows
+  (`.zip`), and publishes them in a GitHub release named after the tag. A pull request that
+  changes the workflow or `CMakeLists.txt` builds the packages without publishing.
 
 ## Documentation
 

@@ -93,6 +93,15 @@ After each tick, the simulation thread hands the network thread two things:
   velocity and frame of every entity, and each player's lives and score. They are not
   resent: the next one replaces a lost one.
 
+On the client, one thread does everything, once a frame: it reads the keyboard and the
+gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
+`ClientSession` sends the held actions every tick and applies what arrives to
+`ClientWorld`, its copy of the world; the screen draws that copy where it was 100 ms ago,
+between two snapshots (`interpolate()`), so that 20 snapshots a second move the entities
+smoothly at any frame rate. The events applied are handed to the screen
+(`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
+notice when a player joins or leaves. The client never changes the world itself.
+
 ## The code
 
 ```
@@ -108,7 +117,17 @@ game/
   waves.cpp
 assets/waves/         enemy waves (JSON), copied next to r-type_server
 server/main.cpp       r-type_server
-client/main.cpp       r-type_client
+client/
+  network/            rtype_client_net, built and tested by every preset
+    client_session    login, UDP binding, inputs, loss of the server
+    client_world      the world from snapshots and events, interpolation
+    connect_form      the fields of the connect screen, checked
+    player_notices    "<name> left the game" and the like
+  client_app          r-type_client: window, screens, settings keys
+  game_view           the game screen: entities, explosions, HUD, notices
+  menu_screens        connect, joining and connection lost screens
+  game_art, game_sounds, preferences   sprites, sounds, player settings
+assets/sprites/, assets/sounds/   art and sounds, copied next to r-type_client
 tests/                Catch2 tests of rtype_game
 ```
 
