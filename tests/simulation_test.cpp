@@ -20,10 +20,11 @@ using rtype::Simulation;
 
 namespace {
 
-// Waits until the condition holds, for at most two seconds.
+// Waits until the condition holds, for at most ten seconds: a loaded CI runner can be
+// seconds late.
 template <typename Condition>
 bool wait_until(Condition condition) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
             return false;

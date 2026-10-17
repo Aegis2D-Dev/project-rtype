@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -75,10 +74,14 @@ std::string error_of(std::initializer_list<std::string_view> args) {
     return std::get<std::string>(result);
 }
 
-// Runs the context until the condition holds, for at most two seconds.
+// Longest wait of a test for something that takes milliseconds: generous, as a loaded CI runner
+// can be seconds late, and a test that fails must fail on its assertion, not on a timer.
+constexpr std::chrono::seconds test_deadline{10};
+
+// Runs the context until the condition holds, for at most test_deadline.
 template <typename Condition>
 bool run_until(NetworkContext& context, Condition condition) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    const auto deadline = std::chrono::steady_clock::now() + test_deadline;
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
             return false;
@@ -88,12 +91,12 @@ bool run_until(NetworkContext& context, Condition condition) {
     return true;
 }
 
-// Runs the context and the server's update() until the condition holds, for at most two
-// seconds, the server's clock being shifted by offset.
+// Runs the context and the server's update() until the condition holds, for at most
+// test_deadline, the server's clock being shifted by offset.
 template <typename Condition>
 bool pump(NetworkContext& context, ServerNetwork& server, Condition condition,
           ServerNetwork::Clock::duration offset = {}) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    const auto deadline = std::chrono::steady_clock::now() + test_deadline;
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
             return false;
@@ -109,11 +112,12 @@ struct Player {
     TcpConnection connection;
     std::vector<std::vector<std::byte>> received;
     bool closed = false;
+    // A member, not a local: the handler must not point into a constructor that failed.
+    std::optional<std::error_code> connected;
 
     Player(NetworkContext& context, ServerNetwork& server) : connection{context} {
-        std::optional<std::error_code> connected;
         connection.connect(Endpoint::loopback(server.tcp_endpoint().port()),
-                           [&](const std::error_code& error) { connected = error; });
+                           [this](const std::error_code& error) { connected = error; });
         REQUIRE(pump(context, server, [&] { return connected.has_value(); }));
         REQUIRE(connected == std::error_code{});
         connection.start(
@@ -1302,13 +1306,13 @@ TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
     const std::uint16_t port = server.udp_endpoint().port();
 
     // A second context and thread flood the server as fast as they can for a second, while
-    // the server's context handles them and the simulation ticks.
+    // the server's context handles them and the simulation ticks. A jthread, so that it stops
+    // and is joined even when an assertion throws.
     NetworkContext flood_context;
     UdpSocket flooder{flood_context, flooder_address};
-    std::atomic<bool> flooding{true};
-    std::thread flood{[&] {
+    std::jthread flood{[&](const std::stop_token& stop) {
         const std::vector<std::byte> junk(1200, std::byte{0xAB});
-        while (flooding.load()) {
+        while (!stop.stop_requested()) {
             for (int burst = 0; burst < 100; ++burst) {
                 flooder.send_to(Endpoint::loopback(port), junk);
             }
@@ -1323,7 +1327,7 @@ TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
     }
     const std::uint64_t ticks = game_server.simulation().ticks() - first;
     const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
-    flooding.store(false);
+    flood.request_stop();
     flood.join();
 
     const double rate = static_cast<double>(ticks) / elapsed.count();

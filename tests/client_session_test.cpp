@@ -36,13 +36,14 @@ using rtype::ServerNetwork;
 
 namespace {
 
-// Runs the context, the server and the clients until the condition holds, for at most five
-// seconds (Windows reports a refused connection after about two).
+// Runs the context, the server and the clients until the condition holds, for at most ten
+// seconds: Windows reports a refused connection after about two, and a loaded CI runner can
+// be seconds late.
 template <typename Condition>
 bool pump(NetworkContext& context, ServerNetwork* server,
           std::initializer_list<ClientSession*> clients, Condition condition,
           ClientSession::Clock::duration offset = {}) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
             return false;
