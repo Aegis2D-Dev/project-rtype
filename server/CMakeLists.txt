@@ -9,7 +9,8 @@ add_library(rtype_server STATIC
     server_options.cpp
     sessions.cpp
     simulation.cpp
-    snapshot.cpp)
+    snapshot.cpp
+    stop_signal.cpp)
 target_include_directories(rtype_server PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(Threads REQUIRED)
 target_link_libraries(rtype_server

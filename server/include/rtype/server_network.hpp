@@ -149,6 +149,17 @@ public:
     /// @param now Current time.
     void update(Clock::time_point now);
 
+    /// @brief Starts a clean stop of the server (RFC section 3.2).
+    /// @details Stops accepting connections, sends `Logout` with the reason `Shutdown` to
+    /// every logged-in player and ends its session, and closes the connections that did not
+    /// log in. Each connection closes once its `Logout` has left: keep running the context
+    /// and update() until idle().
+    void shutdown();
+
+    /// @brief Tells whether every connection is closed and forgotten, after shutdown().
+    /// @return `true` when no TCP connection is left.
+    [[nodiscard]] bool idle() const noexcept;
+
     /// @brief Local TCP address and port, with the port the system picked if 0 was asked.
     /// @return The bound endpoint.
     [[nodiscard]] aegis2d::net::Endpoint tcp_endpoint() const;

@@ -92,6 +92,10 @@ A port is a number from 0 to 65535; 0 lets the system pick a free one, printed a
 bad command line exits with status 2, a bad waves file or a port already in use with
 status 1.
 
+Ctrl+C (SIGINT) or SIGTERM stops the server cleanly: every player gets `Logout` with the
+reason `Shutdown`, each connection closes once it has left (1 second at most), then the
+server exits with status 0. A second Ctrl+C quits at once, with status 130.
+
 For now the server creates a game, loads its waves, lists its systems, then listens on both
 ports until stopped with Ctrl+C. Up to 4 players log in over TCP (`LoginRequest`, then
 `LoginAccepted` with a session token, or `LoginRejected`), then bind their UDP endpoint

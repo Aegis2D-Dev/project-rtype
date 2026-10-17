@@ -107,11 +107,10 @@ jobs:
         working-directory: ${{ env.SRC }}
         run: |
           "$BUILD_DIR"/r-type_server --version
-          # The server runs until stopped: it must still be listening after 2 seconds, when
-          # timeout stops it (status 124); any other status means it failed at start.
-          status=0
-          timeout 2 "$BUILD_DIR"/r-type_server --tcp-port 0 --udp-port 0 || status=$?
-          [ "$status" -eq 124 ]
+          # The server runs until stopped: after 2 seconds timeout sends it SIGINT, and it must
+          # stop cleanly with status 0. Failing at start, or not stopping within 5 more seconds
+          # (then killed), fails the step.
+          timeout --preserve-status -s INT -k 5 2 "$BUILD_DIR"/r-type_server --tcp-port 0 --udp-port 0
           "$BUILD_DIR"/r-type_client --version
       - name: Run clang-tidy
         working-directory: ${{ env.SRC }}

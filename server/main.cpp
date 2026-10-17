@@ -12,6 +12,7 @@
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
+#include <rtype/stop_signal.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -30,6 +31,8 @@ namespace {
 constexpr std::string_view version = RTYPE_VERSION;
 // How long the network runs between two checks of the login timeouts.
 constexpr std::chrono::milliseconds network_slice{50};
+// Longest wait for the Logout of each player to leave when the server stops.
+constexpr std::chrono::seconds shutdown_grace{1};
 } // namespace
 
 int main(int argc, char** argv) {
@@ -83,21 +86,41 @@ int main(int argc, char** argv) {
                   << network.udp_endpoint().port() << ", simulation at "
                   << server.simulation().rate() << " Hz\n"
                   << std::flush;
-        // Runs until the process is stopped (Ctrl+C); the clean shutdown is #121. The network
-        // handlers run in run_for(), the login timeouts in update() between two calls.
-        while (true) {
-            // The handling of each client is contained by ServerNetwork; anything else that
-            // throws (a task posted by the game) is logged, and the server goes on.
+        if (!rtype::install_stop_handlers()) {
+            aegis2d::core::log_warn(
+                "server: Ctrl+C will stop the server without telling the players");
+        }
+        // The network handlers run in run_for(), the timeouts in update() between two calls.
+        // The handling of each client is contained by ServerNetwork; anything else that throws
+        // (a task posted by the game) is logged, and the server goes on.
+        const auto run_network = [&context, &network] {
             try {
                 context.run_for(network_slice);
                 network.update(rtype::ServerNetwork::Clock::now());
             } catch (const std::exception& error) {
                 aegis2d::core::log_error("server: {}", error.what());
             }
+        };
+        while (!rtype::stop_requested()) {
+            run_network();
         }
+
+        // Ctrl+C or SIGTERM: every player gets Logout(Shutdown), then the connections close
+        // once it has left; a stuck peer does not hold the stop longer than shutdown_grace.
+        aegis2d::core::log_info("server: stopping (Ctrl+C again to quit at once)");
+        network.shutdown();
+        const auto deadline = rtype::ServerNetwork::Clock::now() + shutdown_grace;
+        while (!network.idle() && rtype::ServerNetwork::Clock::now() < deadline) {
+            run_network();
+        }
+        // Leaving the scope stops the simulation thread, then closes the sockets.
     } catch (const aegis2d::net::SocketError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
+    } catch (const std::exception& error) {
+        std::cerr << "r-type_server: " << error.what() << '\n';
+        return 1;
     }
+    std::cout << "r-type_server: stopped\n";
     return 0;
 }
