@@ -552,6 +552,30 @@ void ServerNetwork::end_with_logout(std::uint32_t token, LogoutReason logout, Le
     end_session(token, leave);
 }
 
+void ServerNetwork::shutdown() {
+    listener_.close();
+    // Collected first: ending a session changes the clients.
+    std::vector<std::uint32_t> players;
+    for (auto& [id, client] : clients_) {
+        if (client.closed || client.close_when_sent) {
+            continue;
+        }
+        if (client.token) {
+            players.push_back(*client.token);
+        } else {
+            close(client, {});
+        }
+    }
+    for (const std::uint32_t token : players) {
+        end_with_logout(token, LogoutReason::Shutdown, LeaveReason::Left);
+    }
+    core::log_info("TCP: told {} player(s) that the server stops", players.size());
+}
+
+bool ServerNetwork::idle() const noexcept {
+    return clients_.empty();
+}
+
 std::uint64_t ServerNetwork::errors() const noexcept {
     return errors_;
 }

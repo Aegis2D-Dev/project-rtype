@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#35](https://github.com/Aegis2D-Dev/project-rtype/pull/35) (opened 2026-10-16) |
 | Branch | `fix/server-client-errors` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-16 (`0d4f038`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#119 isolate per-client errors |
 
@@ -38,7 +38,7 @@ others), and the server goes on. Part of the game server epic (Aegis2D-Dev/aegis
 ## Commits
 - `483b2e8` feat(server): contained the errors of each client
 - `48a793d` feat(docs): documented error isolation and updated changelogs
-- feat(changelog): updated changelogs
+- `778e4f5` feat(changelog): updated changelogs
 
 ## Notes
 - The parsing itself never throws on bad input (checked reads, fuzzed in the engine, #104

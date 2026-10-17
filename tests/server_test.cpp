@@ -1178,3 +1178,50 @@ TEST_CASE("a flood of forged packets from players in the game crashes nothing",
     CHECK(!honest_player.closed);
     CHECK(server.errors() == 0);
 }
+
+TEST_CASE("a shutdown logs every player out, then the server goes idle", "[server][shutdown]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<unsigned> left;
+    server.on_players([](const rtype::Session& /*session*/) {},
+                      [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
+                          left.push_back(session.player);
+                      });
+    Player bound{context, server};
+    const std::uint32_t token = log_in(context, server, bound, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+    Player logged{context, server};
+    static_cast<void>(log_in(context, server, logged, "R10"));
+    Player anonymous{context, server};
+    const std::uint16_t port = server.tcp_endpoint().port();
+    CHECK(!server.idle());
+
+    server.shutdown();
+    REQUIRE(
+        pump(context, server, [&] { return bound.closed && logged.closed && anonymous.closed; }));
+    REQUIRE(pump(context, server, [&] { return server.idle(); }));
+
+    // The players got Logout(Shutdown) before the close; the others nothing.
+    for (const Player* const player : {&bound, &logged}) {
+        REQUIRE(player->received.size() == 2);
+        CHECK(player->received.back() == rtype::write_logout(LogoutReason::Shutdown));
+    }
+    CHECK(anonymous.received.empty());
+    CHECK(server.sessions().size() == 0);
+    CHECK(left == std::vector<unsigned>{0});
+
+    // No new connection is accepted. Windows retries a refused connection for about two
+    // seconds before reporting it, longer than pump() waits.
+    TcpConnection late{context};
+    std::optional<std::error_code> connected;
+    late.connect(Endpoint::loopback(port),
+                 [&](const std::error_code& error) { connected = error; });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    while (!connected.has_value() && std::chrono::steady_clock::now() < deadline) {
+        context.run_for(std::chrono::milliseconds{10});
+    }
+    REQUIRE(connected.has_value());
+    CHECK(connected != std::error_code{});
+}
