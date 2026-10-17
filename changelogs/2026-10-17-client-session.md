@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#38](https://github.com/Aegis2D-Dev/project-rtype/pull/38) (opened 2026-10-17) |
 | Branch | `feat/client-session` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`5b4f183`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#124 TCP login then UDP handshake |
 
@@ -37,6 +37,7 @@ networking epic (Aegis2D-Dev/aegis2d#122).
 
 ## Commits
 - `2dc2a80` feat(client): logged in over tcp and bound the udp endpoint
+- `76c4a0a` feat(changelog): updated changelogs
 
 ## Notes
 - `r-type_client` itself needs SDL3 and OpenGL: its `main` was compiled and linted against

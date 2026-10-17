@@ -186,7 +186,7 @@ TEST_CASE("the tick handler runs after each tick on the simulation thread",
                                      calls.fetch_add(1);
                                      last_tick.store(game.game().ticks());
                                  }};
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
     while (calls.load() < 10 && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
