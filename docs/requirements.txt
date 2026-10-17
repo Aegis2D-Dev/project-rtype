@@ -1,0 +1,5 @@
+# Documentation site: pip install -r docs/requirements.txt, then mkdocs serve.
+# Same versions as the engine. MkDocs stays on 1.x: MkDocs 2.0 drops the plugin and theme
+# system Material relies on.
+mkdocs==1.6.1
+mkdocs-material==9.7.7

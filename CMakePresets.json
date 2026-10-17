@@ -1,0 +1,123 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 30,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "common",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CPM_SOURCE_CACHE": "${sourceDir}/build/cpm",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "base",
+      "hidden": true,
+      "inherits": "common",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Server and client (Debug)",
+      "inherits": "base"
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Server and client (Release)",
+      "inherits": [
+        "release",
+        "base"
+      ]
+    },
+    {
+      "name": "server",
+      "displayName": "Server only (Debug)",
+      "inherits": "base",
+      "cacheVariables": {
+        "RTYPE_BUILD_CLIENT": false
+      }
+    },
+    {
+      "name": "server-release",
+      "displayName": "Server only (Release)",
+      "inherits": [
+        "release",
+        "server"
+      ]
+    },
+    {
+      "name": "macos",
+      "displayName": "macOS, OpenGL 4.1 (Debug)",
+      "inherits": "base",
+      "cacheVariables": {
+        "AEGIS2D_MACOS_GL41": true
+      }
+    },
+    {
+      "name": "windows",
+      "displayName": "Windows, Visual Studio + clang-cl (Debug and Release)",
+      "description": "Needs CMake 4 and the 'C++ Clang tools for Windows' Visual Studio component.",
+      "inherits": "common",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "toolset": {
+        "value": "ClangCL",
+        "strategy": "set"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "server",
+      "configurePreset": "server"
+    },
+    {
+      "name": "server-release",
+      "configurePreset": "server-release"
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos"
+    },
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows",
+      "configuration": "Release"
+    }
+  ]
+}

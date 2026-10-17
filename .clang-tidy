@@ -1,0 +1,18 @@
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -modernize-use-trailing-return-type,
+WarningsAsErrors: '*'
+# Only the game's own headers; the engine and the other dependencies live in build/_deps.
+HeaderFilterRegex: '.*/(game|server|client|tests)/.*'
+ExcludeHeaderFilterRegex: '.*/_deps/.*'
+FormatStyle: file
