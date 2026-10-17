@@ -20,6 +20,11 @@ Both accept `--version`, which prints the version and exits. The server listens 
 4242 and UDP port 4243, or on the ports given with `--tcp-port` and `--udp-port` (see
 [Getting started](docs/getting-started.md#run)).
 
+Each [release](https://github.com/Aegis2D-Dev/project-rtype/releases) has a package for
+Linux (`.tar.gz`) and Windows (`.zip`): unpack it and run the binaries from its `bin`
+folder, next to their assets and the engine libraries they need. `cpack` in a build folder
+makes the same package in `packages/`.
+
 ## Requirements
 
 Linux is the main platform (server and client); Windows is supported, macOS is used for

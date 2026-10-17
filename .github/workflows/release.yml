@@ -1,0 +1,175 @@
+name: Release
+
+# A tag v* (an annotated tag, on the commit delivered on master) builds the packages of the
+# server and the client for Linux and Windows and publishes them in a GitHub release. A pull
+# request touching this workflow or the build builds the packages without publishing, so a
+# release is known to build before its tag is pushed.
+#
+# The packages are built with the engine's master, the one delivered to Epitech, and not the
+# develop branch followed by development builds.
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - CMakeLists.txt
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    name: Package (Linux)
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes: ['/nix/store:/nix/store:ro', '/var/cache/ci-cpm:/cpm-cache']
+      env:
+        CPM_SOURCE_CACHE: /cpm-cache
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Give git access to the engine
+        env:
+          TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${TOKEN}@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      - name: Install build prerequisites
+        run: |
+          python -m pip install cmake==3.31.6
+          python -m pip install -r cmake/requirements.txt
+      # A release build from scratch: no tree kept from another job.
+      - name: Configure and build (Release)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DRTYPE_ENGINE_BRANCH=master -DRTYPE_BUILD_TESTS=OFF \
+            -DPython_EXECUTABLE="$(command -v python)"
+          cmake --build build --parallel
+      - name: Package
+        working-directory: build
+        run: cpack --config CPackConfig.cmake
+      # The packaged server must start from another folder, with only what the package holds.
+      - name: Run the packaged server
+        run: |
+          mkdir unpacked
+          tar xzf build/packages/*.tar.gz -C unpacked
+          cd "$RUNNER_TEMP"
+          bin=$(echo "$GITHUB_WORKSPACE"/unpacked/*/bin)
+          "$bin"/r-type_server --version
+          "$bin"/r-type_client --version
+          timeout --preserve-status -s INT -k 5 2 "$bin"/r-type_server --tcp-port 0 --udp-port 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-linux
+          path: build/packages/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: Package (Windows)
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 50
+    env:
+      CPM_SOURCE_CACHE: C:\cpm-cache
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Give git access to the engine
+        env:
+          TOKEN: ${{ secrets.EPITECH_MIRROR_TOKEN }}
+        run: |
+          if (-not $env:TOKEN) {
+            Write-Output "::error::Set EPITECH_MIRROR_TOKEN with read access to Aegis2D-Dev/aegis2d."
+            exit 1
+          }
+          # The runner is persistent: keep the token in this job's temp directory, not in the user's gitconfig.
+          $config = Join-Path $env:RUNNER_TEMP gitconfig
+          "GIT_CONFIG_GLOBAL=$config" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $env:GIT_CONFIG_GLOBAL = $config
+          git config --global url."https://x-access-token:$($env:TOKEN)@github.com/Aegis2D-Dev/".insteadOf "https://github.com/Aegis2D-Dev/"
+      - name: Install build prerequisites
+        run: python -m pip install cmake==4.4.3 -r cmake/requirements.txt
+      # In the job's own folder, emptied first: a release is never built on a kept tree.
+      - name: Configure and build (Release)
+        run: |
+          $build = "$env:RUNNER_TEMP\release-build"
+          if (Test-Path $build) { Remove-Item -Recurse -Force $build }
+          "BUILD_DIR=$build" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          cmake -S . -B $build -A x64 -T ClangCL -DRTYPE_ENGINE_BRANCH=master -DRTYPE_BUILD_TESTS=OFF -DPython_EXECUTABLE="$((Get-Command python).Source)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build $build --config Release --parallel
+      - name: Package
+        working-directory: ${{ env.BUILD_DIR }}
+        run: cpack -C Release --config CPackConfig.cmake
+      - name: Run the packaged binaries
+        run: |
+          $unpacked = "$env:RUNNER_TEMP\release-unpacked"
+          if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
+          Expand-Archive -Path (Get-Item "$env:BUILD_DIR\packages\*.zip").FullName -DestinationPath $unpacked
+          $bin = (Get-Item "$unpacked\*\bin").FullName
+          Set-Location $env:RUNNER_TEMP
+          & "$bin\r-type_server.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$bin\r-type_client.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-windows
+          path: ${{ env.BUILD_DIR }}/packages/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: [self-hosted, nixos]
+    container:
+      image: ghcr.io/aegis2d-dev/aegis2d-ci:ubuntu-24.04
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      volumes: ['/nix/store:/nix/store:ro']
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: packages
+      - name: Create the release with the packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<EOF
+          R-Type ${TAG}, delivered on \`master\`.
+
+          The packages hold \`r-type_server\` and \`r-type_client\`, their assets and the engine
+          libraries they need: unpack one, start \`bin/r-type_server\`, then \`bin/r-type_client\`
+          on each player's computer (\`--help\` lists the options). The changes are listed in
+          the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md).
+          EOF
+          gh release create "$TAG" packages/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "R-Type $TAG" --notes-file notes.md
