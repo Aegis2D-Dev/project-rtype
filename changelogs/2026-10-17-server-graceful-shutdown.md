@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#36](https://github.com/Aegis2D-Dev/project-rtype/pull/36) (opened 2026-10-17) |
 | Branch | `feat/server-graceful-shutdown` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`94150b0`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#121 graceful shutdown on SIGINT and SIGTERM |
 
@@ -29,9 +29,13 @@ quits at once. Part of the game server epic (Aegis2D-Dev/aegis2d#107).
   must exit with status 0 within 5 more seconds.
 - *Getting started*: how to stop the server.
 - Changelog: #35 (`0d4f038`) marked as merged, with its commits.
+- After the first CI run: the shutdown test waits up to 5 seconds for a refused
+  connection, as Windows retries one for about two seconds before reporting it.
 
 ## Commits
 - `f17b3c2` feat(server): stopped cleanly on sigint and sigterm
+- `4b5a41b` feat(changelog): updated changelogs
+- `a3e8038` feat(tests): waited longer for refused connections on windows
 
 ## Notes
 - Verified: 107 tests, under ASan and UBSan, the server tests and a SIGINT stop under
