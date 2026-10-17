@@ -190,3 +190,19 @@ TEST_CASE("the first Connect binds its endpoint to the session", "[server][sessi
     const Session third = accepted(table, "R11");
     CHECK(table.bind(third.token, home) == BindResult::Bound);
 }
+
+TEST_CASE("the client reads the answers to its login", "[client][login]") {
+    const LoginAccepted accepted{.session = 0xDEADBEEF, .player = 2, .udp_port = 4242};
+    CHECK(rtype::read_login_accepted(rtype::write_login_accepted(accepted)) ==
+          std::optional{accepted});
+    CHECK(
+        !rtype::read_login_accepted(bytes({0x02, 0xEF, 0xBE, 0xAD, 0xDE, 0x02, 0x92})).has_value());
+    CHECK(!rtype::read_login_accepted(rtype::write_login_rejected(LoginRejection::ServerFull))
+               .has_value());
+
+    CHECK(rtype::read_login_rejected(rtype::write_login_rejected(LoginRejection::NameTaken)) ==
+          std::uint8_t{4});
+    CHECK(rtype::read_login_rejected(bytes({0x03, 0x09})) == std::uint8_t{9});
+    CHECK(!rtype::read_login_rejected(bytes({0x03})).has_value());
+    CHECK(!rtype::read_login_rejected(bytes({0x03, 0x01, 0x00})).has_value());
+}

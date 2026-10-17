@@ -105,6 +105,19 @@ struct LoginAccepted {
 /// `LoginRequest`: another kind, a field past the end, or bytes after the name.
 [[nodiscard]] std::optional<LoginRequest> read_login_request(std::span<const std::byte> message);
 
+/// @brief Reads a `LoginAccepted`.
+/// @param message Message received, length prefix excluded.
+/// @return Its fields, or `std::nullopt` if the message is not a well-formed `LoginAccepted`.
+[[nodiscard]] std::optional<LoginAccepted>
+read_login_accepted(std::span<const std::byte> message) noexcept;
+
+/// @brief Reads a `LoginRejected`.
+/// @param message Message received, length prefix excluded.
+/// @return The reason as sent (unknown values included), or `std::nullopt` if the message
+/// is not a well-formed `LoginRejected`.
+[[nodiscard]] std::optional<std::uint8_t>
+read_login_rejected(std::span<const std::byte> message) noexcept;
+
 /// @brief Reads a `Logout`.
 /// @param message Message received, length prefix excluded.
 /// @return The reason as sent (unknown values included), or `std::nullopt` if the message
