@@ -1212,11 +1212,16 @@ TEST_CASE("a shutdown logs every player out, then the server goes idle", "[serve
     CHECK(server.sessions().size() == 0);
     CHECK(left == std::vector<unsigned>{0});
 
-    // No new connection is accepted.
+    // No new connection is accepted. Windows retries a refused connection for about two
+    // seconds before reporting it, longer than pump() waits.
     TcpConnection late{context};
     std::optional<std::error_code> connected;
     late.connect(Endpoint::loopback(port),
                  [&](const std::error_code& error) { connected = error; });
-    REQUIRE(pump(context, server, [&] { return connected.has_value(); }));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    while (!connected.has_value() && std::chrono::steady_clock::now() < deadline) {
+        context.run_for(std::chrono::milliseconds{10});
+    }
+    REQUIRE(connected.has_value());
     CHECK(connected != std::error_code{});
 }
