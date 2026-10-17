@@ -1,5 +1,9 @@
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/waves.hpp>
+#include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
+#include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
@@ -7,6 +11,9 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/entities.hpp>
+#include <rtype/game_instance.hpp>
+#include <rtype/game_server.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
@@ -23,8 +30,12 @@
 #include <variant>
 #include <vector>
 
+using aegis2d::ecs::Action;
+using aegis2d::ecs::PlayerInput;
 using aegis2d::net::Endpoint;
 using aegis2d::net::NetworkContext;
+using aegis2d::net::PacketHeader;
+using aegis2d::net::PacketType;
 using aegis2d::net::TcpConnection;
 using aegis2d::net::TcpListener;
 using aegis2d::net::UdpSocket;
@@ -247,4 +258,154 @@ TEST_CASE("the client reads its server and name from the command line", "[client
           "--port: \"0\" is not a port (1 to 65535)");
     CHECK(std::get<std::string>(parse_client({"--name"})) == "--name needs a value");
     CHECK(std::get<std::string>(parse_client({"--server"})) == "unknown argument \"--server\"");
+}
+
+namespace {
+
+// Runs the context, the server and the client for a duration of real time.
+void run_for(NetworkContext& context, ServerNetwork& server, ClientSession& client,
+             std::chrono::milliseconds duration) {
+    const auto end = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < end) {
+        context.run_for(std::chrono::milliseconds{1});
+        const auto now = ClientSession::Clock::now();
+        server.update(now);
+        client.update(now);
+    }
+}
+
+PlayerInput holding(Action action) {
+    PlayerInput input;
+    input.set(action, true);
+    return input;
+}
+
+} // namespace
+
+TEST_CASE("the server receives the held actions 60 times per second", "[client][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::uint8_t> inputs;
+    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input) {
+        inputs.push_back(input.held);
+    });
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    CHECK(client.inputs_sent() <= 1);
+
+    // Bits 5 to 7 are not actions: the client clears them, so the server takes the input.
+    PlayerInput right = holding(Action::Right);
+    right.held |= 0xE0U;
+    client.set_input(right);
+    // The schedule starts when the game state is reached: let it settle before measuring.
+    run_for(context, server, client, std::chrono::milliseconds{100});
+    const std::size_t before = inputs.size();
+    const std::uint64_t sent_before = client.inputs_sent();
+    const auto start = std::chrono::steady_clock::now();
+    run_for(context, server, client, std::chrono::milliseconds{1000});
+    const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
+    const std::uint64_t sent = client.inputs_sent() - sent_before;
+    // A little more time for the last ones to arrive.
+    run_for(context, server, client, std::chrono::milliseconds{50});
+
+    const double rate = static_cast<double>(sent) / elapsed.count();
+    CAPTURE(rate, inputs.size() - before);
+    CHECK(rate > 50.0);
+    CHECK(rate < 70.0);
+    // Every Input sent was more recent than the last: the server passed each one on.
+    CHECK(inputs.size() == client.inputs_sent());
+    REQUIRE(inputs.size() > before);
+    CHECK(inputs.back() == 0x08);
+    CHECK(server.dropped_datagrams() == 0);
+}
+
+TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
+    // A server that numbers its datagrams: Accept is 0, then two Snapshot datagrams.
+    NetworkContext context;
+    TcpListener listener{context, 0};
+    UdpSocket server_udp{context, 0};
+    std::vector<std::unique_ptr<TcpConnection>> connections;
+    std::vector<PacketHeader> received;
+    std::vector<std::uint8_t> actions;
+    constexpr std::uint32_t token = 77;
+    const auto send_header = [&](const Endpoint& to, PacketType type, std::uint16_t sequence,
+                                 std::uint16_t ack) {
+        aegis2d::net::BinaryWriter writer;
+        aegis2d::net::write_header(
+            writer,
+            PacketHeader{
+                .type = type, .sequence = sequence, .ack = ack, .ack_bits = 0, .session = token});
+        server_udp.send_to(to, writer.data());
+    };
+    server_udp.start_receiving([&](const Endpoint& from, std::span<const std::byte> bytes) {
+        aegis2d::net::BinaryReader reader{bytes};
+        const auto read = aegis2d::net::read_header(reader);
+        const auto* const header = std::get_if<PacketHeader>(&read);
+        if (header == nullptr) {
+            return;
+        }
+        received.push_back(*header);
+        if (header->type == PacketType::Connect) {
+            send_header(from, PacketType::Accept, 0, header->sequence);
+            send_header(from, PacketType::Snapshot, 1, header->sequence);
+            send_header(from, PacketType::Snapshot, 2, header->sequence);
+        } else if (header->type == PacketType::Input) {
+            actions.push_back(std::to_integer<std::uint8_t>(bytes.back()));
+        }
+    });
+    listener.start_accepting([&](TcpConnection connection) {
+        connections.push_back(std::make_unique<TcpConnection>(std::move(connection)));
+        TcpConnection& accepted = *connections.back();
+        accepted.start([&](std::span<const std::byte> message) {
+            if (rtype::read_login_request(message)) {
+                accepted.send(rtype::write_login_accepted(
+                    rtype::LoginAccepted{.session = token,
+                                         .player = 0,
+                                         .udp_port = server_udp.local_endpoint().port()}));
+            }
+        });
+    });
+
+    ClientSession client{context, ClientSettings{.host = "127.0.0.1",
+                                                 .tcp_port = listener.local_endpoint().port(),
+                                                 .name = "R9"}};
+    client.start();
+    client.set_input(holding(Action::Fire));
+    REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 3; }));
+
+    // The client's sequences follow each other from its first Connect, and its last Input
+    // acknowledges the Snapshot of sequence 2 and, in its bits, 1 and the Accept.
+    const PacketHeader& last = received.back();
+    CHECK(last.type == PacketType::Input);
+    CHECK(last.session == token);
+    CHECK(last.ack == 2);
+    CHECK(last.ack_bits == 0b11U);
+    for (std::size_t index = 1; index < received.size(); ++index) {
+        CHECK(received.at(index).sequence == received.at(index - 1).sequence + 1);
+    }
+    CHECK(actions.back() == 0x10);
+}
+
+TEST_CASE("a client holding right moves its ship in the server's game", "[client][input]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    client.set_input(holding(Action::Right));
+    run_for(context, server, client, std::chrono::milliseconds{500});
+
+    // Stopped, the game is the test's to read.
+    game_server.simulation().stop();
+    const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
+    REQUIRE(ship.has_value());
+    const auto& transform = instance.game().registry().get<aegis2d::ecs::Transform>(
+        ship.value_or(aegis2d::ecs::Entity{}));
+    CHECK(transform.position.x > rtype::player_spawn(0).x + 100.0F);
+    CHECK(transform.position.y == rtype::player_spawn(0).y);
 }

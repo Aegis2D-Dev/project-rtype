@@ -1,6 +1,8 @@
 /// @file
 /// @brief The client's session with the server: TCP login, then UDP binding (RFC section 3).
 #pragma once
+#include <aegis2d/core/clock.hpp>
+#include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -9,6 +11,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/login.hpp>
+#include <rtype/tuning.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -80,6 +83,9 @@ public:
     static constexpr std::chrono::seconds bind_timeout{5};
     /// @brief Longest wait for the TCP connection and `LoginAccepted`.
     static constexpr std::chrono::seconds login_timeout{5};
+    /// @brief Time between two `Input` datagrams: one per server tick (RFC section 4.2).
+    static constexpr aegis2d::core::Duration input_interval =
+        aegis2d::core::step_from_rate(tuning::tick_rate);
 
     /// @brief Creates a session, not started.
     /// @param context Context that runs the sockets; it must outlive this object.
@@ -98,9 +104,18 @@ public:
     /// name breaks the rules of `LoginRequest`.
     void start();
 
-    /// @brief Runs the timers: `Connect` resent, and the login and binding timeouts.
+    /// @brief Runs the timers: `Connect` resent, the login and binding timeouts, and, in game,
+    /// one `Input` every input_interval.
+    /// @details Inputs keep their rate whatever the calls: one is sent when its time has come,
+    /// and after a stall the next one is due an interval later, without a burst.
     /// @param now Current time.
     void update(Clock::time_point now);
+
+    /// @brief Sets the actions the player holds, sent in every `Input` until the next call.
+    /// @details The client sends what is held, not what changed, so a lost `Input` is
+    /// replaced by the next one (RFC section 4.2). Bits 5 to 7 are cleared.
+    /// @param input Held actions.
+    void set_input(aegis2d::ecs::PlayerInput input) noexcept;
 
     /// @brief Leaves the server: sends `Logout` and closes once it has left.
     /// @details The state becomes Closed at once; keep running the context a little for the
@@ -127,12 +142,17 @@ public:
     /// @return The count since start().
     [[nodiscard]] std::uint64_t connects_sent() const noexcept;
 
+    /// @brief Number of `Input` datagrams sent.
+    /// @return The count since the game state was reached.
+    [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
+
 private:
     void fail(std::string reason);
     void on_connected();
     void on_message(std::span<const std::byte> message);
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void send_connect(Clock::time_point now);
+    void send_input(Clock::time_point now);
 
     aegis2d::net::NetworkContext& context_;
     ClientSettings settings_;
@@ -148,6 +168,9 @@ private:
     Clock::time_point accepted_;
     Clock::time_point last_connect_;
     std::uint64_t connects_sent_ = 0;
+    std::uint8_t held_ = 0;
+    Clock::time_point next_input_;
+    std::uint64_t inputs_sent_ = 0;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;
