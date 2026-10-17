@@ -249,7 +249,7 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
         }
         last_heard_ = Clock::now();
         if (channel_.receive(header)) {
-            world_.apply(snapshot.value_or(Snapshot{}));
+            world_.apply(snapshot.value_or(Snapshot{}), last_heard_);
         }
         return;
     }

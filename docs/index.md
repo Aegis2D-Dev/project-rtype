@@ -6,9 +6,8 @@ happens. The game is built on [Aegis2D](https://aegis2d-docs.pages.dev/), our ow
 engine, developed alongside it.
 
 !!! note "Status"
-    Early development: the server simulation (movement, play area, fire, collisions,
-    damage, score, lives) is written and tested; the network loop and the client's
-    rendering are next. See the
+    Playable: up to four players join a server from their own client and fight the waves
+    of the first stage together. See [Play](play.md) and the
     [changelog](https://github.com/Aegis2D-Dev/project-rtype/blob/develop/CHANGELOG.md).
 
 ## Binaries
@@ -22,6 +21,7 @@ engine, developed alongside it.
 
 - [Getting started](getting-started.md): requirements, access to the engine, build, tests
   and presets.
+- [Play](play.md): start a game, the controls, the screens, and the settings.
 - [Architecture](architecture.md): how the game sits on the engine, what runs on the
   server and on the client, and how the code is organized.
 - [Gameplay](gameplay.md): the simulation tick by tick, who can hit whom, the entities
