@@ -3,7 +3,7 @@
 PROJECT_NAME           = "R-Type"
 PROJECT_BRIEF          = "Networked shoot'em up built on Aegis2D"
 OUTPUT_DIRECTORY       = build/doxygen
-INPUT                  = game/include server/include docs/api-mainpage.md
+INPUT                  = game/include protocol/include server/include client/network/include docs/api-mainpage.md
 RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp *.md
 USE_MDFILE_AS_MAINPAGE = docs/api-mainpage.md

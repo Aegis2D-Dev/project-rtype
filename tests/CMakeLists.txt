@@ -6,6 +6,7 @@ list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
 include(Catch)
 
 add_executable(rtype_tests
+    client_session_test.cpp
     entities_test.cpp
     events_test.cpp
     game_instance_test.cpp
@@ -17,7 +18,7 @@ add_executable(rtype_tests
     snapshot_test.cpp
     stop_signal_test.cpp
     waves_test.cpp)
-target_link_libraries(rtype_tests PRIVATE rtype_game rtype_server Catch2::Catch2WithMain
+target_link_libraries(rtype_tests PRIVATE rtype_game rtype_server rtype_client_net Catch2::Catch2WithMain
     aegis2d::warnings)
 # The tests read the waves files of the repository, not the copies next to r-type_server.
 target_compile_definitions(rtype_tests PRIVATE RTYPE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")

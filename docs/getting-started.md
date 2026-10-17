@@ -123,8 +123,18 @@ malformed payload, are dropped. Every
 bound player receives a snapshot of the world 20 times per second and, resent until they
 are acknowledged, the events of the game: each entity that appears (a shot is the `Spawn`
 of its missile) or disappears, and each life lost; a player who joins first gets every
-entity already there. The client lists the
-engine modules it is built with; the window comes with the next tickets.
+entity already there.
+
+The client joins a server with `--host <address>` (a numeric IPv4 or IPv6 address, or
+`localhost`; `127.0.0.1` by default), `--port <tcp port>` (`4242`) and `--name <player
+name>` (`player`). It logs in over TCP, binds its UDP endpoint, and tells why when it
+cannot: the server is full, the name is taken, the server does not answer, or its UDP port
+is blocked (no `Accept` within 5 seconds). For now it leaves right after reaching the game;
+the window and the game loop come with the next tickets.
+
+```bash
+./build/linux-debug/r-type_client --host 127.0.0.1 --port 4242 --name R9
+```
 
 ## Documentation
 

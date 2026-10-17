@@ -118,6 +118,29 @@ std::optional<LoginRequest> read_login_request(std::span<const std::byte> messag
     return LoginRequest{.version = *version, .name = std::move(*name)};
 }
 
+std::optional<LoginAccepted> read_login_accepted(std::span<const std::byte> message) noexcept {
+    net::BinaryReader reader{message};
+    const std::optional<std::uint8_t> kind = reader.read_u8();
+    const std::optional<std::uint32_t> session = reader.read_u32();
+    const std::optional<std::uint8_t> player = reader.read_u8();
+    const std::optional<std::uint16_t> udp_port = reader.read_u16();
+    if (kind != static_cast<std::uint8_t>(TcpKind::LoginAccepted) || !session || !player ||
+        !udp_port || !reader.at_end()) {
+        return std::nullopt;
+    }
+    return LoginAccepted{.session = *session, .player = *player, .udp_port = *udp_port};
+}
+
+std::optional<std::uint8_t> read_login_rejected(std::span<const std::byte> message) noexcept {
+    net::BinaryReader reader{message};
+    const std::optional<std::uint8_t> kind = reader.read_u8();
+    const std::optional<std::uint8_t> reason = reader.read_u8();
+    if (kind != static_cast<std::uint8_t>(TcpKind::LoginRejected) || !reason || !reader.at_end()) {
+        return std::nullopt;
+    }
+    return reason;
+}
+
 std::optional<std::uint8_t> read_logout(std::span<const std::byte> message) noexcept {
     net::BinaryReader reader{message};
     const std::optional<std::uint8_t> kind = reader.read_u8();
