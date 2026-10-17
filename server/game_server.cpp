@@ -9,6 +9,7 @@
 #include <rtype/simulation.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/tuning.hpp>
+#include <rtype/world_snapshot.hpp>
 
 #include <cstddef>
 #include <cstdint>

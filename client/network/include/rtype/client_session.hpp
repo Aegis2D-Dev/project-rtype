@@ -3,6 +3,7 @@
 #pragma once
 #include <aegis2d/core/clock.hpp>
 #include <aegis2d/ecs/components.hpp>
+#include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -10,6 +11,7 @@
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/client_world.hpp>
 #include <rtype/login.hpp>
 #include <rtype/tuning.hpp>
 
@@ -142,6 +144,15 @@ public:
     /// @return The count since start().
     [[nodiscard]] std::uint64_t connects_sent() const noexcept;
 
+    /// @brief The world as the server describes it, once in game.
+    /// @details Updated with each `Snapshot` and `Event` datagram received (RFC sections 4.3
+    /// to 4.5): see ClientWorld.
+    /// @return The world.
+    [[nodiscard]] ClientWorld& world() noexcept;
+
+    /// @copydoc world()
+    [[nodiscard]] const ClientWorld& world() const noexcept;
+
     /// @brief Number of `Input` datagrams sent.
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
@@ -153,6 +164,8 @@ private:
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
+    void on_game_datagram(const aegis2d::net::PacketHeader& header,
+                          aegis2d::net::BinaryReader& payload);
 
     aegis2d::net::NetworkContext& context_;
     ClientSettings settings_;
@@ -171,6 +184,7 @@ private:
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    ClientWorld world_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;

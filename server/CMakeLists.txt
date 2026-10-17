@@ -1,7 +1,7 @@
 # Server code shared by r-type_server and the tests: command line, sessions, sockets and
 # the game instance.
 add_library(rtype_server STATIC
-    events.cpp
+    event_tracker.cpp
     game_instance.cpp
     game_server.cpp
     rate_limit.cpp
@@ -9,8 +9,8 @@ add_library(rtype_server STATIC
     server_options.cpp
     sessions.cpp
     simulation.cpp
-    snapshot.cpp
-    stop_signal.cpp)
+    stop_signal.cpp
+    world_snapshot.cpp)
 target_include_directories(rtype_server PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(Threads REQUIRED)
 target_link_libraries(rtype_server

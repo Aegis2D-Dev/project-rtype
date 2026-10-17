@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/entities.hpp>
+#include <rtype/event_tracker.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/snapshot.hpp>

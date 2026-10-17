@@ -4,6 +4,7 @@
 #pragma once
 #include <aegis2d/net/context.hpp>
 
+#include <rtype/event_tracker.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/server_network.hpp>
