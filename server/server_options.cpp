@@ -12,24 +12,27 @@ namespace rtype {
 
 namespace {
 
-// Decimal digits only: no sign, space or base prefix, and at most 65535.
-std::optional<std::uint16_t> parse_port(std::string_view text) noexcept {
-    constexpr std::uint32_t max_port = 65535;
-    if (text.empty() || text.size() > 5) {
+// Decimal digits only (no sign, space or base prefix), from min to max.
+std::optional<std::uint32_t> parse_number(std::string_view text, std::uint32_t min,
+                                          std::uint32_t max) noexcept {
+    if (text.empty() || text.size() > 6) {
         return std::nullopt;
     }
-    std::uint32_t port = 0;
+    std::uint32_t number = 0;
     for (const char digit : text) {
         if (digit < '0' || digit > '9') {
             return std::nullopt;
         }
-        port = (port * 10U) + static_cast<std::uint32_t>(digit - '0');
+        number = (number * 10U) + static_cast<std::uint32_t>(digit - '0');
     }
-    if (port > max_port) {
+    if (number < min || number > max) {
         return std::nullopt;
     }
-    return static_cast<std::uint16_t>(port);
+    return number;
 }
+
+constexpr std::uint32_t max_port = 65535;
+constexpr std::uint32_t max_packet_rate = 100000;
 
 } // namespace
 
@@ -46,7 +49,8 @@ parse_server_options(std::span<const std::string_view> args) {
             options.command = ServerCommand::Version;
             return options;
         }
-        if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves") {
+        if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves" &&
+            arg != "--max-packet-rate") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -57,11 +61,21 @@ parse_server_options(std::span<const std::string_view> args) {
             options.waves = value;
             continue;
         }
-        const std::optional<std::uint16_t> port = parse_port(value);
+        if (arg == "--max-packet-rate") {
+            const std::optional<std::uint32_t> rate = parse_number(value, 1, max_packet_rate);
+            if (!rate) {
+                return std::format("{}: \"{}\" is not a rate (1 to {})", arg, value,
+                                   max_packet_rate);
+            }
+            options.packet_rate = *rate;
+            continue;
+        }
+        const std::optional<std::uint32_t> port = parse_number(value, 0, max_port);
         if (!port) {
             return std::format("{}: \"{}\" is not a port (0 to 65535)", arg, value);
         }
-        (arg == "--tcp-port" ? options.tcp_port : options.udp_port) = *port;
+        (arg == "--tcp-port" ? options.tcp_port : options.udp_port) =
+            static_cast<std::uint16_t>(*port);
     }
     return options;
 }

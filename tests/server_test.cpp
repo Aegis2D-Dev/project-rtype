@@ -14,6 +14,7 @@
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rate_limit.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
@@ -21,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -32,6 +34,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -184,6 +187,18 @@ TEST_CASE("ports and waves file are read in any order", "[server][options]") {
 
     CHECK(parse({"--tcp-port", "0"}).tcp_port == 0);
     CHECK(parse({"--tcp-port", "1", "--tcp-port", "2"}).tcp_port == 2);
+}
+
+TEST_CASE("the packet rate limit is read from the command line", "[server][options]") {
+    CHECK(parse({}).packet_rate == rtype::default_packet_rate);
+    CHECK(parse({"--max-packet-rate", "1000"}).packet_rate == 1000);
+    CHECK(parse({"--max-packet-rate", "100000"}).packet_rate == 100000);
+    for (const std::string_view rate : {"0", "100001", "-5", "fast", ""}) {
+        CAPTURE(rate);
+        CHECK(error_of({"--max-packet-rate", rate}) ==
+              "--max-packet-rate: \"" + std::string{rate} + "\" is not a rate (1 to 100000)");
+    }
+    CHECK(error_of({"--max-packet-rate"}) == "--max-packet-rate needs a value");
 }
 
 TEST_CASE("help and version stop the reading", "[server][options]") {
@@ -1224,4 +1239,95 @@ TEST_CASE("a shutdown logs every player out, then the server goes idle", "[serve
     }
     REQUIRE(connected.has_value());
     CHECK(connected != std::error_code{});
+}
+
+namespace {
+
+// A loopback address other than 127.0.0.1, for a flooder that is not the players.
+const Endpoint flooder_address = Endpoint::v4({127, 0, 0, 2}, 0);
+
+} // namespace
+
+TEST_CASE("a flooding address is cut off, and the players play on", "[server][rate]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    server.set_limits(rtype::RateLimits{.datagrams_per_second = 50, .connections_per_address = 8});
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    UdpSocket flooder{context, flooder_address};
+    const std::vector<std::byte> junk(32, std::byte{0xAB});
+    for (int sent = 0; sent < 200; ++sent) {
+        flooder.send_to(Endpoint::loopback(server.udp_endpoint().port()), junk);
+    }
+    udp.send(server, datagram(PacketType::Heartbeat, token, 1));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
+    REQUIRE(pump(context, server, [&] { return server.datagrams() >= 202; }));
+
+    // At most 50 of the 200 were read; the player's heartbeat went through.
+    CHECK(server.rate_limited() >= 150);
+    CHECK(server.dropped_datagrams() == 200);
+    CHECK(!player.closed);
+    CHECK(server.sessions().size() == 1);
+}
+
+TEST_CASE("an address cannot open more connections than its share", "[server][rate]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    server.set_limits(rtype::RateLimits{.datagrams_per_second = 300, .connections_per_address = 2});
+    Player first{context, server};
+    Player second{context, server};
+    Player third{context, server};
+    REQUIRE(pump(context, server, [&] { return third.closed; }));
+    CHECK(server.refused_connections() == 1);
+    CHECK(!first.closed);
+    CHECK(!second.closed);
+
+    // Once one closes, a new connection gets its place.
+    first.connection.close();
+    REQUIRE(pump(context, server, [&] { return server.open_connections() == 1; }));
+    Player fourth{context, server};
+    static_cast<void>(log_in(context, server, fourth, "R9"));
+    CHECK(server.refused_connections() == 1);
+}
+
+TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    const std::uint16_t port = server.udp_endpoint().port();
+
+    // A second context and thread flood the server as fast as they can for a second, while
+    // the server's context handles them and the simulation ticks.
+    NetworkContext flood_context;
+    UdpSocket flooder{flood_context, flooder_address};
+    std::atomic<bool> flooding{true};
+    std::thread flood{[&] {
+        const std::vector<std::byte> junk(1200, std::byte{0xAB});
+        while (flooding.load()) {
+            for (int burst = 0; burst < 100; ++burst) {
+                flooder.send_to(Endpoint::loopback(port), junk);
+            }
+            flood_context.poll();
+        }
+    }};
+    const std::uint64_t first = game_server.simulation().ticks();
+    const auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds{1}) {
+        context.run_for(std::chrono::milliseconds{10});
+        server.update(ServerNetwork::Clock::now());
+    }
+    const std::uint64_t ticks = game_server.simulation().ticks() - first;
+    const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
+    flooding.store(false);
+    flood.join();
+
+    const double rate = static_cast<double>(ticks) / elapsed.count();
+    CAPTURE(ticks, rate, server.datagrams(), server.rate_limited());
+    CHECK(server.rate_limited() > 0);
+    CHECK(rate > 50.0);
 }

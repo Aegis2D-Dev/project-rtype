@@ -11,9 +11,11 @@
 
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rate_limit.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -21,6 +23,7 @@
 #include <iterator>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -81,6 +84,13 @@ ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_por
 
 // RFC section 6.3: header, direction, source, payload, then sequence.
 void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::byte> datagram) {
+    // RFC section 6.6: an address sending more than a client ever needs is cut off before
+    // anything else is read, so a flood costs one lookup per datagram.
+    if (!limiter_.allow(from, Clock::now())) {
+        ++rate_limited_;
+        drop(from, datagram, "rate limit");
+        return;
+    }
     net::BinaryReader reader{datagram};
     const std::variant<net::PacketHeader, net::HeaderError> read = net::read_header(reader);
     if (const auto* const error = std::get_if<net::HeaderError>(&read)) {
@@ -212,6 +222,23 @@ void ServerNetwork::drop(const net::Endpoint& from, std::span<const std::byte> d
     ++dropped_;
     core::log_debug("UDP: dropped a {}-byte datagram from {}: {}", datagram.size(),
                     from.to_string(), reason);
+    if (drops_.count(from, reason, Clock::now()) && reason == "rate limit") {
+        core::log_info("UDP: {} sends more than {} datagrams per second: dropping the rest",
+                       from.address(), limits_.datagrams_per_second);
+    }
+}
+
+void ServerNetwork::set_limits(RateLimits limits) {
+    limits_ = limits;
+    limiter_ = RateLimiter{limits.datagrams_per_second};
+}
+
+std::uint64_t ServerNetwork::rate_limited() const noexcept {
+    return rate_limited_;
+}
+
+std::uint64_t ServerNetwork::refused_connections() const noexcept {
+    return refused_connections_;
 }
 
 void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
@@ -332,6 +359,18 @@ void ServerNetwork::end_session(std::uint32_t token, LeaveReason reason) {
 }
 
 void ServerNetwork::on_accept(net::TcpConnection connection) {
+    // RFC section 6.6: one address cannot hold more than its share of connections.
+    const net::Endpoint address = address_of(connection.remote_endpoint());
+    const auto open = std::ranges::count_if(clients_, [&address](const auto& entry) {
+        return !entry.second.closed &&
+               address_of(entry.second.connection.remote_endpoint()) == address;
+    });
+    if (std::cmp_greater_equal(open, limits_.connections_per_address)) {
+        ++refused_connections_;
+        core::log_info("TCP: closed {}: {} connections from {} are open already",
+                       connection.remote_endpoint().to_string(), open, address.address());
+        return; // the connection closes as it goes out of scope
+    }
     const std::uint64_t id = connections_++;
     Client& client = clients_
                          .emplace(id, Client{.connection = std::move(connection),
@@ -472,6 +511,11 @@ void ServerNetwork::update(Clock::time_point now) {
     }
     std::erase_if(clients_, [](const auto& entry) { return entry.second.closed; });
     flush_events(now);
+
+    limiter_.prune(now);
+    for (const std::string& line : drops_.take_due(now)) {
+        core::log_info("UDP: {}", line);
+    }
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {

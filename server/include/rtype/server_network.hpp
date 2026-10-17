@@ -12,6 +12,7 @@
 
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rate_limit.hpp>
 #include <rtype/sessions.hpp>
 
 #include <chrono>
@@ -149,6 +150,13 @@ public:
     /// @param now Current time.
     void update(Clock::time_point now);
 
+    /// @brief Sets the limits on the traffic of one address (RFC section 6.6).
+    /// @details Datagrams past RateLimits::datagrams_per_second in a second are dropped
+    /// before any other check, and a connection past RateLimits::connections_per_address
+    /// open ones is closed at once. Defaults: 300 datagrams per second, 8 connections.
+    /// @param limits New limits; the counts so far are forgotten.
+    void set_limits(RateLimits limits);
+
     /// @brief Starts a clean stop of the server (RFC section 3.2).
     /// @details Stops accepting connections, sends `Logout` with the reason `Shutdown` to
     /// every logged-in player and ends its session, and closes the connections that did not
@@ -183,6 +191,14 @@ public:
     /// @brief Number of UDP datagrams received, oversized ones excluded.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t datagrams() const noexcept;
+
+    /// @brief Number of UDP datagrams dropped because their address sent too many.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t rate_limited() const noexcept;
+
+    /// @brief Number of TCP connections closed at once, their address having too many open.
+    /// @return The count since the construction.
+    [[nodiscard]] std::uint64_t refused_connections() const noexcept;
 
     /// @brief Number of UDP datagrams dropped for their header, direction or source.
     /// @return The count since the construction.
@@ -258,6 +274,11 @@ private:
     std::uint64_t event_datagrams_sent_ = 0;
     std::uint64_t timeouts_ = 0;
     std::uint64_t errors_ = 0;
+    RateLimits limits_;
+    RateLimiter limiter_{limits_.datagrams_per_second};
+    DropReport drops_;
+    std::uint64_t rate_limited_ = 0;
+    std::uint64_t refused_connections_ = 0;
 };
 
 } // namespace rtype

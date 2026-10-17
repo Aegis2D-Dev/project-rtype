@@ -9,6 +9,7 @@
 
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/rate_limit.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     try {
         rtype::GameServer server{context, *instance, options.tcp_port, options.udp_port};
         rtype::ServerNetwork& network = server.network();
+        network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << ", simulation at "

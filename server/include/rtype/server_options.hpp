@@ -15,11 +15,14 @@ namespace rtype {
 inline constexpr std::uint16_t default_tcp_port = 4242;
 /// @brief UDP port the server listens on when `--udp-port` is not given.
 inline constexpr std::uint16_t default_udp_port = 4243;
+/// @brief Datagrams accepted per second from one address when `--max-packet-rate` is not
+/// given; see RateLimits.
+inline constexpr std::uint32_t default_packet_rate = 300;
 
 /// @brief Usage line printed by `--help` and after a command line error.
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
-    "                     [--help] [--version]\n";
+    "                     [--max-packet-rate <datagrams per second>] [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -41,6 +44,8 @@ struct ServerOptions {
     std::uint16_t udp_port = default_udp_port;
     /// @brief Waves file to play, or `std::nullopt` for default_waves_file().
     std::optional<std::filesystem::path> waves;
+    /// @brief Datagrams accepted per second from one address, 1 to 100000.
+    std::uint32_t packet_rate = default_packet_rate;
 };
 
 /// @brief Reads the command line of `r-type_server`.

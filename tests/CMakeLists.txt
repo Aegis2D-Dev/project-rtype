@@ -10,6 +10,7 @@ add_executable(rtype_tests
     events_test.cpp
     game_instance_test.cpp
     login_test.cpp
+    rate_limit_test.cpp
     server_game_test.cpp
     server_test.cpp
     simulation_test.cpp
