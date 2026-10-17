@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Pull request | [#43](https://github.com/Aegis2D-Dev/project-rtype/pull/43) (opened 2026-10-17) |
+| Pull request | [#44](https://github.com/Aegis2D-Dev/project-rtype/pull/44) (opened 2026-10-17) |
 | Branch | `feat/client-game` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`329ca0e`) |
 | Author | @Loic-ally |
 | Ticket | Aegis2D-Dev/aegis2d#123 connect screen, #127 interpolate remote entities, #128 heartbeat and connection-lost screen, #129 disconnected-player notice |
 
@@ -63,7 +63,10 @@ clients play together on one server. Ends the client networking epic
 - Changelog: #42 (`a2e0dbb`) marked as merged, with its commits.
 
 ## Commits
-Added once merged.
+- `27a4d91` feat(client): played the game from the server's world
+- `7dbb0a8` feat(client): tested interpolation, connect form and player notices
+- `a1bc28a` feat(client): documented how to play
+- `1cac58f` feat(gitignore): added gitignore to skip graphify output
 
 ## Notes
 - Verified: 144 tests, clang-format and clang-tidy 22, Doxygen, `mkdocs build --strict`;
