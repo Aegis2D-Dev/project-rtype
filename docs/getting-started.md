@@ -125,15 +125,10 @@ are acknowledged, the events of the game: each entity that appears (a shot is th
 of its missile) or disappears, and each life lost; a player who joins first gets every
 entity already there.
 
-The client joins a server with `--host <address>` (a numeric IPv4 or IPv6 address, or
-`localhost`; `127.0.0.1` by default), `--port <tcp port>` (`4242`) and `--name <player
-name>` (`player`). It logs in over TCP, binds its UDP endpoint, and tells why when it
-cannot: the server is full, the name is taken, the server does not answer, or its UDP port
-is blocked (no `Accept` within 5 seconds). In game, it sends the held actions every tick
-and keeps a copy of the server's world from the snapshots and the events; it knows the
-connection is lost when the server stops, closes the connection, or sends nothing for 5
-seconds. For now it leaves
-right after reaching the game; the window and the game loop come with the next tickets.
+The client opens a window on its connect screen, filled with `--host <address>` (a
+numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <tcp port>`
+(`4242`) and `--name <player name>` (`player`); Enter joins, and `--join` joins at once.
+[Play](play.md) has its options, the controls and what the screen shows.
 
 ```bash
 ./build/linux-debug/r-type_client --host 127.0.0.1 --port 4242 --name R9

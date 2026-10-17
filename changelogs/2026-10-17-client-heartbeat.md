@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#42](https://github.com/Aegis2D-Dev/project-rtype/pull/42) (opened 2026-10-17) |
 | Branch | `feat/client-heartbeat` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`a2e0dbb`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#128 heartbeat and connection-lost screen (network side) |
 
@@ -32,6 +32,7 @@ stays open. Part of the client networking epic (Aegis2D-Dev/aegis2d#122).
 
 ## Commits
 - `34b5875` feat(client): detected a lost connection to the server
+- `377607e` feat(changelog): updated changelogs
 
 ## Notes
 - The screen only has to show `session.error()` when the state is `Lost`.
