@@ -87,7 +87,7 @@ Builds go to `build/<preset>/`. If CMake does not find Jinja2, add
 
 ```
 game/           rtype_game: entities, collision layers, tuning, the server simulation
-protocol/       rtype_protocol: the messages shared by the server and the client
+protocol/       rtype_protocol: the messages, snapshots and events shared by server and client
 server/         r-type_server
 client/         r-type_client; client/network: its session with the server
 tests/          Catch2 unit tests of the game

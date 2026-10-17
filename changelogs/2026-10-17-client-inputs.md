@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#40](https://github.com/Aegis2D-Dev/project-rtype/pull/40) (opened 2026-10-17) |
 | Branch | `feat/client-inputs` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`d08f5ec`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#125 send input state every tick |
 
@@ -27,9 +27,14 @@ server receives them at 59.97 Hz. Part of the client networking epic
   not drift, without a burst after a stall.
 - `rtype_client_net` depends on `rtype_game`.
 - Changelog: #39 (`9f0b0ff`) marked as merged, with its commits.
+- After the first CI run: the rate test compares the inputs the server received with those
+  sent during the measured second only, as the last ones sent after it may still be on
+  their way.
 
 ## Commits
 - `ec7af89` feat(client): sent the held actions every tick
+- `b0a6149` feat(changelog): updated changelogs
+- `e3c8511` feat(tests): counted only the inputs of the measured second
 
 ## Notes
 - The game loop will call `set_input()`; the client has no window to read keys from yet.

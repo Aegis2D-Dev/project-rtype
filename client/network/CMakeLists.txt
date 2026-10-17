@@ -2,7 +2,8 @@
 # window and sound, so the server preset builds and tests it too.
 add_library(rtype_client_net STATIC
     client_options.cpp
-    client_session.cpp)
+    client_session.cpp
+    client_world.cpp)
 target_include_directories(rtype_client_net PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_client_net
     PUBLIC rtype_protocol rtype_game aegis2d::core aegis2d::ecs aegis2d::net

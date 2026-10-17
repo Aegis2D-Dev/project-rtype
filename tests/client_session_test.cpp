@@ -17,6 +17,7 @@
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -339,6 +340,10 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
             writer,
             PacketHeader{
                 .type = type, .sequence = sequence, .ack = ack, .ack_bits = 0, .session = token});
+        if (type == PacketType::Snapshot) {
+            // A real snapshot: the client acknowledges only the datagrams it could read.
+            writer.write_bytes(rtype::write_snapshot(rtype::Snapshot{}).front());
+        }
         server_udp.send_to(to, writer.data());
     };
     server_udp.start_receiving([&](const Endpoint& from, std::span<const std::byte> bytes) {

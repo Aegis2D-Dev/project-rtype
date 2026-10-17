@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#40](https://github.com/Aegis2D-Dev/project-rtype/pull/40) | Client inputs sent every tick | `feat/client-inputs` | Open | 2026-10-17 | [2026-10-17-client-inputs](changelogs/2026-10-17-client-inputs.md) |
+| [#41](https://github.com/Aegis2D-Dev/project-rtype/pull/41) | Client world from snapshots and events | `feat/client-snapshots` | Open | 2026-10-17 | [2026-10-17-client-snapshots](changelogs/2026-10-17-client-snapshots.md) |
+| [#40](https://github.com/Aegis2D-Dev/project-rtype/pull/40) | Client inputs sent every tick | `feat/client-inputs` | Merged | 2026-10-17 | [2026-10-17-client-inputs](changelogs/2026-10-17-client-inputs.md) |
 | [#39](https://github.com/Aegis2D-Dev/project-rtype/pull/39) | Network tests that fail cleanly under load | `fix/test-teardown` | Merged | 2026-10-17 | [2026-10-17-test-teardown](changelogs/2026-10-17-test-teardown.md) |
 | [#38](https://github.com/Aegis2D-Dev/project-rtype/pull/38) | Client login and UDP binding | `feat/client-session` | Merged | 2026-10-17 | [2026-10-17-client-session](changelogs/2026-10-17-client-session.md) |
 | [#37](https://github.com/Aegis2D-Dev/project-rtype/pull/37) | Per-address packet and connection limits | `feat/server-rate-limit` | Merged | 2026-10-17 | [2026-10-17-server-rate-limit](changelogs/2026-10-17-server-rate-limit.md) |

@@ -9,7 +9,10 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/client_session.hpp>
+#include <rtype/client_world.hpp>
+#include <rtype/events.hpp>
 #include <rtype/login.hpp>
+#include <rtype/snapshot.hpp>
 
 #include <array>
 #include <cstddef>
@@ -23,6 +26,7 @@
 #include <system_error>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace rtype {
 
@@ -66,6 +70,12 @@ std::string logout_text(std::uint8_t reason) {
         break;
     }
     return "the server stopped";
+}
+
+// The bytes a reader has not read yet: the payload after the header.
+std::span<const std::byte> datagram_payload(net::BinaryReader& reader) {
+    const std::optional<std::span<const std::byte>> rest = reader.read_bytes(reader.remaining());
+    return rest.value_or(std::span<const std::byte>{});
 }
 
 std::optional<net::Endpoint> resolve(std::string_view host, std::uint16_t port) {
@@ -215,13 +225,54 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
         channel_.receive(*header);
         state_ = ClientState::InGame;
         next_input_ = Clock::now();
+        world_.join(login_.value_or(LoginAccepted{}).player, settings_.name);
         core::log_info("client: in game as player {}", login_.value_or(LoginAccepted{}).player);
         return;
     }
-    // The game's datagrams are read by the next tickets; their sequences are recorded so
-    // that the client's datagrams acknowledge them.
     if (state_ == ClientState::InGame) {
-        channel_.receive(*header);
+        on_game_datagram(*header, reader);
+    }
+}
+
+// RFC sections 4.3, 4.4, 5.1 and 6.3: a payload is read whole before anything is applied
+// or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored.
+void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload) {
+    switch (header.type) {
+    case net::PacketType::Snapshot: {
+        const std::optional<Snapshot> snapshot = read_snapshot(datagram_payload(payload));
+        if (!snapshot.has_value()) {
+            return;
+        }
+        if (channel_.receive(header)) {
+            world_.apply(snapshot.value_or(Snapshot{}));
+        }
+        return;
+    }
+    case net::PacketType::Event: {
+        // Each event is handed over once, however many copies arrive (section 5.3); one
+        // whose bytes do not match its type is ignored on its own (section 6.4).
+        std::vector<std::vector<std::byte>> events;
+        if (!channel_.read_events(header, payload, events)) {
+            return;
+        }
+        const auto now = Clock::now();
+        for (const std::vector<std::byte>& bytes : events) {
+            if (const std::optional<GameEvent> event = read_event(bytes)) {
+                world_.apply(event.value_or(GameEvent{}), now);
+            }
+        }
+        return;
+    }
+    case net::PacketType::Heartbeat:
+    case net::PacketType::Accept:
+        if (payload.at_end()) {
+            channel_.receive(header);
+        }
+        return;
+    case net::PacketType::Connect:
+    case net::PacketType::Input:
+    case net::PacketType::Disconnect:
+        return;
     }
 }
 
@@ -266,6 +317,7 @@ void ClientSession::update(Clock::time_point now) {
         if (now >= next_input_) {
             send_input(now);
         }
+        world_.prune(now);
         break;
     case ClientState::Idle:
     case ClientState::Failed:
@@ -355,6 +407,14 @@ std::uint64_t ClientSession::connects_sent() const noexcept {
 
 std::uint64_t ClientSession::inputs_sent() const noexcept {
     return inputs_sent_;
+}
+
+ClientWorld& ClientSession::world() noexcept {
+    return world_;
+}
+
+const ClientWorld& ClientSession::world() const noexcept {
+    return world_;
 }
 
 } // namespace rtype
