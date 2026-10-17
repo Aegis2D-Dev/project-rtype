@@ -101,6 +101,8 @@ std::string_view to_string(ClientState state) noexcept {
         return "in game";
     case ClientState::Failed:
         return "failed";
+    case ClientState::Lost:
+        return "lost";
     case ClientState::Closed:
         return "closed";
     }
@@ -146,7 +148,8 @@ void ClientSession::on_connected() {
     state_ = ClientState::LoggingIn;
     connection_->start([this](std::span<const std::byte> message) { on_message(message); },
                        [this](net::TcpCloseReason /*reason*/) {
-                           if (state_ != ClientState::Failed && state_ != ClientState::Closed) {
+                           if (state_ != ClientState::Failed && state_ != ClientState::Lost &&
+                               state_ != ClientState::Closed) {
                                fail("the server closed the connection");
                            }
                        });
@@ -225,6 +228,7 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
         channel_.receive(*header);
         state_ = ClientState::InGame;
         next_input_ = Clock::now();
+        last_heard_ = next_input_;
         world_.join(login_.value_or(LoginAccepted{}).player, settings_.name);
         core::log_info("client: in game as player {}", login_.value_or(LoginAccepted{}).player);
         return;
@@ -243,6 +247,7 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
         if (!snapshot.has_value()) {
             return;
         }
+        last_heard_ = Clock::now();
         if (channel_.receive(header)) {
             world_.apply(snapshot.value_or(Snapshot{}));
         }
@@ -256,6 +261,7 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
             return;
         }
         const auto now = Clock::now();
+        last_heard_ = now;
         for (const std::vector<std::byte>& bytes : events) {
             if (const std::optional<GameEvent> event = read_event(bytes)) {
                 world_.apply(event.value_or(GameEvent{}), now);
@@ -266,12 +272,18 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
     case net::PacketType::Heartbeat:
     case net::PacketType::Accept:
         if (payload.at_end()) {
+            last_heard_ = Clock::now();
             channel_.receive(header);
+        }
+        return;
+    case net::PacketType::Disconnect:
+        // RFC section 5.5: the server leaves; the first copy ends the session.
+        if (payload.at_end()) {
+            fail("the server ended the session");
         }
         return;
     case net::PacketType::Connect:
     case net::PacketType::Input:
-    case net::PacketType::Disconnect:
         return;
     }
 }
@@ -314,6 +326,18 @@ void ClientSession::update(Clock::time_point now) {
         }
         break;
     case ClientState::InGame:
+        // RFC section 5.5: silent for server_timeout, the server is gone. It is told over TCP,
+        // in case only its UDP traffic is lost.
+        if (now - last_heard_ >= server_timeout) {
+            leave();
+            state_ = ClientState::Lost;
+            error_ = std::format("connection lost: the server sent nothing for {} seconds",
+                                 server_timeout.count());
+            core::log_info("client: {}", error_);
+            break;
+        }
+        // One Input per tick: the client is never silent for the 50 ms of section 5.5, so
+        // it needs no Heartbeat in game.
         if (now >= next_input_) {
             send_input(now);
         }
@@ -321,6 +345,7 @@ void ClientSession::update(Clock::time_point now) {
         break;
     case ClientState::Idle:
     case ClientState::Failed:
+    case ClientState::Lost:
     case ClientState::Closed:
         break;
     }
@@ -374,7 +399,8 @@ void ClientSession::leave() {
 }
 
 void ClientSession::fail(std::string reason) {
-    state_ = ClientState::Failed;
+    // A session that was running is lost; one that never started has failed.
+    state_ = state_ == ClientState::InGame ? ClientState::Lost : ClientState::Failed;
     error_ = std::move(reason);
     core::log_info("client: {}", error_);
     if (connection_ && !closing_) {

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#41](https://github.com/Aegis2D-Dev/project-rtype/pull/41) (opened 2026-10-17) |
 | Branch | `feat/client-snapshots` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`d5632dd`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#126 apply snapshots to entities |
 
@@ -38,6 +38,7 @@ library shared by the server and the client. Part of the client networking epic
 
 ## Commits
 - `b9b244f` feat(client): applied snapshots and events to the client's world
+- `5ee809a` feat(changelog): updated changelogs
 
 ## Notes
 - `GameOver` is not sent by the server yet, so the client does not read it either.

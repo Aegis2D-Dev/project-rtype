@@ -38,8 +38,11 @@ enum class ClientState : std::uint8_t {
     Binding,
     /// @brief UDP endpoint bound: the game may start.
     InGame,
-    /// @brief The session could not start or was lost; error() says why.
+    /// @brief The session could not start; error() says why.
     Failed,
+    /// @brief The session was running and ended: the server stopped, went silent, closed the
+    /// connection or ended the session; error() says why, for the connection-lost screen.
+    Lost,
     /// @brief The player left with leave().
     Closed,
 };
@@ -85,6 +88,8 @@ public:
     static constexpr std::chrono::seconds bind_timeout{5};
     /// @brief Longest wait for the TCP connection and `LoginAccepted`.
     static constexpr std::chrono::seconds login_timeout{5};
+    /// @brief Longest silence of the server in game before the session is lost (RFC 5.5).
+    static constexpr std::chrono::seconds server_timeout{5};
     /// @brief Time between two `Input` datagrams: one per server tick (RFC section 4.2).
     static constexpr aegis2d::core::Duration input_interval =
         aegis2d::core::step_from_rate(tuning::tick_rate);
@@ -128,8 +133,8 @@ public:
     /// @return The state.
     [[nodiscard]] ClientState state() const noexcept;
 
-    /// @brief Why the session failed.
-    /// @return A sentence for the player, empty unless the state is Failed.
+    /// @brief Why the session failed or was lost.
+    /// @return A sentence for the player, empty unless the state is Failed or Lost.
     [[nodiscard]] const std::string& error() const noexcept;
 
     /// @brief What the server gave at login.
@@ -184,6 +189,8 @@ private:
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    // Last valid datagram from the server, in game.
+    Clock::time_point last_heard_;
     ClientWorld world_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
