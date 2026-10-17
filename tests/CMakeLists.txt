@@ -8,10 +8,12 @@ include(Catch)
 add_executable(rtype_tests
     client_session_test.cpp
     client_world_test.cpp
+    connect_form_test.cpp
     entities_test.cpp
     events_test.cpp
     game_instance_test.cpp
     login_test.cpp
+    player_notices_test.cpp
     rate_limit_test.cpp
     server_game_test.cpp
     server_test.cpp
