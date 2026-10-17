@@ -34,6 +34,9 @@ namespace {
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
 
+// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
+constexpr std::uint8_t valid_actions = 0x1FU;
+
 // What the player is told for each LoginRejected reason; unknown ones are a plain refusal.
 std::string rejection_text(std::uint8_t reason) {
     switch (static_cast<LoginRejection>(reason)) {
@@ -211,6 +214,7 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
         }
         channel_.receive(*header);
         state_ = ClientState::InGame;
+        next_input_ = Clock::now();
         core::log_info("client: in game as player {}", login_.value_or(LoginAccepted{}).player);
         return;
     }
@@ -258,11 +262,38 @@ void ClientSession::update(Clock::time_point now) {
             send_connect(now);
         }
         break;
-    case ClientState::Idle:
     case ClientState::InGame:
+        if (now >= next_input_) {
+            send_input(now);
+        }
+        break;
+    case ClientState::Idle:
     case ClientState::Failed:
     case ClientState::Closed:
         break;
+    }
+}
+
+void ClientSession::set_input(aegis2d::ecs::PlayerInput input) noexcept {
+    held_ = static_cast<std::uint8_t>(input.held & valid_actions);
+}
+
+// RFC section 4.2: one byte of held actions, numbered and acknowledging like any datagram.
+void ClientSession::send_input(Clock::time_point now) {
+    if (!socket_ || !server_udp_.has_value() || !login_.has_value()) {
+        return;
+    }
+    net::BinaryWriter writer;
+    net::write_header(writer, channel_.next_header(net::PacketType::Input,
+                                                   login_.value_or(LoginAccepted{}).session));
+    writer.write_u8(held_);
+    socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
+    ++inputs_sent_;
+    // On time: the next one an interval after this one's due time. Late by more than an
+    // interval (a stall): an interval from now, rather than a burst to catch up.
+    next_input_ += std::chrono::duration_cast<Clock::duration>(input_interval);
+    if (next_input_ <= now) {
+        next_input_ = now + std::chrono::duration_cast<Clock::duration>(input_interval);
     }
 }
 
@@ -320,6 +351,10 @@ const std::optional<net::Endpoint>& ClientSession::server_udp() const noexcept {
 
 std::uint64_t ClientSession::connects_sent() const noexcept {
     return connects_sent_;
+}
+
+std::uint64_t ClientSession::inputs_sent() const noexcept {
+    return inputs_sent_;
 }
 
 } // namespace rtype

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#39](https://github.com/Aegis2D-Dev/project-rtype/pull/39) (opened 2026-10-17) |
 | Branch | `fix/test-teardown` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`9f0b0ff`) |
 | Author | @vmbr068 |
 | Ticket | None: fix of the Windows CI run of `develop` 39024840409 |
 
@@ -26,6 +26,7 @@ assertion. Tests only.
 
 ## Commits
 - `4dc3c1b` feat(tests): made network tests fail cleanly under load
+- `67c1f94` feat(changelog): updated changelogs
 
 ## Notes
 - With a forced failure, the flood test exited with 134 (`std::terminate`, `0xc0000409` on
