@@ -314,8 +314,10 @@ TEST_CASE("the server receives the held actions 60 times per second", "[client][
     CAPTURE(rate, inputs.size() - before);
     CHECK(rate > 50.0);
     CHECK(rate < 70.0);
-    // Every Input sent was more recent than the last: the server passed each one on.
-    CHECK(inputs.size() == client.inputs_sent());
+    // Each Input of the second was more recent than the last, so the server passed each one
+    // on; the client keeps sending during the extra time, and its very last ones may still
+    // be on their way.
+    CHECK(inputs.size() - before >= sent);
     REQUIRE(inputs.size() > before);
     CHECK(inputs.back() == 0x08);
     CHECK(server.dropped_datagrams() == 0);
