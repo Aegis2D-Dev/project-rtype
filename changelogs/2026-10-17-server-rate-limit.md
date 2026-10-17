@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#37](https://github.com/Aegis2D-Dev/project-rtype/pull/37) (opened 2026-10-17) |
 | Branch | `feat/server-rate-limit` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`d599aff`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#120 per-IP packet rate limit |
 
@@ -35,6 +35,7 @@ Last ticket of the game server epic (Aegis2D-Dev/aegis2d#107).
 
 ## Commits
 - `59266fc` feat(server): limited the packets and connections of each address
+- `78e9ca8` feat(changelog): updated changelogs
 
 ## Notes
 - The flood tests send from 127.0.0.2, which Linux and Windows route as loopback.
