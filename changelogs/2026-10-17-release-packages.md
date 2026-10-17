@@ -32,6 +32,10 @@ version becomes 0.2.0, for the playable client.
 Added once merged.
 
 ## Notes
+- The engine's `aegis2d_install()` sets the run path of the executables from a variable of
+  its own folder, empty in a game fetched with FetchContent: the packaged binaries did not
+  find the engine libraries (caught by the workflow). The game sets `INSTALL_RPATH` itself
+  until the engine is fixed.
 - Verified locally with the server preset: the package holds `bin/r-type_server`,
   `bin/assets/` and the engine libraries, and the unpacked server stops cleanly; the client
   package is checked by the workflow, SDL3 not being available locally.
