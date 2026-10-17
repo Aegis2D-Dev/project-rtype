@@ -48,14 +48,15 @@ using rtype::ServerNetwork;
 
 namespace {
 
-// Runs the context, the server and the clients until the condition holds, for at most ten
-// seconds: Windows reports a refused connection after about two, and a loaded CI runner can
-// be seconds late.
+// Runs the context, the server and the clients until the condition holds, for at most wait
+// (ten seconds by default: Windows reports a refused connection after about two, and a loaded
+// CI runner can be seconds late), the clients' clock being shifted by offset.
 template <typename Condition>
 bool pump(NetworkContext& context, ServerNetwork* server,
           std::initializer_list<ClientSession*> clients, Condition condition,
-          ClientSession::Clock::duration offset = {}) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+          ClientSession::Clock::duration offset = {},
+          std::chrono::milliseconds wait = std::chrono::seconds{10}) {
+    const auto deadline = std::chrono::steady_clock::now() + wait;
     while (!condition()) {
         if (std::chrono::steady_clock::now() > deadline) {
             return false;
@@ -213,7 +214,7 @@ TEST_CASE("a blocked UDP port ends in a Logout and a firewall hint", "[client]")
     CHECK(received.back() == rtype::write_logout(rtype::LogoutReason::Left));
 }
 
-TEST_CASE("a server that stops ends the session with its reason", "[client]") {
+TEST_CASE("a server that stops loses the session with its reason", "[client][lost]") {
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     ClientSession client{context, settings_for(server, "R9")};
@@ -221,9 +222,60 @@ TEST_CASE("a server that stops ends the session with its reason", "[client]") {
     REQUIRE(
         pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
     server.shutdown();
-    REQUIRE(
-        pump(context, &server, {&client}, [&] { return client.state() == ClientState::Failed; }));
+    REQUIRE(pump(context, &server, {&client}, [&] { return client.state() == ClientState::Lost; }));
     CHECK(client.error() == "the server stopped");
+}
+
+TEST_CASE("a server that crashes loses the session", "[client][lost]") {
+    NetworkContext context;
+    auto server = std::make_unique<ServerNetwork>(context, 0, 0);
+    ClientSession client{context, settings_for(*server, "R9")};
+    client.start();
+    REQUIRE(pump(context, server.get(), {&client},
+                 [&] { return client.state() == ClientState::InGame; }));
+    // Gone without a Logout: its connections close with it.
+    server.reset();
+    REQUIRE(pump(context, nullptr, {&client}, [&] { return client.state() == ClientState::Lost; }));
+    CHECK(client.error() == "the server closed the connection");
+}
+
+TEST_CASE("a server silent for five seconds loses the session", "[client][lost]") {
+    // A ServerNetwork alone answers Connect but sends nothing else: no game, no snapshot.
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+
+    // A little less than the timeout: still in game.
+    REQUIRE(!pump(
+        context, &server, {&client}, [&] { return client.state() != ClientState::InGame; },
+        ClientSession::server_timeout - std::chrono::milliseconds{500},
+        std::chrono::milliseconds{200}));
+    REQUIRE(pump(
+        context, &server, {&client}, [&] { return client.state() == ClientState::Lost; },
+        ClientSession::server_timeout));
+    CHECK(client.error() == "connection lost: the server sent nothing for 5 seconds");
+    // The server is told over TCP, in case only the UDP traffic was lost.
+    REQUIRE(pump(context, &server, {&client}, [&] { return server.sessions().size() == 0; }));
+}
+
+TEST_CASE("a game that keeps sending keeps the session", "[client][lost]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    // Snapshots arrive 20 times per second: even 4.5 seconds ahead, the server is not silent.
+    CHECK(!pump(
+        context, &server, {&client}, [&] { return client.state() != ClientState::InGame; },
+        ClientSession::server_timeout - std::chrono::milliseconds{500},
+        std::chrono::milliseconds{300}));
+    CHECK(client.state() == ClientState::InGame);
 }
 
 namespace {

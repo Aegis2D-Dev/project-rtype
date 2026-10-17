@@ -130,7 +130,9 @@ The client joins a server with `--host <address>` (a numeric IPv4 or IPv6 addres
 name>` (`player`). It logs in over TCP, binds its UDP endpoint, and tells why when it
 cannot: the server is full, the name is taken, the server does not answer, or its UDP port
 is blocked (no `Accept` within 5 seconds). In game, it sends the held actions every tick
-and keeps a copy of the server's world from the snapshots and the events. For now it leaves
+and keeps a copy of the server's world from the snapshots and the events; it knows the
+connection is lost when the server stops, closes the connection, or sends nothing for 5
+seconds. For now it leaves
 right after reaching the game; the window and the game loop come with the next tickets.
 
 ```bash
