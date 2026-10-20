@@ -5,6 +5,7 @@
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/waves.hpp>
+#include <aegis2d/shmup/components.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -27,12 +28,12 @@
 using aegis2d::Vec2;
 using aegis2d::core::ConfigError;
 using aegis2d::core::step_from_rate;
-using aegis2d::ecs::AutoTrigger;
 using aegis2d::ecs::Entity;
 using aegis2d::ecs::Registry;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::WaveSchedule;
+using aegis2d::shmup::AutoTrigger;
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::StartsWith;
 using rtype::ServerGame;

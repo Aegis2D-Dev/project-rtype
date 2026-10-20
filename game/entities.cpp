@@ -1,5 +1,6 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/movement.hpp>
+#include <aegis2d/shmup/components.hpp>
 
 #include <rtype/entities.hpp>
 #include <rtype/layers.hpp>
@@ -12,6 +13,7 @@
 namespace rtype {
 
 namespace ecs = aegis2d::ecs;
+namespace shmup = aegis2d::shmup;
 using aegis2d::Vec2;
 
 Vec2 player_spawn(std::size_t slot) {
@@ -36,7 +38,7 @@ ecs::Entity spawn_player(ecs::Registry& registry, std::size_t slot) {
         ship,
         ecs::Lives{.count = tuning::player_lives, .spawn = spawn, .health = tuning::player_health});
     registry.emplace<ecs::Score>(ship);
-    registry.emplace<ecs::Weapon>(ship, ecs::Weapon{.cooldown = tuning::player_fire_cooldown});
+    registry.emplace<shmup::Weapon>(ship, shmup::Weapon{.cooldown = tuning::player_fire_cooldown});
     registry.emplace<ecs::NetworkId>(ship, ecs::NetworkId::of(ship));
     return ship;
 }
@@ -74,9 +76,9 @@ ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase, f
     registry.emplace<ecs::Damage>(
         bydos, ecs::Damage{.amount = tuning::ram_damage, .consumed_on_hit = false});
     registry.emplace<ecs::ScoreValue>(bydos, tuning::bydos_score);
-    registry.emplace<ecs::Weapon>(
-        bydos, ecs::Weapon{.cooldown = tuning::bydos_fire_cooldown, .reload = first_shot});
-    registry.emplace<ecs::AutoTrigger>(bydos);
+    registry.emplace<shmup::Weapon>(
+        bydos, shmup::Weapon{.cooldown = tuning::bydos_fire_cooldown, .reload = first_shot});
+    registry.emplace<shmup::AutoTrigger>(bydos);
     registry.emplace<ecs::OffscreenDespawn>(bydos, tuning::despawn_margin);
     registry.emplace<ecs::NetworkId>(bydos, ecs::NetworkId::of(bydos));
     return bydos;

@@ -2,6 +2,7 @@
 #include <aegis2d/ecs/collision.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/shmup/components.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -16,7 +17,6 @@
 #include <vector>
 
 using aegis2d::Vec2;
-using aegis2d::ecs::AutoTrigger;
 using aegis2d::ecs::Collider;
 using aegis2d::ecs::CollisionGrid;
 using aegis2d::ecs::Contact;
@@ -35,7 +35,8 @@ using aegis2d::ecs::ScoreValue;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
-using aegis2d::ecs::Weapon;
+using aegis2d::shmup::AutoTrigger;
+using aegis2d::shmup::Weapon;
 using Catch::Approx;
 namespace layer = rtype::layer;
 namespace mask = rtype::mask;
