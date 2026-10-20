@@ -80,7 +80,7 @@ above or below it.
 
 ## Enemy fire
 
-Bydos slaves carry a `Weapon` with the engine's `AutoTrigger`: they fire on their own, a
+Bydos slaves carry a `Weapon` with the `AutoTrigger` of the engine's shmup module: they fire on their own, a
 missile to the left from their left side, every `tuning::bydos_fire_cooldown` (2 s). The
 first shot comes `tuning::bydos_first_shot` (1 s) after the spawn, so the Bydos is on
 screen; random Bydos wait up to 2 s more, drawn from the seed, so they do not all fire in
