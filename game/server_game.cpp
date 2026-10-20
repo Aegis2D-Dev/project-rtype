@@ -1,6 +1,6 @@
 #include <aegis2d/ecs/despawn.hpp>
 #include <aegis2d/ecs/movement.hpp>
-#include <aegis2d/ecs/weapons.hpp>
+#include <aegis2d/shmup/weapons.hpp>
 
 #include <rtype/entities.hpp>
 #include <rtype/server_game.hpp>
@@ -15,6 +15,7 @@
 namespace rtype {
 
 namespace ecs = aegis2d::ecs;
+namespace shmup = aegis2d::shmup;
 using aegis2d::Vec2;
 
 namespace {
@@ -50,14 +51,14 @@ void ServerGame::register_systems() {
         ecs::clamp_player_ships(world, play_area());
     });
     systems_.add("weapons", [this](ecs::Registry& world, const ecs::Tick& tick) {
-        ecs::trigger_weapons(world, tick, shooters_);
+        shmup::trigger_weapons(world, tick, shooters_);
         fired_.clear();
         for (const ecs::Entity shooter : shooters_) {
             fired_.push_back(spawn_player_missile(world, shooter));
         }
     });
     systems_.add("enemy_fire", [this](ecs::Registry& world, const ecs::Tick& tick) {
-        ecs::trigger_auto_weapons(world, tick, gunners_);
+        shmup::trigger_auto_weapons(world, tick, gunners_);
         enemy_fired_.clear();
         for (const ecs::Entity gunner : gunners_) {
             if (on_screen(world, gunner)) {
