@@ -2,6 +2,7 @@
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/shmup/components.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -27,7 +28,7 @@ using aegis2d::ecs::Score;
 using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
-using aegis2d::ecs::Weapon;
+using aegis2d::shmup::Weapon;
 using Catch::Approx;
 using rtype::ServerGame;
 namespace tuning = rtype::tuning;
