@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#46](https://github.com/Aegis2D-Dev/project-rtype/pull/46) | Weapons from the engine's shmup module | `feat/shmup-weapons` | Open | 2026-10-20 | [2026-10-20-shmup-weapons](changelogs/2026-10-20-shmup-weapons.md) |
+| [#48](https://github.com/Aegis2D-Dev/project-rtype/pull/48) | Traffic counters | `feat/traffic-counters` | Open | 2026-10-23 | [2026-10-23-traffic-counters](changelogs/2026-10-23-traffic-counters.md) |
+| [#47](https://github.com/Aegis2D-Dev/project-rtype/pull/47) | Weapons from the engine's shmup module | `feat/shmup-weapons` | Merged | 2026-10-20 | [2026-10-20-shmup-weapons](changelogs/2026-10-20-shmup-weapons.md) |
 | [#45](https://github.com/Aegis2D-Dev/project-rtype/pull/45) | Release workflow and game packages | `ci/release-packages` | Merged | 2026-10-17 | [2026-10-17-release-packages](changelogs/2026-10-17-release-packages.md) |
 | [#44](https://github.com/Aegis2D-Dev/project-rtype/pull/44) | Playable client: connect screen, interpolation, lost connection, player notices | `feat/client-game` | Merged | 2026-10-17 | [2026-10-17-client-game](changelogs/2026-10-17-client-game.md) |
 | [#42](https://github.com/Aegis2D-Dev/project-rtype/pull/42) | Client connection loss detected | `feat/client-heartbeat` | Merged | 2026-10-17 | [2026-10-17-client-heartbeat](changelogs/2026-10-17-client-heartbeat.md) |

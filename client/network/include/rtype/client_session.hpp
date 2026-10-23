@@ -9,6 +9,7 @@
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/client_world.hpp>
@@ -162,6 +163,13 @@ public:
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
 
+    /// @brief Datagrams exchanged with the server, by direction and packet type.
+    /// @details Counts every datagram sent to the server's UDP port, and every one received
+    /// with the token of the session, since the login: the source of the network
+    /// statistics of the client.
+    /// @return The counters.
+    [[nodiscard]] const aegis2d::net::TrafficCounters& traffic() const noexcept;
+
 private:
     void fail(std::string reason);
     void on_connected();
@@ -189,6 +197,7 @@ private:
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    aegis2d::net::TrafficCounters traffic_;
     // Last valid datagram from the server, in game.
     Clock::time_point last_heard_;
     ClientWorld world_;

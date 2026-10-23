@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Pull request | [#46](https://github.com/Aegis2D-Dev/project-rtype/pull/46) (opened 2026-10-20) |
+| Pull request | [#47](https://github.com/Aegis2D-Dev/project-rtype/pull/47) (opened 2026-10-20) |
 | Branch | `feat/shmup-weapons` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-20 (`ce531df`) |
 | Author | @Loic-ally |
 | Ticket | Follow-up of Aegis2D-Dev/aegis2d#315 shmup module and weapons |
 
@@ -22,7 +22,9 @@ drop the old ECS aliases. Nothing changes in the game.
 - Changelog: #45 (`8744f02`) marked as merged, with its commits.
 
 ## Commits
-Added once merged.
+- `d91f21c` feat(shmup): used the engine's shmup module for the weapons
+- `8301cb4` feat(shmup): tested the weapons with the shmup names
+- `be98664` feat(shmup): documented the shmup module in the game
 
 ## Notes
 - Needs the engine pull request merged first: before it, `aegis2d/shmup/` does not exist.

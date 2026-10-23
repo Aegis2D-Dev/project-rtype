@@ -8,6 +8,7 @@
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/events.hpp>
@@ -79,6 +80,9 @@ public:
     /// @brief Time a bound player may send no valid datagram before its session is lost
     /// (RFC section 5.5).
     static constexpr std::chrono::seconds udp_timeout{5};
+
+    /// @brief Time between two lines of traffic of each bound player in the log.
+    static constexpr std::chrono::seconds traffic_report_period{10};
 
     /// @brief Listens on both ports, on every IPv4 interface.
     /// @param context Context that runs the sockets; it must outlive this object.
@@ -216,6 +220,14 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t errors() const noexcept;
 
+    /// @brief Datagrams exchanged with a bound player, by direction and packet type.
+    /// @details Counts the datagrams sent to the player (`Accept`, `Snapshot`, `Event`) and
+    /// the valid ones received from it, since its endpoint was bound; update() logs them
+    /// every traffic_report_period.
+    /// @param token Session of the player.
+    /// @return Its counters, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const aegis2d::net::TrafficCounters* traffic(std::uint32_t token) const;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -251,6 +263,7 @@ private:
     void kick(std::uint32_t token);
     void kick_client(std::uint64_t id);
     void end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave);
+    void report_traffic(Clock::time_point now);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
@@ -262,6 +275,7 @@ private:
         std::optional<std::uint16_t> last_input;
         // When its last valid datagram arrived, for the UDP timeout.
         Clock::time_point heard = Clock::now();
+        aegis2d::net::TrafficCounters traffic;
     };
     std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;
@@ -279,6 +293,7 @@ private:
     DropReport drops_;
     std::uint64_t rate_limited_ = 0;
     std::uint64_t refused_connections_ = 0;
+    std::optional<Clock::time_point> next_traffic_report_;
 };
 
 } // namespace rtype

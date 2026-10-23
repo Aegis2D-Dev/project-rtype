@@ -6,6 +6,7 @@
 #include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/socket_error.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/client_session.hpp>
@@ -221,6 +222,7 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
     if (header == nullptr || header->session != token) {
         return;
     }
+    traffic_.record(net::Direction::Received, header->type, datagram.size(), Clock::now());
     if (state_ == ClientState::Binding) {
         if (header->type != net::PacketType::Accept || !reader.at_end()) {
             return;
@@ -296,6 +298,7 @@ void ClientSession::send_connect(Clock::time_point now) {
     net::write_header(writer, channel_.next_header(net::PacketType::Connect,
                                                    login_.value_or(LoginAccepted{}).session));
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
+    traffic_.record(net::Direction::Sent, net::PacketType::Connect, writer.data().size(), now);
     last_connect_ = now;
     ++connects_sent_;
 }
@@ -365,6 +368,7 @@ void ClientSession::send_input(Clock::time_point now) {
                                                    login_.value_or(LoginAccepted{}).session));
     writer.write_u8(held_);
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
+    traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
     ++inputs_sent_;
     // On time: the next one an interval after this one's due time. Late by more than an
     // interval (a stall): an interval from now, rather than a burst to catch up.
@@ -382,6 +386,8 @@ void ClientSession::leave() {
             net::BinaryWriter writer;
             net::write_header(writer, channel_.next_header(net::PacketType::Disconnect, token));
             socket_->send_to(server, writer.data());
+            traffic_.record(net::Direction::Sent, net::PacketType::Disconnect, writer.data().size(),
+                            Clock::now());
         }
     }
     if (connection_ && connection_->is_open() &&
@@ -433,6 +439,10 @@ std::uint64_t ClientSession::connects_sent() const noexcept {
 
 std::uint64_t ClientSession::inputs_sent() const noexcept {
     return inputs_sent_;
+}
+
+const net::TrafficCounters& ClientSession::traffic() const noexcept {
+    return traffic_;
 }
 
 ClientWorld& ClientSession::world() noexcept {
