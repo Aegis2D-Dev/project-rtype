@@ -20,6 +20,7 @@ add_executable(rtype_tests
     simulation_test.cpp
     snapshot_test.cpp
     stop_signal_test.cpp
+    traffic_test.cpp
     waves_test.cpp)
 target_link_libraries(rtype_tests PRIVATE rtype_game rtype_server rtype_client_net Catch2::Catch2WithMain
     aegis2d::warnings)

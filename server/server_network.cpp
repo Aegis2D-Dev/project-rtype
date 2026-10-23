@@ -7,6 +7,7 @@
 #include <aegis2d/net/reliability.hpp>
 #include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/events.hpp>
@@ -134,6 +135,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         }
         const bool fresh = peer.channel.receive(header);
         peer.heard = Clock::now();
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         // Only the most recent Input counts: a late or duplicated one is ignored.
         if (!fresh ||
@@ -155,6 +157,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             return;
         }
         peer.heard = Clock::now();
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         return;
     }
@@ -168,6 +171,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         }
         peer.channel.receive(header);
         peer.heard = Clock::now();
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         if (header.type == net::PacketType::Disconnect) {
             // The client leaves (RFC section 5.5): its session ends, TCP connection included.
@@ -209,11 +213,14 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     // The first Accept may be lost: each Connect from the bound endpoint gets one.
     Peer& peer = peers_[header.session];
     peer.heard = Clock::now();
+    peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
     net::ReliableChannel& channel = peer.channel;
     channel.receive(header);
     net::BinaryWriter writer;
     net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
     socket_.send_to(from, writer.data());
+    peer.traffic.record(net::Direction::Sent, net::PacketType::Accept, writer.data().size(),
+                        peer.heard);
 }
 
 // Never answered (RFC section 6.1), and only logged at the debug level (section 6.7).
@@ -247,6 +254,7 @@ void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
 }
 
 void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads) {
+    const auto now = Clock::now();
     for (auto& [token, peer] : peers_) {
         const Session* const session = sessions_.find(token);
         if (session == nullptr) {
@@ -261,6 +269,8 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
             net::write_header(writer, peer.channel.next_header(net::PacketType::Snapshot, token));
             writer.write_bytes(payload);
             socket_.send_to(endpoint, writer.data());
+            peer.traffic.record(net::Direction::Sent, net::PacketType::Snapshot,
+                                writer.data().size(), now);
             ++snapshots_sent_;
         }
     }
@@ -326,6 +336,8 @@ void ServerNetwork::flush_events(Clock::time_point now) {
                 break;
             }
             socket_.send_to(endpoint, writer.data());
+            peer.traffic.record(net::Direction::Sent, net::PacketType::Event, writer.data().size(),
+                                now);
             ++event_datagrams_sent_;
         }
     }
@@ -486,6 +498,9 @@ void ServerNetwork::close(Client& client, std::string_view reason) {
 }
 
 void ServerNetwork::update(Clock::time_point now) {
+    // Before the timeouts, so that a player who times out gets its last line.
+    report_traffic(now);
+
     // RFC section 5.5: a bound player silent for udp_timeout has lost its session. Ended once
     // the loop is over: ending a session erases its peer.
     std::vector<std::uint32_t> silent;
@@ -516,6 +531,47 @@ void ServerNetwork::update(Clock::time_point now) {
     for (const std::string& line : drops_.take_due(now)) {
         core::log_info("UDP: {}", line);
     }
+}
+
+// One line per bound player every traffic_report_period: its rates over the last whole
+// second, by packet type, and the bytes since its endpoint was bound.
+void ServerNetwork::report_traffic(Clock::time_point now) {
+    if (!next_traffic_report_) {
+        next_traffic_report_ = now + traffic_report_period;
+        return;
+    }
+    if (now < *next_traffic_report_) {
+        return;
+    }
+    next_traffic_report_ = now + traffic_report_period;
+    for (const auto& [token, peer] : peers_) {
+        const Session* const session = sessions_.find(token);
+        if (session == nullptr) {
+            continue;
+        }
+        const net::TrafficCounters& traffic = peer.traffic;
+        const net::TrafficCount sent = traffic.last_second(net::Direction::Sent, now);
+        const net::TrafficCount received = traffic.last_second(net::Direction::Received, now);
+        const auto per_second = [&](net::Direction direction, net::PacketType type) {
+            return traffic.last_second(direction, type, now).datagrams;
+        };
+        core::log_info("UDP: player {} sends {} datagrams/s, {} B/s (snapshots {}, events {}), "
+                       "receives {} datagrams/s, {} B/s (inputs {}, events {}, heartbeats {}); "
+                       "{} B sent and {} B received in all",
+                       session->player, sent.datagrams, sent.bytes,
+                       per_second(net::Direction::Sent, net::PacketType::Snapshot),
+                       per_second(net::Direction::Sent, net::PacketType::Event), received.datagrams,
+                       received.bytes, per_second(net::Direction::Received, net::PacketType::Input),
+                       per_second(net::Direction::Received, net::PacketType::Event),
+                       per_second(net::Direction::Received, net::PacketType::Heartbeat),
+                       traffic.total(net::Direction::Sent).bytes,
+                       traffic.total(net::Direction::Received).bytes);
+    }
+}
+
+const net::TrafficCounters* ServerNetwork::traffic(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.traffic;
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {

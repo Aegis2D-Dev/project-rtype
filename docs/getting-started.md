@@ -99,6 +99,13 @@ closed, so a flood does not slow the game. Dropped datagrams are summed up in th
 most every 10 seconds per address (`UDP: 203.0.113.7: 1150 dropped in 10 s (1150 rate
 limit)`), never one line per datagram.
 
+Every 10 seconds the server also logs the traffic of each player: datagrams and bytes per
+second over the last whole second, by packet type, and the bytes since the player joined
+(`UDP: player 0 sends 21 datagrams/s, 3420 B/s (snapshots 20, events 1), receives 60
+datagrams/s, 1140 B/s (inputs 60, events 0, heartbeats 0); 41200 B sent and 13600 B
+received in all`). Bytes count the datagrams with their 18-byte header, without the IP and
+UDP headers.
+
 Ctrl+C (SIGINT) or SIGTERM stops the server cleanly: every player gets `Logout` with the
 reason `Shutdown`, each connection closes once it has left (1 second at most), then the
 server exits with status 0. A second Ctrl+C quits at once, with status 130.
