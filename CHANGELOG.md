@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#49](https://github.com/Aegis2D-Dev/project-rtype/pull/49) | Ship controls and player ships from the engine's shmup module | `refactor/shmup-ship-controls` | Open | 2026-10-27 | [2026-10-27-shmup-ship-controls](changelogs/2026-10-27-shmup-ship-controls.md) |
 | [#48](https://github.com/Aegis2D-Dev/project-rtype/pull/48) | Traffic counters | `feat/traffic-counters` | Open | 2026-10-23 | [2026-10-23-traffic-counters](changelogs/2026-10-23-traffic-counters.md) |
 | [#47](https://github.com/Aegis2D-Dev/project-rtype/pull/47) | Weapons from the engine's shmup module | `feat/shmup-weapons` | Merged | 2026-10-20 | [2026-10-20-shmup-weapons](changelogs/2026-10-20-shmup-weapons.md) |
 | [#45](https://github.com/Aegis2D-Dev/project-rtype/pull/45) | Release workflow and game packages | `ci/release-packages` | Merged | 2026-10-17 | [2026-10-17-release-packages](changelogs/2026-10-17-release-packages.md) |
