@@ -1,9 +1,9 @@
 /// @file
 /// @brief The player's own settings: keys, auto-fire, text size, flashes and shake.
 #pragma once
-#include <aegis2d/platform/ship_controls.hpp>
 #include <aegis2d/render/screen_effects.hpp>
 #include <aegis2d/render/text_layout.hpp>
+#include <aegis2d/shmup/ship_controls.hpp>
 
 #include <cstddef>
 #include <filesystem>
@@ -19,7 +19,7 @@ struct Preferences {
     /// @brief Settings file, created at the first save.
     std::filesystem::path file;
     /// @brief The ship's keys and buttons, and auto-fire.
-    aegis2d::platform::ShipControls controls;
+    aegis2d::shmup::ShipControls controls;
     /// @brief Whether explosions flash and shake the screen.
     aegis2d::render::EffectSettings effects;
     /// @brief Size of the texts, 100 % to 200 %.
