@@ -4,6 +4,7 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/socket_error.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
@@ -222,36 +223,38 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
     if (header == nullptr || header->session != token) {
         return;
     }
-    traffic_.record(net::Direction::Received, header->type, datagram.size(), Clock::now());
+    const auto now = Clock::now();
+    traffic_.record(net::Direction::Received, header->type, datagram.size(), now);
     if (state_ == ClientState::Binding) {
         if (header->type != net::PacketType::Accept || !reader.at_end()) {
             return;
         }
-        channel_.receive(*header);
+        channel_.receive(*header, now);
         state_ = ClientState::InGame;
-        next_input_ = Clock::now();
-        last_heard_ = next_input_;
+        next_input_ = now;
+        last_heard_ = now;
         world_.join(login_.value_or(LoginAccepted{}).player, settings_.name);
         core::log_info("client: in game as player {}", login_.value_or(LoginAccepted{}).player);
         return;
     }
     if (state_ == ClientState::InGame) {
-        on_game_datagram(*header, reader);
+        on_game_datagram(*header, reader, now);
     }
 }
 
 // RFC sections 4.3, 4.4, 5.1 and 6.3: a payload is read whole before anything is applied
 // or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored.
-void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload) {
+void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload,
+                                     Clock::time_point now) {
     switch (header.type) {
     case net::PacketType::Snapshot: {
         const std::optional<Snapshot> snapshot = read_snapshot(datagram_payload(payload));
         if (!snapshot.has_value()) {
             return;
         }
-        last_heard_ = Clock::now();
-        if (channel_.receive(header)) {
-            world_.apply(snapshot.value_or(Snapshot{}), last_heard_);
+        last_heard_ = now;
+        if (channel_.receive(header, now)) {
+            world_.apply(snapshot.value_or(Snapshot{}), now);
         }
         return;
     }
@@ -259,10 +262,9 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
         // Each event is handed over once, however many copies arrive (section 5.3); one
         // whose bytes do not match its type is ignored on its own (section 6.4).
         std::vector<std::vector<std::byte>> events;
-        if (!channel_.read_events(header, payload, events)) {
+        if (!channel_.read_events(header, payload, events, now)) {
             return;
         }
-        const auto now = Clock::now();
         last_heard_ = now;
         for (const std::vector<std::byte>& bytes : events) {
             if (const std::optional<GameEvent> event = read_event(bytes)) {
@@ -274,8 +276,8 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
     case net::PacketType::Heartbeat:
     case net::PacketType::Accept:
         if (payload.at_end()) {
-            last_heard_ = Clock::now();
-            channel_.receive(header);
+            last_heard_ = now;
+            channel_.receive(header, now);
         }
         return;
     case net::PacketType::Disconnect:
@@ -296,7 +298,7 @@ void ClientSession::send_connect(Clock::time_point now) {
     }
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Connect,
-                                                   login_.value_or(LoginAccepted{}).session));
+                                                   login_.value_or(LoginAccepted{}).session, now));
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
     traffic_.record(net::Direction::Sent, net::PacketType::Connect, writer.data().size(), now);
     last_connect_ = now;
@@ -365,7 +367,7 @@ void ClientSession::send_input(Clock::time_point now) {
     }
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Input,
-                                                   login_.value_or(LoginAccepted{}).session));
+                                                   login_.value_or(LoginAccepted{}).session, now));
     writer.write_u8(held_);
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
     traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
@@ -443,6 +445,10 @@ std::uint64_t ClientSession::inputs_sent() const noexcept {
 
 const net::TrafficCounters& ClientSession::traffic() const noexcept {
     return traffic_;
+}
+
+const net::RttEstimator& ClientSession::rtt() const noexcept {
+    return channel_.rtt();
 }
 
 ClientWorld& ClientSession::world() noexcept {

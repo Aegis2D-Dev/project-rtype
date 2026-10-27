@@ -8,6 +8,7 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
@@ -170,6 +171,15 @@ public:
     /// @return The counters.
     [[nodiscard]] const aegis2d::net::TrafficCounters& traffic() const noexcept;
 
+    /// @brief Round trip time to the server, with its jitter.
+    /// @details A sample each time a datagram of the server acknowledges, for the first time,
+    /// one sent to it (`Connect`, `Input`). It includes the time the server waits before its
+    /// next datagram: in game, for the `Input` it acknowledges, at most the input interval,
+    /// as a snapshot acknowledges the last one received. Next to traffic(), the source of
+    /// the network statistics of the client.
+    /// @return The estimate, without samples before the server's `Accept`.
+    [[nodiscard]] const aegis2d::net::RttEstimator& rtt() const noexcept;
+
 private:
     void fail(std::string reason);
     void on_connected();
@@ -178,7 +188,7 @@ private:
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
     void on_game_datagram(const aegis2d::net::PacketHeader& header,
-                          aegis2d::net::BinaryReader& payload);
+                          aegis2d::net::BinaryReader& payload, Clock::time_point now);
 
     aegis2d::net::NetworkContext& context_;
     ClientSettings settings_;

@@ -5,6 +5,7 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
@@ -17,9 +18,11 @@
 #include <rtype/sessions.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <format>
 #include <functional>
 #include <iterator>
 #include <optional>
@@ -40,6 +43,18 @@ namespace {
 
 // Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
 constexpr std::uint8_t valid_actions = 0x1FU;
+
+// "round trip 203 ms (jitter 4 ms)", in whole milliseconds, or that none was measured yet.
+std::string describe_rtt(const net::RttEstimator& rtt) {
+    if (!rtt.has_estimate()) {
+        return "no round trip measured yet";
+    }
+    using std::chrono::duration_cast;
+    using std::chrono::milliseconds;
+    return std::format("round trip {} ms (jitter {} ms)",
+                       duration_cast<milliseconds>(rtt.smoothed()).count(),
+                       duration_cast<milliseconds>(rtt.jitter()).count());
+}
 
 // Runs the handling of one packet; an exception is logged and reported, never let out, so a
 // client can only break its own session (RFC section 6.6).
@@ -133,8 +148,8 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             drop(from, datagram, "malformed Input");
             return;
         }
-        const bool fresh = peer.channel.receive(header);
         peer.heard = Clock::now();
+        const bool fresh = peer.channel.receive(header, peer.heard);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         // Only the most recent Input counts: a late or duplicated one is ignored.
@@ -152,11 +167,12 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         // Only the server sends events in version 1: their framing is checked, they are
         // acknowledged and ignored (RFC section 6.4).
         std::vector<std::vector<std::byte>> events;
-        if (!peer.channel.read_events(header, payload, events)) {
+        const auto now = Clock::now();
+        if (!peer.channel.read_events(header, payload, events, now)) {
             drop(from, datagram, "malformed Event");
             return;
         }
-        peer.heard = Clock::now();
+        peer.heard = now;
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         return;
@@ -169,8 +185,8 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
                                                            : "malformed Disconnect");
             return;
         }
-        peer.channel.receive(header);
         peer.heard = Clock::now();
+        peer.channel.receive(header, peer.heard);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         if (header.type == net::PacketType::Disconnect) {
@@ -215,9 +231,10 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     peer.heard = Clock::now();
     peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
     net::ReliableChannel& channel = peer.channel;
-    channel.receive(header);
+    channel.receive(header, peer.heard);
     net::BinaryWriter writer;
-    net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
+    net::write_header(writer,
+                      channel.next_header(net::PacketType::Accept, header.session, peer.heard));
     socket_.send_to(from, writer.data());
     peer.traffic.record(net::Direction::Sent, net::PacketType::Accept, writer.data().size(),
                         peer.heard);
@@ -266,7 +283,8 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
         for (const std::vector<std::byte>& payload : payloads) {
             net::BinaryWriter writer;
-            net::write_header(writer, peer.channel.next_header(net::PacketType::Snapshot, token));
+            net::write_header(writer,
+                              peer.channel.next_header(net::PacketType::Snapshot, token, now));
             writer.write_bytes(payload);
             socket_.send_to(endpoint, writer.data());
             peer.traffic.record(net::Direction::Sent, net::PacketType::Snapshot,
@@ -534,7 +552,7 @@ void ServerNetwork::update(Clock::time_point now) {
 }
 
 // One line per bound player every traffic_report_period: its rates over the last whole
-// second, by packet type, and the bytes since its endpoint was bound.
+// second, by packet type, the bytes since its endpoint was bound, and its round trip time.
 void ServerNetwork::report_traffic(Clock::time_point now) {
     if (!next_traffic_report_) {
         next_traffic_report_ = now + traffic_report_period;
@@ -557,7 +575,7 @@ void ServerNetwork::report_traffic(Clock::time_point now) {
         };
         core::log_info("UDP: player {} sends {} datagrams/s, {} B/s (snapshots {}, events {}), "
                        "receives {} datagrams/s, {} B/s (inputs {}, events {}, heartbeats {}); "
-                       "{} B sent and {} B received in all",
+                       "{} B sent and {} B received in all; {}",
                        session->player, sent.datagrams, sent.bytes,
                        per_second(net::Direction::Sent, net::PacketType::Snapshot),
                        per_second(net::Direction::Sent, net::PacketType::Event), received.datagrams,
@@ -565,13 +583,19 @@ void ServerNetwork::report_traffic(Clock::time_point now) {
                        per_second(net::Direction::Received, net::PacketType::Event),
                        per_second(net::Direction::Received, net::PacketType::Heartbeat),
                        traffic.total(net::Direction::Sent).bytes,
-                       traffic.total(net::Direction::Received).bytes);
+                       traffic.total(net::Direction::Received).bytes,
+                       describe_rtt(peer.channel.rtt()));
     }
 }
 
 const net::TrafficCounters* ServerNetwork::traffic(std::uint32_t token) const {
     const auto peer = peers_.find(token);
     return peer == peers_.end() ? nullptr : &peer->second.traffic;
+}
+
+const net::RttEstimator* ServerNetwork::rtt(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.channel.rtt();
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {
