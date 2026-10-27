@@ -100,11 +100,14 @@ most every 10 seconds per address (`UDP: 203.0.113.7: 1150 dropped in 10 s (1150
 limit)`), never one line per datagram.
 
 Every 10 seconds the server also logs the traffic of each player: datagrams and bytes per
-second over the last whole second, by packet type, and the bytes since the player joined
-(`UDP: player 0 sends 21 datagrams/s, 3420 B/s (snapshots 20, events 1), receives 60
-datagrams/s, 1140 B/s (inputs 60, events 0, heartbeats 0); 41200 B sent and 13600 B
-received in all`). Bytes count the datagrams with their 18-byte header, without the IP and
-UDP headers.
+second over the last whole second, by packet type, the bytes since the player joined, and
+the round trip time with its jitter (`UDP: player 0 sends 21 datagrams/s, 3420 B/s
+(snapshots 20, events 1), receives 60 datagrams/s, 1140 B/s (inputs 60, events 0,
+heartbeats 0); 41200 B sent and 13600 B received in all; round trip 203 ms (jitter 1 ms)`).
+Bytes count the datagrams with their 18-byte header, without the IP and UDP headers. The
+round trip is measured from the acknowledgements the datagrams already carry, smoothed like
+TCP's. Each sample also holds the time the client waits before its next `Input`, up to
+17 ms; the client's own estimate, the time the server waits before its next snapshot.
 
 Ctrl+C (SIGINT) or SIGTERM stops the server cleanly: every player gets `Logout` with the
 reason `Shutdown`, each connection closes once it has left (1 second at most), then the

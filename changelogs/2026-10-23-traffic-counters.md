@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#48](https://github.com/Aegis2D-Dev/project-rtype/pull/48) (opened 2026-10-23) |
 | Branch | `feat/traffic-counters` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-23 (`f59dd7f`) |
 | Author | @vmbr068 |
 | Ticket | Aegis2D-Dev/aegis2d#269 traffic counters |
 
@@ -34,7 +34,8 @@ statistics to come. First ticket of the *Network: measurements and lag tools* ep
   merged on 2026-10-20 (`ce531df`), with its commits.
 
 ## Commits
-Added once merged.
+- `ed88f9b` feat(net): counted and logged the traffic of each session
+- `7081ae1` feat(changelog): updated changelogs
 
 ## Notes
 - Bytes count each datagram with its 18-byte header, without the IP and UDP headers.
