@@ -39,22 +39,21 @@ come. Second ticket of the *Network: measurements and lag tools* epic
 - `198eafa` feat(docs): documented the round trip time and updated changelogs
 - `0382d49` feat(changelog): merged develop and fixed the changelog conflict
 - `c8cabe7` feat(tests): polled without sleeping in the round trip tests
+- `03baab8` feat(changelog): updated changelogs
 - feat(changelog): updated changelogs
 
 ## Notes
-- **Done when not met on the client side**: with 100 ms of delay each way, the server
-  estimates 200 ms but the client 215 to 216 ms, more than 10 ms over 200 ms. A sample
-  holds the time the peer waits before acknowledging: the server until the snapshot after
-  the last `Input`, the client until its next `Input`. Both run at 60 Hz, so the two waits
-  add up to one input interval (16.7 ms): at least one side is 8 ms over, and which one
-  depends on the phase of the client's inputs against the server's ticks. The test checks
-  that each side stays between 200 ms and 200 ms plus an interval, with 15 ms of margin for
-  the Windows and sanitizer runners (the first run measured up to 234 ms there, while the
-  test still slept between polls). Removing the wait needs the acknowledgement delay in the
-  protocol header, an engine and RFC change; or the ticket accepts one input interval over.
+- With 100 ms of delay each way, the server estimates 200 ms and the client 215 to 216 ms.
+  A sample holds the time the peer waits before acknowledging: the server until the
+  snapshot after the last `Input`, the client until its next `Input`. Both run at 60 Hz, so
+  the two waits add up to one input interval (16.7 ms), split between the two sides by the
+  phase of the client's inputs against the server's ticks. The ticket accepts one input
+  interval over 200 ms; removing the wait would need the acknowledgement delay in the
+  protocol header. The test allows 15 ms more for the Windows and sanitizer runners.
 - In the graphical client, the network is polled once per frame: a datagram can be recorded
   up to a frame after it arrived, which adds to the client's samples.
 - Not played under `tools/netem.sh` (it needs root): the relay of the test stands for it.
 - Verified: 147 tests (`server` configuration against the engine's `develop`, the round trip
-  ones 19 times in a row), warnings as errors, clang-format and clang-tidy 22. `mkdocs build --strict` not run
-  locally (MkDocs not installed); the *Documentation* workflow builds it.
+  ones 19 times in a row), warnings as errors, clang-format and clang-tidy 22.
+  `mkdocs build --strict` not run locally (MkDocs not installed); the *Documentation*
+  workflow builds it.
