@@ -1,6 +1,7 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/movement.hpp>
 #include <aegis2d/shmup/components.hpp>
+#include <aegis2d/shmup/ships.hpp>
 
 #include <rtype/entities.hpp>
 #include <rtype/layers.hpp>
@@ -26,7 +27,7 @@ Vec2 player_spawn(std::size_t slot) {
 
 ecs::Entity spawn_player(ecs::Registry& registry, std::size_t slot) {
     const Vec2 spawn = player_spawn(slot);
-    const ecs::Entity ship = ecs::spawn_player_ship(registry, spawn, tuning::player_speed);
+    const ecs::Entity ship = shmup::spawn_player_ship(registry, spawn, tuning::player_speed);
     registry.emplace<ecs::Sprite>(ship, ecs::Sprite{.size = tuning::player_size});
     registry.emplace<ecs::Collider>(
         ship,

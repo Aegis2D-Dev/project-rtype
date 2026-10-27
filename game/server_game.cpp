@@ -1,5 +1,6 @@
 #include <aegis2d/ecs/despawn.hpp>
 #include <aegis2d/ecs/movement.hpp>
+#include <aegis2d/shmup/ships.hpp>
 #include <aegis2d/shmup/weapons.hpp>
 
 #include <rtype/entities.hpp>
@@ -44,11 +45,11 @@ ServerGame::ServerGame(std::optional<std::uint64_t> seed)
 }
 
 void ServerGame::register_systems() {
-    systems_.add("steering", ecs::steer_player_ships);
+    systems_.add("steering", shmup::steer_player_ships);
     systems_.add("movement", ecs::apply_velocity);
     systems_.add("sine_motion", ecs::apply_sine_motion);
     systems_.add("play_area", [](ecs::Registry& world, const ecs::Tick& /*tick*/) {
-        ecs::clamp_player_ships(world, play_area());
+        shmup::clamp_player_ships(world, play_area());
     });
     systems_.add("weapons", [this](ecs::Registry& world, const ecs::Tick& tick) {
         shmup::trigger_weapons(world, tick, shooters_);

@@ -1,9 +1,9 @@
 /// @file
 /// @brief The screens around a game: connect, joining, connection lost.
 #pragma once
-#include <aegis2d/platform/ship_controls.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/renderer.hpp>
+#include <aegis2d/shmup/ship_controls.hpp>
 
 #include "preferences.hpp"
 #include <rtype/connect_form.hpp>
@@ -17,10 +17,9 @@ namespace rtype {
 
 /// @brief The ship's actions listed on the connect screen, each a row the player can
 /// select to change its key.
-inline constexpr std::array<aegis2d::platform::ShipAction, 5> control_rows{
-    aegis2d::platform::ShipAction::Up, aegis2d::platform::ShipAction::Down,
-    aegis2d::platform::ShipAction::Left, aegis2d::platform::ShipAction::Right,
-    aegis2d::platform::ShipAction::Fire};
+inline constexpr std::array<aegis2d::ecs::Action, 5> control_rows{
+    aegis2d::ecs::Action::Up, aegis2d::ecs::Action::Down, aegis2d::ecs::Action::Left,
+    aegis2d::ecs::Action::Right, aegis2d::ecs::Action::Fire};
 
 /// @brief Rows of the connect screen: the fields of ConnectForm, then control_rows.
 inline constexpr std::size_t connect_rows = connect_field_count + control_rows.size();

@@ -3,10 +3,10 @@
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/platform/actions.hpp>
 #include <aegis2d/platform/controls.hpp>
-#include <aegis2d/platform/ship_controls.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/color.hpp>
 #include <aegis2d/render/renderer.hpp>
+#include <aegis2d/shmup/ship_controls.hpp>
 
 #include "game_art.hpp"
 #include "preferences.hpp"
