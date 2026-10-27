@@ -7,6 +7,7 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
@@ -81,7 +82,8 @@ public:
     /// (RFC section 5.5).
     static constexpr std::chrono::seconds udp_timeout{5};
 
-    /// @brief Time between two lines of traffic of each bound player in the log.
+    /// @brief Time between two lines of traffic and round trip time of each bound player in
+    /// the log.
     static constexpr std::chrono::seconds traffic_report_period{10};
 
     /// @brief Listens on both ports, on every IPv4 interface.
@@ -227,6 +229,15 @@ public:
     /// @param token Session of the player.
     /// @return Its counters, or nothing if the session is not bound or has ended.
     [[nodiscard]] const aegis2d::net::TrafficCounters* traffic(std::uint32_t token) const;
+
+    /// @brief Round trip time to a bound player, with its jitter.
+    /// @details A sample each time a datagram of the player acknowledges, for the first
+    /// time, one sent to it (`Accept`, `Snapshot`, `Event`). It includes the time the client
+    /// waits before its next datagram: in game, at most its input interval (about 17 ms).
+    /// update() logs it every traffic_report_period.
+    /// @param token Session of the player.
+    /// @return Its estimate, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const aegis2d::net::RttEstimator* rtt(std::uint32_t token) const;
 
 private:
     struct Client {

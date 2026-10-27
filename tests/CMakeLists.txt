@@ -15,6 +15,7 @@ add_executable(rtype_tests
     login_test.cpp
     player_notices_test.cpp
     rate_limit_test.cpp
+    rtt_test.cpp
     server_game_test.cpp
     server_test.cpp
     simulation_test.cpp
