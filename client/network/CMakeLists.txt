@@ -6,6 +6,7 @@ add_library(rtype_client_net STATIC
     client_session.cpp
     client_world.cpp
     connect_form.cpp
+    network_stats.cpp
     player_notices.cpp)
 target_include_directories(rtype_client_net PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_client_net
