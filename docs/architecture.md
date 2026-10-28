@@ -102,6 +102,12 @@ smoothly at any frame rate. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 
+The session also measures its link to the server, for the network statistics shown to the
+player: the datagrams and bytes by packet type (`traffic()`), the round trip time and its
+jitter (`rtt()`), and, over the last 2 seconds, the datagrams lost (the gaps in the
+server's sequences), the mean time between two snapshots and how irregularly they arrive
+(`network_stats()`, see `rtype/network_stats.hpp`).
+
 ## The code
 
 ```
@@ -122,6 +128,7 @@ client/
     client_session    login, UDP binding, inputs, loss of the server
     client_world      the world from snapshots and events, interpolation
     connect_form      the fields of the connect screen, checked
+    network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
   client_app          r-type_client: window, screens, settings keys
   game_view           the game screen: entities, explosions, HUD, notices

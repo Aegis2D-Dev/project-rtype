@@ -15,6 +15,7 @@
 
 #include <rtype/client_world.hpp>
 #include <rtype/login.hpp>
+#include <rtype/network_stats.hpp>
 #include <rtype/tuning.hpp>
 
 #include <chrono>
@@ -180,6 +181,12 @@ public:
     /// @return The estimate, without samples before the server's `Accept`.
     [[nodiscard]] const aegis2d::net::RttEstimator& rtt() const noexcept;
 
+    /// @brief Loss, snapshot interval and jitter of the server's datagrams.
+    /// @details Records every datagram received with the token of the session, since the
+    /// login; NetworkStats::summary() gives the figures of the last NetworkStats::window.
+    /// @return The statistics.
+    [[nodiscard]] const NetworkStats& network_stats() const noexcept;
+
 private:
     void fail(std::string reason);
     void on_connected();
@@ -208,6 +215,7 @@ private:
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
     aegis2d::net::TrafficCounters traffic_;
+    NetworkStats network_stats_;
     // Last valid datagram from the server, in game.
     Clock::time_point last_heard_;
     ClientWorld world_;

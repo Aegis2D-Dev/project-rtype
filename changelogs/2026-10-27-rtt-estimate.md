@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#50](https://github.com/Aegis2D-Dev/project-rtype/pull/50) (opened 2026-10-27) |
 | Branch | `feat/rtt-estimate` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-27 (`77cc529`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#270](https://github.com/Aegis2D-Dev/aegis2d/issues/270) round-trip time estimate |
 
@@ -40,7 +40,7 @@ come. Second ticket of the *Network: measurements and lag tools* epic
 - `0382d49` feat(changelog): merged develop and fixed the changelog conflict
 - `c8cabe7` feat(tests): polled without sleeping in the round trip tests
 - `03baab8` feat(changelog): updated changelogs
-- feat(changelog): updated changelogs
+- `2d3f838` feat(changelog): updated changelogs
 
 ## Notes
 - With 100 ms of delay each way, the server estimates 200 ms and the client 215 to 216 ms.

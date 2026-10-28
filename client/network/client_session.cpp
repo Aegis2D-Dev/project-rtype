@@ -225,6 +225,7 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
     }
     const auto now = Clock::now();
     traffic_.record(net::Direction::Received, header->type, datagram.size(), now);
+    network_stats_.record(header->sequence, header->type, now);
     if (state_ == ClientState::Binding) {
         if (header->type != net::PacketType::Accept || !reader.at_end()) {
             return;
@@ -449,6 +450,10 @@ const net::TrafficCounters& ClientSession::traffic() const noexcept {
 
 const net::RttEstimator& ClientSession::rtt() const noexcept {
     return channel_.rtt();
+}
+
+const NetworkStats& ClientSession::network_stats() const noexcept {
+    return network_stats_;
 }
 
 ClientWorld& ClientSession::world() noexcept {
