@@ -1,0 +1,10 @@
+# Input script for r-type_bot --inputs: one step per line, "<milliseconds> <actions>",
+# with U (up), D (down), L (left), R (right), F (fire), or - for none. It loops.
+# Moves forward, dodges up and down while firing, falls back, then rests a moment.
+600 RF
+400 UF
+400 DF
+400 UF
+400 DF
+600 LF
+300 -

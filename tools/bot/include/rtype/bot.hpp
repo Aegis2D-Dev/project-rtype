@@ -1,14 +1,19 @@
 /// @file
-/// @brief A player without a window: joins a server and holds random inputs.
+/// @brief A player without a window: joins a server and holds random or recorded inputs.
 #pragma once
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/context.hpp>
 
 #include <rtype/client_session.hpp>
+#include <rtype/input_script.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <random>
+#include <variant>
+#include <vector>
 
 namespace rtype {
 
@@ -49,13 +54,25 @@ private:
 struct BotSettings {
     /// @brief Server and player name.
     ClientSettings server{.host = "127.0.0.1", .tcp_port = 4242, .name = "bot"};
-    /// @brief Seed of its inputs.
+    /// @brief Seed of its random inputs.
     std::uint32_t seed = 0;
+    /// @brief Inputs to replay instead of random ones (`--inputs`).
+    std::optional<InputScript> script;
 };
 
-/// @brief A client without window nor sound: a ClientSession whose inputs are RandomInputs.
+/// @brief The settings of @p count bots that play together, for `--count`.
+/// @details One bot keeps @p base. Several are named after it with their number from 1
+/// (`bot1`, `bot2`...), so the server takes them all, and the random ones each get their
+/// own seed: @p base's plus their index. They share the script, if any.
+/// @param base Settings of the first bot.
+/// @param count Number of bots, at least 1.
+/// @return One settings per bot.
+[[nodiscard]] std::vector<BotSettings> bot_team(const BotSettings& base, std::size_t count);
+
+/// @brief A client without window nor sound: a ClientSession whose inputs are RandomInputs,
+/// or ScriptedInputs when its settings have a script.
 /// @details start() joins the server as any client does (TCP login, then UDP binding); once
-/// in game, update() sends the random inputs, one `Input` per server tick, which also keep
+/// in game, update() sends its inputs, one `Input` per server tick, which also keep
 /// the session alive. leave() says goodbye with `Logout`. Same threading rules as
 /// ClientSession: use it on the thread running the context.
 class Bot {
@@ -71,7 +88,8 @@ public:
     /// @brief Connects to the server and logs in.
     void start();
 
-    /// @brief Runs the session's timers and, in game, picks the inputs.
+    /// @brief Runs the session's timers and, in game, picks the inputs; a script starts at
+    /// the first update in game.
     /// @param now Current time.
     void update(Clock::time_point now);
 
@@ -87,13 +105,13 @@ public:
     /// @return The last input given to the session.
     [[nodiscard]] aegis2d::ecs::PlayerInput input() const noexcept;
 
-    /// @brief The generator of the inputs.
-    /// @return It, for the number of inputs picked.
-    [[nodiscard]] const RandomInputs& inputs() const noexcept;
+    /// @brief Number of inputs picked: random holds, or steps of the script.
+    /// @return The count since the game started.
+    [[nodiscard]] std::uint64_t picks() const noexcept;
 
 private:
     ClientSession session_;
-    RandomInputs inputs_;
+    std::variant<RandomInputs, ScriptedInputs> inputs_;
     aegis2d::ecs::PlayerInput input_;
 };
 

@@ -8,16 +8,24 @@
 #include <rtype/bot_options.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input_script.hpp>
+#include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <format>
+#include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -27,8 +35,11 @@ using aegis2d::net::NetworkContext;
 using Catch::Matchers::ContainsSubstring;
 using rtype::Bot;
 using rtype::BotOptions;
+using rtype::BotSettings;
 using rtype::ClientState;
+using rtype::InputScript;
 using rtype::RandomInputs;
+using rtype::ScriptedInputs;
 using rtype::ServerNetwork;
 using std::chrono::milliseconds;
 using Clock = RandomInputs::Clock;
@@ -149,7 +160,8 @@ TEST_CASE("a bot joins, plays and leaves cleanly", "[bot]") {
     Bot bot{context, rtype::BotSettings{.server = {.host = "127.0.0.1",
                                                    .tcp_port = server.tcp_endpoint().port(),
                                                    .name = "B1"},
-                                        .seed = 3}};
+                                        .seed = 3,
+                                        .script = std::nullopt}};
     const auto pump = [&](auto condition) {
         const auto deadline = Clock::now() + std::chrono::seconds{10};
         while (!condition()) {
@@ -167,7 +179,7 @@ TEST_CASE("a bot joins, plays and leaves cleanly", "[bot]") {
     REQUIRE(pump([&] { return bot.session().state() == ClientState::InGame; }));
     CHECK(joined == std::vector<std::string>{"B1"});
     // The server applies the bot's random inputs: several different ones within seconds.
-    REQUIRE(pump([&] { return received.size() >= 3 && bot.inputs().picks() >= 3; }));
+    REQUIRE(pump([&] { return received.size() >= 3 && bot.picks() >= 3; }));
     CHECK(inputs > 10);
     CHECK(bot.session().inputs_sent() >= inputs);
     CHECK(server.sessions().size() == 1);
@@ -177,5 +189,161 @@ TEST_CASE("a bot joins, plays and leaves cleanly", "[bot]") {
     REQUIRE(pump([&] { return server.sessions().size() == 0; }));
     CHECK(left == std::optional{rtype::LeaveReason::Left});
     CHECK(server.timeouts() == 0);
+    CHECK(server.errors() == 0);
+}
+
+namespace {
+
+std::uint8_t held(std::initializer_list<Action> actions) {
+    PlayerInput input;
+    for (const Action action : actions) {
+        input.set(action, true);
+    }
+    return input.held;
+}
+
+InputScript script(std::string_view text) {
+    std::variant<InputScript, std::string> parsed = rtype::parse_input_script(text);
+    REQUIRE(std::holds_alternative<InputScript>(parsed));
+    return std::get<InputScript>(std::move(parsed));
+}
+
+std::string script_error(std::string_view text) {
+    const std::variant<InputScript, std::string> parsed = rtype::parse_input_script(text);
+    REQUIRE(std::holds_alternative<std::string>(parsed));
+    return std::get<std::string>(parsed);
+}
+
+} // namespace
+
+TEST_CASE("an input script lists actions and how long they are held", "[bot][script]") {
+    const InputScript dodge = script("# Dodge while firing.\r\n500 UF\r\n\n  500\tDF  \n250 -\n");
+    REQUIRE(dodge.steps.size() == 3);
+    CHECK(dodge.steps.at(0).duration == milliseconds{500});
+    CHECK(dodge.steps.at(0).held == held({Action::Up, Action::Fire}));
+    CHECK(dodge.steps.at(1).held == held({Action::Down, Action::Fire}));
+    CHECK(dodge.steps.at(2).duration == milliseconds{250});
+    CHECK(dodge.steps.at(2).held == 0);
+    CHECK(script("100 LRUDF").steps.at(0).held == 0x1F);
+
+    CHECK_THAT(script_error("500 UF\nfast UF"), ContainsSubstring("line 2"));
+    CHECK_THAT(script_error("0 UF"), ContainsSubstring("not a duration"));
+    CHECK_THAT(script_error("-5 UF"), ContainsSubstring("not a duration"));
+    CHECK_THAT(script_error("60001 UF"), ContainsSubstring("not a duration"));
+    CHECK_THAT(script_error("500"), ContainsSubstring("no actions"));
+    CHECK_THAT(script_error("# only\n500 UX"), ContainsSubstring("line 2: \"X\""));
+    CHECK_THAT(script_error("# nothing\n\n"), ContainsSubstring("no step"));
+    const std::variant<InputScript, std::string> missing =
+        rtype::load_input_script(std::filesystem::path{"no/such/inputs.txt"});
+    REQUIRE(std::holds_alternative<std::string>(missing));
+    CHECK_THAT(std::get<std::string>(missing), ContainsSubstring("inputs.txt"));
+}
+
+TEST_CASE("a script is played on time and loops", "[bot][script]") {
+    ScriptedInputs inputs{script("500 UF\n500 DF\n250 -")};
+    const auto at = [&](int ms) { return inputs.update(start + milliseconds{ms}).held; };
+    CHECK(at(0) == held({Action::Up, Action::Fire}));
+    CHECK(at(499) == held({Action::Up, Action::Fire}));
+    CHECK(at(500) == held({Action::Down, Action::Fire}));
+    CHECK(at(1000) == 0);
+    CHECK(at(1250) == held({Action::Up, Action::Fire}));
+    CHECK(inputs.picks() == 4);
+    // After a stall, the steps it covered are skipped: 2600 ms is 100 ms into a loop.
+    CHECK(at(2600) == held({Action::Up, Action::Fire}));
+    CHECK(at(3100) == held({Action::Down, Action::Fire}));
+    CHECK(ScriptedInputs{InputScript{}}.update(start).held == 0);
+}
+
+TEST_CASE("bots of one process get their own names and seeds", "[bot]") {
+    BotSettings base;
+    base.seed = 10;
+    base.script = script("100 F");
+    const std::vector<BotSettings> one = rtype::bot_team(base, 1);
+    REQUIRE(one.size() == 1);
+    CHECK(one.front().server.name == "bot");
+    CHECK(one.front().seed == 10);
+    const std::vector<BotSettings> four = rtype::bot_team(base, 4);
+    REQUIRE(four.size() == 4);
+    for (std::size_t index = 0; index < four.size(); ++index) {
+        CHECK(four.at(index).server.name == std::format("bot{}", index + 1));
+        CHECK(four.at(index).seed == 10 + index);
+        CHECK(four.at(index).script.has_value());
+    }
+
+    const auto given = parse({"--count", "4", "--inputs", "dodge.txt"});
+    REQUIRE(std::holds_alternative<BotOptions>(given));
+    CHECK(std::get<BotOptions>(given).count == 4);
+    CHECK(std::get<BotOptions>(given).inputs == std::optional{std::filesystem::path{"dodge.txt"}});
+    CHECK(std::get<BotOptions>(parse({})).count == 1);
+    CHECK(std::get<BotOptions>(parse({"--count", "64"})).count == 64);
+    CHECK_THAT(std::get<std::string>(parse({"--count", "0"})), ContainsSubstring("--count"));
+    CHECK_THAT(std::get<std::string>(parse({"--count", "65"})), ContainsSubstring("--count"));
+    CHECK_THAT(std::get<std::string>(parse({"--inputs"})), ContainsSubstring("needs a value"));
+}
+
+TEST_CASE("four bots fill a game and play their script", "[bot][script]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    // The actions each session held, by token.
+    std::map<std::uint32_t, std::set<std::uint8_t>> received;
+    server.on_input([&](const rtype::Session& session, PlayerInput input) {
+        received[session.token].insert(input.held);
+    });
+    BotSettings base;
+    base.server.tcp_port = server.tcp_endpoint().port();
+    base.script = script("200 RF\n200 LF\n100 -");
+    std::vector<std::unique_ptr<Bot>> bots;
+    for (const BotSettings& settings : rtype::bot_team(base, 5)) {
+        bots.push_back(std::make_unique<Bot>(context, settings));
+    }
+    const auto pump = [&](auto condition) {
+        const auto deadline = Clock::now() + std::chrono::seconds{10};
+        while (!condition()) {
+            if (Clock::now() > deadline) {
+                return false;
+            }
+            context.run_for(milliseconds{5});
+            server.update(Clock::now());
+            for (const std::unique_ptr<Bot>& bot : bots) {
+                bot->update(Clock::now());
+            }
+        }
+        return true;
+    };
+    const auto in_game = [&] {
+        return static_cast<std::size_t>(std::ranges::count_if(
+            bots, [](const auto& bot) { return bot->session().state() == ClientState::InGame; }));
+    };
+
+    // The first four take the four places; the fifth is told the server is full.
+    for (std::size_t index = 0; index < 4; ++index) {
+        bots.at(index)->start();
+    }
+    REQUIRE(pump([&] { return in_game() == 4; }));
+    bots.back()->start();
+    REQUIRE(pump([&] { return bots.back()->session().state() == ClientState::Failed; }));
+    CHECK_THAT(bots.back()->session().error(), ContainsSubstring("full"));
+    CHECK(server.sessions().size() == 4);
+    std::set<std::uint8_t> players;
+    for (std::size_t index = 0; index < 4; ++index) {
+        players.insert(bots.at(index)->session().login().value_or(rtype::LoginAccepted{}).player);
+    }
+    CHECK(players == std::set<std::uint8_t>{0, 1, 2, 3});
+
+    // Each plays the script: the server applies its three steps from all four.
+    const std::set<std::uint8_t> steps{held({Action::Right, Action::Fire}),
+                                       held({Action::Left, Action::Fire}), 0};
+    REQUIRE(pump([&] {
+        return received.size() == 4 && std::ranges::all_of(received, [&](const auto& entry) {
+                   return entry.second == steps;
+               });
+    }));
+    CHECK(in_game() == 4);
+    CHECK(server.timeouts() == 0);
+
+    for (const std::unique_ptr<Bot>& bot : bots) {
+        bot->leave();
+    }
+    REQUIRE(pump([&] { return server.sessions().size() == 0; }));
     CHECK(server.errors() == 0);
 }
