@@ -3,11 +3,16 @@
 
 #include <rtype/bot.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/input_script.hpp>
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <format>
 #include <random>
+#include <variant>
+#include <vector>
 
 namespace rtype {
 
@@ -17,6 +22,13 @@ namespace {
 
 // Fire is held in this share of the picks: a player shoots most of the time.
 constexpr double fire_share = 0.7;
+
+std::variant<RandomInputs, ScriptedInputs> inputs_for(const BotSettings& settings) {
+    if (settings.script.has_value()) {
+        return ScriptedInputs{*settings.script};
+    }
+    return RandomInputs{settings.seed};
+}
 
 } // namespace
 
@@ -49,8 +61,20 @@ std::uint64_t RandomInputs::picks() const noexcept {
     return picks_;
 }
 
+std::vector<BotSettings> bot_team(const BotSettings& base, std::size_t count) {
+    if (count <= 1) {
+        return {base};
+    }
+    std::vector<BotSettings> team(count, base);
+    for (std::size_t index = 0; index < count; ++index) {
+        team.at(index).server.name = std::format("{}{}", base.server.name, index + 1);
+        team.at(index).seed = base.seed + static_cast<std::uint32_t>(index);
+    }
+    return team;
+}
+
 Bot::Bot(aegis2d::net::NetworkContext& context, const BotSettings& settings)
-    : session_{context, settings.server}, inputs_{settings.seed} {}
+    : session_{context, settings.server}, inputs_{inputs_for(settings)} {}
 
 void Bot::start() {
     session_.start();
@@ -58,7 +82,7 @@ void Bot::start() {
 
 void Bot::update(Clock::time_point now) {
     if (session_.state() == ClientState::InGame) {
-        input_ = inputs_.update(now);
+        input_ = std::visit([now](auto& inputs) { return inputs.update(now); }, inputs_);
         session_.set_input(input_);
     }
     session_.update(now);
@@ -76,8 +100,13 @@ ecs::PlayerInput Bot::input() const noexcept {
     return input_;
 }
 
-const RandomInputs& Bot::inputs() const noexcept {
-    return inputs_;
+std::uint64_t Bot::picks() const noexcept {
+    // get_if rather than visit, which could throw.
+    if (const auto* const random = std::get_if<RandomInputs>(&inputs_)) {
+        return random->picks();
+    }
+    const auto* const scripted = std::get_if<ScriptedInputs>(&inputs_);
+    return scripted != nullptr ? scripted->picks() : 0;
 }
 
 } // namespace rtype

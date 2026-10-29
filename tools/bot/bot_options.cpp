@@ -3,6 +3,7 @@
 
 #include <charconv>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <optional>
 #include <span>
@@ -43,7 +44,7 @@ std::variant<BotOptions, std::string> parse_bot_options(std::span<const std::str
             return options;
         }
         if (arg != "--host" && arg != "--port" && arg != "--name" && arg != "--seconds" &&
-            arg != "--seed") {
+            arg != "--seed" && arg != "--count" && arg != "--inputs") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -60,6 +61,15 @@ std::variant<BotOptions, std::string> parse_bot_options(std::span<const std::str
                 return std::format("--port: \"{}\" is not a port (1 to 65535)", value);
             }
             options.settings.server.tcp_port = *port;
+        } else if (arg == "--inputs") {
+            options.inputs = std::filesystem::path{value};
+        } else if (arg == "--count") {
+            const std::optional<std::uint32_t> count = parse_number(value);
+            if (!count.has_value() || *count == 0 || *count > max_bots) {
+                return std::format("--count: \"{}\" is not a number of bots (1 to {})", value,
+                                   max_bots);
+            }
+            options.count = *count;
         } else if (arg == "--seconds") {
             const std::optional<std::uint32_t> seconds = parse_number(value);
             if (!seconds.has_value() || *seconds == 0) {
