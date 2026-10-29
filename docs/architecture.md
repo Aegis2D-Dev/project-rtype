@@ -106,7 +106,9 @@ The session also measures its link to the server, for the network statistics sho
 player: the datagrams and bytes by packet type (`traffic()`), the round trip time and its
 jitter (`rtt()`), and, over the last 2 seconds, the datagrams lost (the gaps in the
 server's sequences), the mean time between two snapshots and how irregularly they arrive
-(`network_stats()`, see `rtype/network_stats.hpp`).
+(`network_stats()`, see `rtype/network_stats.hpp`). The lagometer (`rtype/lagometer.hpp`)
+samples them ten times a second and keeps the last 10 seconds, which `lagometer_view`
+draws as graphs over the game when the player presses F6.
 
 ## The code
 
@@ -128,10 +130,12 @@ client/
     client_session    login, UDP binding, inputs, loss of the server
     client_world      the world from snapshots and events, interpolation
     connect_form      the fields of the connect screen, checked
+    lagometer         the network statistics of the last 10 seconds, sampled
     network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
   client_app          r-type_client: window, screens, settings keys
   game_view           the game screen: entities, explosions, HUD, notices
+  lagometer_view      the lagometer overlay, toggled with F6
   menu_screens        connect, joining and connection lost screens
   game_art, game_sounds, preferences   sprites, sounds, player settings
 assets/sprites/, assets/sounds/   art and sounds, copied next to r-type_client
