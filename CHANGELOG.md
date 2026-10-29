@@ -6,7 +6,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
 | [#55](https://github.com/Aegis2D-Dev/project-rtype/pull/55) | Network benchmark runs | `feat/tools-net-benchmark` | Open | 2026-10-29 | [2026-10-29-tools-net-benchmark](changelogs/2026-10-29-tools-net-benchmark.md) |
-| [#54](https://github.com/Aegis2D-Dev/project-rtype/pull/54) | Several bots and input scripts | `feat/tools-bot-scripts` | Open | 2026-10-29 | [2026-10-29-tools-bot-scripts](changelogs/2026-10-29-tools-bot-scripts.md) |
+| [#54](https://github.com/Aegis2D-Dev/project-rtype/pull/54) | Several bots and input scripts | `feat/tools-bot-scripts` | Merged | 2026-10-29 | [2026-10-29-tools-bot-scripts](changelogs/2026-10-29-tools-bot-scripts.md) |
 | [#53](https://github.com/Aegis2D-Dev/project-rtype/pull/53) | Headless bot client | `feat/tools-headless-bot` | Merged | 2026-10-29 | [2026-10-29-tools-headless-bot](changelogs/2026-10-29-tools-headless-bot.md) |
 | [#52](https://github.com/Aegis2D-Dev/project-rtype/pull/52) | Lagometer overlay | `feat/client-lagometer` | Merged | 2026-10-29 | [2026-10-29-client-lagometer](changelogs/2026-10-29-client-lagometer.md) |
 | [#51](https://github.com/Aegis2D-Dev/project-rtype/pull/51) | Network statistics | `feat/client-network-stats` | Merged | 2026-10-28 | [2026-10-28-client-network-stats](changelogs/2026-10-28-client-network-stats.md) |
