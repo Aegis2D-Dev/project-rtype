@@ -18,7 +18,7 @@ namespace rtype {
 inline constexpr std::string_view bot_usage =
     "usage: r-type_bot [--host <address>] [--port <tcp port>] [--name <player name>]\n"
     "                  [--count <bots>] [--inputs <script file>] [--seconds <play time>]\n"
-    "                  [--seed <number>] [--help] [--version]\n";
+    "                  [--seed <number>] [--stats <csv file>] [--help] [--version]\n";
 
 /// @brief Most bots `--count` runs in one process.
 inline constexpr std::uint32_t max_bots = 64;
@@ -48,6 +48,9 @@ struct BotOptions {
     /// @brief `--inputs`: script replayed by every bot instead of random inputs, read with
     /// load_input_script().
     std::optional<std::filesystem::path> inputs;
+    /// @brief `--stats`: CSV file written at the end, one line per bot that played
+    /// (bot_stats_header, then bot_stats_line()).
+    std::optional<std::filesystem::path> stats;
 };
 
 /// @brief Reads the command line of `r-type_bot`.
