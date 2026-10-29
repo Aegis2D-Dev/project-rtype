@@ -148,27 +148,45 @@ numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <
 
 `r-type_bot` is a player without a window: it joins a server as the client does, then
 holds random inputs (a direction or none on each axis, Fire most of the time, each for 150
-to 900 ms), one `Input` per tick. It needs no SDL nor OpenGL, so every preset builds it,
+to 900 ms), or replays a script of inputs, one `Input` per tick. One process can run several
+bots. It needs no SDL nor OpenGL, so every preset builds it,
 the `server` one included; it serves load and network tests.
 
 ```bash
 ./build/linux-debug/r-type_bot --port 4242 --name B1 --seconds 60
+./build/linux-debug/r-type_bot --count 4 --seconds 30   # fills a game for a stage
+./build/linux-debug/r-type_bot --count 2 --inputs tools/bot/dodge.txt
 ```
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--host <address>` | `127.0.0.1` | Server, as for the client |
 | `--port <tcp port>` | `4242` | TCP port of the server |
-| `--name <player name>` | `bot` | Player name; two bots on one server need two names |
+| `--name <player name>` | `bot` | Player name; two processes on one server need two names |
+| `--count <n>` | `1` | Bots run by the process, 1 to 64, named `<name>1`, `<name>2`...; a server takes 4 |
+| `--inputs <file>` | random inputs | Script replayed by every bot, from its start in game, in a loop |
 | `--seconds <n>` | until Ctrl+C | Play time once in game, then leave |
-| `--seed <n>` | drawn at start | Seed of the inputs: the same seed holds the same inputs |
+| `--seed <n>` | drawn at start | Seed of the random inputs: the same seed holds the same inputs; with `--count`, bot `i` takes seed + i - 1 |
 | `--help`, `--version` | | Prints the usage or the version and exits |
 
-It prints its seed at start, then the player it plays (`joined 127.0.0.1:4242 as player
-1`), and when it leaves, what it exchanged (`left after 60.0 s: 3601 inputs sent (114
-different holds), 1200 snapshots received`). It leaves with `Logout` after `--seconds` or
-at Ctrl+C (SIGINT) or SIGTERM, and exits with status 0; with status 1 when it cannot join
-or the server goes away, 2 on a bad command line.
+An input script holds one step per line, a duration in milliseconds then the actions held:
+`U`, `D`, `L`, `R`, `F` (up, down, left, right, fire) or `-` for none; blank lines and lines
+starting with `#` are skipped. [`tools/bot/dodge.txt`](https://github.com/Aegis2D-Dev/project-rtype/blob/develop/tools/bot/dodge.txt)
+moves forward, dodges while firing, then falls back:
+
+```text
+600 RF
+400 UF
+400 DF
+300 -
+```
+
+It prints its seed (or script) at start, then the player each bot plays (`bot1 joined
+127.0.0.1:4242 as player 1`), and when they leave, what each exchanged (`bot1 left after
+30.0 s: 1801 inputs sent (57 holds), 600 snapshots received`). Each bot leaves with
+`Logout` after `--seconds` in game, or all of them at Ctrl+C (SIGINT) or SIGTERM; the
+process exits with status 0, 1 when a bot cannot join or loses the server (the others play
+on), when the script cannot be read, and 2 on a bad command line.
 
 ## Documentation
 
