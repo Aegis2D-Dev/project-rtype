@@ -139,6 +139,7 @@ client/
   menu_screens        connect, joining and connection lost screens
   game_art, game_sounds, preferences   sprites, sounds, player settings
 assets/sprites/, assets/sounds/   art and sounds, copied next to r-type_client
+tools/bot/            r-type_bot, a headless client holding random inputs (rtype_bot)
 tests/                Catch2 tests of rtype_game
 ```
 

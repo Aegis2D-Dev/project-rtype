@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#52](https://github.com/Aegis2D-Dev/project-rtype/pull/52) (opened 2026-10-29) |
 | Branch | `feat/client-lagometer` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-29 (`3330279`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#272](https://github.com/Aegis2D-Dev/aegis2d/issues/272) lagometer overlay |
 
@@ -48,7 +48,7 @@ epic (Aegis2D-Dev/aegis2d#268).
 ## Commits
 - `e76e1c9` feat(client): added the lagometer overlay toggled with f6
 - `c43bc0f` feat(tests): added lagometer tests with a degraded then restored link
-- feat(docs): documented the lagometer and updated changelogs
+- `295d0e7` feat(docs): documented the lagometer and updated changelogs
 
 ## Notes
 - The jitter graph is the snapshots' (`NetworkSummary::snapshot_jitter`), what the player

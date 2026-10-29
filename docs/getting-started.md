@@ -144,6 +144,32 @@ numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <
 ./build/linux-debug/r-type_client --host 127.0.0.1 --port 4242 --name R9
 ```
 
+### Bots
+
+`r-type_bot` is a player without a window: it joins a server as the client does, then
+holds random inputs (a direction or none on each axis, Fire most of the time, each for 150
+to 900 ms), one `Input` per tick. It needs no SDL nor OpenGL, so every preset builds it,
+the `server` one included; it serves load and network tests.
+
+```bash
+./build/linux-debug/r-type_bot --port 4242 --name B1 --seconds 60
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--host <address>` | `127.0.0.1` | Server, as for the client |
+| `--port <tcp port>` | `4242` | TCP port of the server |
+| `--name <player name>` | `bot` | Player name; two bots on one server need two names |
+| `--seconds <n>` | until Ctrl+C | Play time once in game, then leave |
+| `--seed <n>` | drawn at start | Seed of the inputs: the same seed holds the same inputs |
+| `--help`, `--version` | | Prints the usage or the version and exits |
+
+It prints its seed at start, then the player it plays (`joined 127.0.0.1:4242 as player
+1`), and when it leaves, what it exchanged (`left after 60.0 s: 3601 inputs sent (114
+different holds), 1200 snapshots received`). It leaves with `Logout` after `--seconds` or
+at Ctrl+C (SIGINT) or SIGTERM, and exits with status 0; with status 1 when it cannot join
+or the server goes away, 2 on a bad command line.
+
 ## Documentation
 
 The site is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and
