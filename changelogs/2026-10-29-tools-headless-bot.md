@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#53](https://github.com/Aegis2D-Dev/project-rtype/pull/53) (opened 2026-10-29) |
 | Branch | `feat/tools-headless-bot` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-29 (`024b3a8`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#273](https://github.com/Aegis2D-Dev/aegis2d/issues/273) headless bot client |
 
@@ -41,7 +41,7 @@ fill the games of the network benchmark.
 ## Commits
 - `05dc6b5` feat(tools): added r-type_bot, a headless client holding random inputs
 - `ae97b81` feat(tests): added bot tests joining, playing and leaving a real server
-- feat(docs): documented the bot and updated changelogs
+- `4c95515` feat(docs): documented the bot and updated changelogs
 
 ## Notes
 - Ctrl+C sets a lock-free flag, as in `r-type_server`; the server's handler lives in

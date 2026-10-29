@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Pull request | [#54](https://github.com/Aegis2D-Dev/project-rtype/pull/54) (opened 2026-10-29) |
-| Branch | `feat/tools-bot-scripts` → `develop` (stacked on `feat/tools-headless-bot`, #53) |
-| Status | Open |
+| Branch | `feat/tools-bot-scripts` → `develop` (stacked on `feat/tools-headless-bot`, #53, merged) |
+| Status | Merged on 2026-10-29 (`49f9c0e`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#274](https://github.com/Aegis2D-Dev/aegis2d/issues/274) several bots and input scripts |
 
@@ -36,14 +36,15 @@ benchmark.
 ## Changed
 - `Bot` plays `RandomInputs` or `ScriptedInputs` (`BotSettings::script`); `Bot::picks()`
   replaces `Bot::inputs()`.
+- Changelog: #53 merged on 2026-10-29 (`024b3a8`), with its last commit.
 
 ## Commits
 - `808c28e` feat(tools): added --count and --inputs to r-type_bot
 - `06895eb` feat(tests): added input script tests and four bots filling a game
-- feat(docs): documented several bots and input scripts and updated changelogs
+- `fe26628` feat(docs): documented several bots and input scripts and updated changelogs
+- `b3a174a` feat(changelog): updated changelogs
 
 ## Notes
-- Stacked on #53: merge it first.
 - Done when, by hand: `r-type_server`, then `r-type_bot --count 4 --seconds 25` (the
   stage, `stage1.json`, lasts 19.3 s): the four bots joined as players 1 to 4, each sent
   1501 inputs and received 500 snapshots, the server saw 41 datagrams/s to each (snapshots

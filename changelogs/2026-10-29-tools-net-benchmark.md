@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Pull request | [#55](https://github.com/Aegis2D-Dev/project-rtype/pull/55) (opened 2026-10-29) |
-| Branch | `feat/tools-net-benchmark` → `develop` (stacked on `feat/tools-bot-scripts`, #54) |
+| Branch | `feat/tools-net-benchmark` → `develop` (stacked on `feat/tools-bot-scripts`, #54, merged) |
 | Status | Open |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#275](https://github.com/Aegis2D-Dev/aegis2d/issues/275) network benchmark runs |
@@ -39,14 +39,16 @@ measurements and lag tools* epic (Aegis2D-Dev/aegis2d#268).
 ## Changed
 - `r-type_bot`: what it measured is kept when each bot leaves, by `--seconds` or Ctrl+C,
   for `--stats`; its usage lists the option.
+- Changelog: #53 merged on 2026-10-29 (`024b3a8`) and #54 on 2026-10-29 (`49f9c0e`), with
+  their last commit.
 
 ## Commits
 - `2997770` feat(tools): added the network benchmark script and r-type_bot --stats
 - `8d3bd66` feat(tests): added bot stats tests
 - feat(docs): documented the network benchmark and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
-- Stacked on #54 (itself on #53): merge them first.
 - The `corrections` column stays empty: the client corrects nothing yet; client-side
   prediction and its correction count (Aegis2D-Dev/aegis2d#292 to #294) will fill it.
 - netem delays each packet, so on `lo` each direction: the round trip grows by twice the
