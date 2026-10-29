@@ -60,6 +60,7 @@ server and `--join`:
 | Flashes and shake on / off | F2 | |
 | Color vision preview | F3 | |
 | Smaller / larger text | F4 / F5 | |
+| Lagometer on / off | F6 | |
 | Music on / off | M (in game) | |
 
 The movement and fire keys can be changed on the connect screen: select a control with
@@ -123,6 +124,27 @@ the world as it was, consistent between the ships, the missiles and the enemies.
 
 While in game, the client sends the actions the player holds 60 times per second: these
 inputs are also the heartbeat that tells the server the player is still there.
+
+### Lagometer
+
+F6 shows the **lagometer** at the top right of the game: six small graphs of the last 10
+seconds, one bar every 100 ms, newest on the right, each with its last value.
+
+| Graph | What it shows | Yellow from | Red from |
+|---|---|---|---|
+| RTT | Smoothed round trip time to the server | 100 ms | 200 ms |
+| Jitter | How irregularly the snapshots arrive | 10 ms | 30 ms |
+| Loss | Share of the server's datagrams lost, over 2 s | 1 % | 5 % |
+| Snapshots | Mean time between two snapshots (50 ms on a sound link) | 60 ms | 100 ms |
+| In / Out | Bytes received and sent during the last second (blue) | | |
+
+A graph keeps its bars below its top on a sound link (100 ms for the RTT, 10 % for the
+loss...), and grows when a value goes above it. To see it react, play with a degraded
+network: `sudo tools/netem.sh start` in the engine (see its *Test on a degraded network*
+page) delays each direction of `lo` by 150 ms, so the RTT climbs above 300 ms and turns
+red within a second, the loss turns yellow, and the bandwidth graphs flatten at 5 KB/s;
+after `sudo tools/netem.sh stop`, the loss is back to 0 within 2 seconds and the RTT to
+normal within a few.
 
 ## Accessibility
 

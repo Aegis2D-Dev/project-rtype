@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#51](https://github.com/Aegis2D-Dev/project-rtype/pull/51) (opened 2026-10-28) |
 | Branch | `feat/client-network-stats` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-28 (`bb02b79`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#271](https://github.com/Aegis2D-Dev/aegis2d/issues/271) network statistics |
 
@@ -33,7 +33,7 @@ measurements and lag tools* epic (Aegis2D-Dev/aegis2d#268).
 ## Commits
 - `4c7abeb` feat(client): measured the loss and jitter of the server's datagrams
 - `74d35ab` feat(tests): added loss and jitter tests with dropped and late datagrams
-- feat(docs): documented the network statistics and updated changelogs
+- `c238162` feat(docs): documented the network statistics and updated changelogs
 
 ## Notes
 - A datagram is lost when its sequence is missing between the oldest and the newest of the
