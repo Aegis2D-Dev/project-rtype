@@ -167,6 +167,7 @@ the `server` one included; it serves load and network tests.
 | `--inputs <file>` | random inputs | Script replayed by every bot, from its start in game, in a loop |
 | `--seconds <n>` | until Ctrl+C | Play time once in game, then leave |
 | `--seed <n>` | drawn at start | Seed of the random inputs: the same seed holds the same inputs; with `--count`, bot `i` takes seed + i - 1 |
+| `--stats <file>` | | CSV written at the end, one line per bot that played (below) |
 | `--help`, `--version` | | Prints the usage or the version and exits |
 
 An input script holds one step per line, a duration in milliseconds then the actions held:
@@ -187,6 +188,46 @@ It prints its seed (or script) at start, then the player each bot plays (`bot1 j
 `Logout` after `--seconds` in game, or all of them at Ctrl+C (SIGINT) or SIGTERM; the
 process exits with status 0, 1 when a bot cannot join or loses the server (the others play
 on), when the script cannot be read, and 2 on a bad command line.
+
+With `--stats`, each bot that played measures its link when it leaves: `bot`, `seconds` in
+game, `inputs_sent`, `snapshots` received, `bytes_in_per_s` and `bytes_out_per_s` (the
+datagrams with their 18-byte header, averaged over the game), `rtt_ms` and
+`rtt_jitter_ms` (the smoothed round trip time at the end), and over the last 2 seconds
+`loss_percent` (the server's datagrams lost) and `snapshot_jitter_ms`.
+
+### Network benchmark
+
+`tools/net_benchmark.py` measures the game's network under the conditions players meet:
+it starts `r-type_server`, then for each profile degrades the server's two ports on `lo`
+with the engine's `tools/netem.sh`, plays `r-type_bot --count 4 --seconds 30 --stats`, and
+writes one line per profile, the mean of the four bots, to
+`docs/network-benchmark/<machine>.csv`. One command measures every profile:
+
+```bash
+python3 tools/net_benchmark.py run --build build/linux-release --name "Arch, Ryzen 7"
+```
+
+| Profile | netem on each packet | Loss |
+|---|---|---|
+| `lan` | nothing | 0 % |
+| `50ms` | 50 ms | 0 % |
+| `150ms-2%` | 150 ms | 2 % |
+| `300ms-5%` | 300 ms | 5 % |
+
+netem delays each packet, so on `lo` each direction: the round trip grows by twice the
+delay, and a datagram is lost with the given chance each way. Changing the queues of `lo`
+needs root, so the script runs `netem.sh` with `sudo` (it asks for the password once) and
+removes the rules after each profile, even after an error; the `lan` profile needs no
+root. `--profiles lan,50ms` picks some, `--bots`, `--seconds` change the game, `--netem`
+gives `netem.sh` when the build tree was not configured from the engine's sources, and
+`--dry-run` prints the `tc` commands without degrading anything (nothing is written then,
+unless `--output` names a file).
+
+The CSV has, per profile: `machine`, `os`, `profile`, `delay_ms`, `loss_set_percent`,
+`bots`, `seconds`, then the means of the bots' `--stats` columns (`bytes_in_per_s`,
+`bytes_out_per_s`, `rtt_ms`, `rtt_jitter_ms`, `loss_percent`, `snapshot_jitter_ms`), and
+`corrections`, empty until the client predicts its own ship and counts the corrections of
+the server. Only the standard library of Python 3.10 or newer is needed.
 
 ## Documentation
 

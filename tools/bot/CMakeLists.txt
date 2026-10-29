@@ -3,6 +3,7 @@
 add_library(rtype_bot STATIC
     bot.cpp
     bot_options.cpp
+    bot_stats.cpp
     input_script.cpp)
 target_include_directories(rtype_bot PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_bot PUBLIC rtype_client_net PRIVATE aegis2d::warnings)

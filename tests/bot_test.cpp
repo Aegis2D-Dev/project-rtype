@@ -6,6 +6,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/bot.hpp>
 #include <rtype/bot_options.hpp>
+#include <rtype/bot_stats.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/events.hpp>
 #include <rtype/input_script.hpp>
@@ -184,6 +185,16 @@ TEST_CASE("a bot joins, plays and leaves cleanly", "[bot]") {
     CHECK(bot.session().inputs_sent() >= inputs);
     CHECK(server.sessions().size() == 1);
 
+    // What --stats writes: the bot's side of the link.
+    const rtype::BotStats stats =
+        rtype::measure_bot(bot, "B1", std::chrono::seconds{2}, Clock::now());
+    CHECK(stats.name == "B1");
+    CHECK(stats.seconds == 2.0);
+    CHECK(stats.inputs_sent == bot.session().inputs_sent());
+    CHECK(stats.bytes_out_per_second > 0.0);
+    CHECK(stats.rtt_ms > 0.0);
+    CHECK(stats.loss_percent == 0.0);
+
     bot.leave();
     CHECK(bot.session().state() == ClientState::Closed);
     REQUIRE(pump([&] { return server.sessions().size() == 0; }));
@@ -346,4 +357,35 @@ TEST_CASE("four bots fill a game and play their script", "[bot][script]") {
     }
     REQUIRE(pump([&] { return server.sessions().size() == 0; }));
     CHECK(server.errors() == 0);
+}
+
+TEST_CASE("the stats of a bot are one line of CSV", "[bot][stats]") {
+    const rtype::BotStats stats{.name = "bot2",
+                                .seconds = 30.0004,
+                                .inputs_sent = 1801,
+                                .snapshots = 600,
+                                .bytes_in_per_second = 2864.44,
+                                .bytes_out_per_second = 1140.0,
+                                .rtt_ms = 312.456,
+                                .rtt_jitter_ms = 4.5,
+                                .loss_percent = 5.0,
+                                .snapshot_jitter_ms = 12.345};
+    CHECK(rtype::bot_stats_line(stats) ==
+          "bot2,30.000,1801,600,2864.4,1140.0,312.46,4.50,5.00,12.35");
+    // As many values as columns.
+    const std::string header{rtype::bot_stats_header};
+    CHECK(std::ranges::count(header, ',') == std::ranges::count(rtype::bot_stats_line(stats), ','));
+    CHECK(header.starts_with("bot,seconds,"));
+
+    // A bot that never played measured nothing.
+    NetworkContext context;
+    const Bot idle{context, BotSettings{}};
+    const rtype::BotStats none = rtype::measure_bot(idle, "bot", {}, Clock::now());
+    CHECK(none.bytes_in_per_second == 0.0);
+    CHECK(none.rtt_ms == 0.0);
+
+    const auto given = parse({"--stats", "bots.csv"});
+    REQUIRE(std::holds_alternative<BotOptions>(given));
+    CHECK(std::get<BotOptions>(given).stats == std::optional{std::filesystem::path{"bots.csv"}});
+    CHECK(!std::get<BotOptions>(parse({})).stats.has_value());
 }

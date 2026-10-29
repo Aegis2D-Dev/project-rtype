@@ -5,6 +5,7 @@
 
 #include <rtype/bot.hpp>
 #include <rtype/bot_options.hpp>
+#include <rtype/bot_stats.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
@@ -16,8 +17,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <span>
 #include <string>
@@ -53,7 +57,31 @@ struct Player {
     Clock::time_point joined{};
     Clock::time_point left{};
     bool done = false;
+    // What it measured when it left, if it played.
+    std::optional<rtype::BotStats> stats{};
 };
+
+// Leaves the server, keeping what the bot measured.
+void leave(Player& player, Clock::time_point now) {
+    if (player.joined != Clock::time_point{}) {
+        player.stats = rtype::measure_bot(*player.bot, player.name, now - player.joined, now);
+    }
+    player.bot->leave();
+    player.done = true;
+    player.left = now;
+}
+
+// Writes the --stats file: one line per bot that played.
+bool write_stats(const std::filesystem::path& file, const std::vector<Player>& players) {
+    std::ofstream stream{file};
+    stream << rtype::bot_stats_header << '\n';
+    for (const Player& player : players) {
+        if (player.stats.has_value()) {
+            stream << rtype::bot_stats_line(*player.stats) << '\n';
+        }
+    }
+    return static_cast<bool>(stream);
+}
 
 // Runs a bot one step: says when it joins, leaves after --seconds, reports why it stopped.
 // Returns the exit status it calls for: 1 when it could not join or lost the server.
@@ -78,9 +106,7 @@ int step(Player& player, const rtype::BotOptions& options, Clock::time_point now
     }
     if (options.seconds.has_value() &&
         now - player.joined >= std::chrono::seconds{*options.seconds}) {
-        player.bot->leave();
-        player.done = true;
-        player.left = now;
+        leave(player, now);
     }
     return 0;
 }
@@ -170,8 +196,7 @@ int main(int argc, char** argv) {
         // Ctrl+C: every bot still in game leaves.
         for (Player& player : players) {
             if (!player.done) {
-                player.bot->leave();
-                player.left = Clock::now();
+                leave(player, Clock::now());
             }
         }
         const Clock::time_point end = Clock::now() + goodbye;
@@ -183,6 +208,10 @@ int main(int argc, char** argv) {
         }
         for (const Player& player : players) {
             report(player);
+        }
+        if (options.stats.has_value() && !write_stats(*options.stats, players)) {
+            std::cerr << "r-type_bot: " << options.stats->string() << ": cannot be written\n";
+            return 1;
         }
         return status;
     } catch (const std::exception& error) {

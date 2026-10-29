@@ -44,7 +44,7 @@ std::variant<BotOptions, std::string> parse_bot_options(std::span<const std::str
             return options;
         }
         if (arg != "--host" && arg != "--port" && arg != "--name" && arg != "--seconds" &&
-            arg != "--seed" && arg != "--count" && arg != "--inputs") {
+            arg != "--seed" && arg != "--count" && arg != "--inputs" && arg != "--stats") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -61,6 +61,8 @@ std::variant<BotOptions, std::string> parse_bot_options(std::span<const std::str
                 return std::format("--port: \"{}\" is not a port (1 to 65535)", value);
             }
             options.settings.server.tcp_port = *port;
+        } else if (arg == "--stats") {
+            options.stats = std::filesystem::path{value};
         } else if (arg == "--inputs") {
             options.inputs = std::filesystem::path{value};
         } else if (arg == "--count") {
