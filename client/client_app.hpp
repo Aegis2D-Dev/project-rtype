@@ -18,6 +18,7 @@
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/lagometer.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -51,6 +52,8 @@ struct OptionKeys {
     aegis2d::platform::ActionId smaller = 0;
     /// @brief F5: larger text.
     aegis2d::platform::ActionId larger = 0;
+    /// @brief F6: lagometer on or off.
+    aegis2d::platform::ActionId lagometer = 0;
     /// @brief M, in game: music on or off.
     aegis2d::platform::ActionId music = 0;
 };
@@ -60,9 +63,9 @@ struct OptionKeys {
 /// are ready (NetworkContext::poll()) and the session's timers, then draws the screen.
 /// In game, the held actions go to ClientSession::set_input(), sent 60 times a second,
 /// which also tells the server the client is alive; the server's snapshots and events
-/// update ClientWorld, drawn by GameView. When the server stops, closes the connection or
-/// sends nothing for ClientSession::server_timeout, the Lost screen says so; Enter goes
-/// back to the connect screen, filled as before, to join again.
+/// update ClientWorld, drawn by GameView; F6 shows the lagometer over it. When the server stops,
+/// closes the connection or sends nothing for ClientSession::server_timeout, the Lost screen says
+/// so; Enter goes back to the connect screen, filled as before, to join again.
 class ClientApp {
 public:
     /// @brief Opens the window and loads the art, sounds and the player's settings.
@@ -102,6 +105,8 @@ private:
     aegis2d::platform::KeyCapture capture_;
     aegis2d::net::NetworkContext context_;
     std::optional<ClientSession> session_;
+    Lagometer lagometer_;
+    bool show_lagometer_ = false;
     ClientSettings joined_;
     ConnectForm form_;
     ScreenMessage message_;

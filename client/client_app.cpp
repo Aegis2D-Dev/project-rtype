@@ -17,6 +17,7 @@
 #include "game_art.hpp"
 #include "game_sounds.hpp"
 #include "game_view.hpp"
+#include "lagometer_view.hpp"
 #include "menu_screens.hpp"
 #include "preferences.hpp"
 #include "typed_character.hpp"
@@ -90,6 +91,7 @@ ClientApp::ClientApp(const ClientOptions& options)
         .vision = menu_.add("color-vision", {Key::F3}),
         .smaller = menu_.add("text-smaller", {Key::F4}),
         .larger = menu_.add("text-larger", {Key::F5}),
+        .lagometer = menu_.add("toggle-lagometer", {Key::F6}),
         .music = menu_.add("toggle-music", {Key::M}),
     };
     core::log_info("settings: {}", preferences_.file.string());
@@ -172,6 +174,10 @@ void ClientApp::read_options_keys() {
     if (menu_.pressed(keys_.larger, keyboard)) {
         preferences_.text_size.larger();
         changed = true;
+    }
+    if (menu_.pressed(keys_.lagometer, keyboard)) {
+        show_lagometer_ = !show_lagometer_;
+        core::log_info("lagometer {}", show_lagometer_ ? "on" : "off");
     }
     if (changed) {
         save_preferences(preferences_);
@@ -295,6 +301,7 @@ void ClientApp::join(const ClientSettings& settings) {
     joined_ = settings;
     try {
         session_.emplace(context_, settings);
+        lagometer_.clear();
         session_->start();
         screen_ = ClientScreen::Joining;
         core::log_info("joining {}:{} as {}", settings.host, settings.tcp_port, settings.name);
@@ -339,6 +346,7 @@ void ClientApp::update_session() {
             screen_ = ClientScreen::Game;
             core::log_info("in game as player {}", player + 1);
         }
+        lagometer_.update(session_->rtt(), session_->traffic(), session_->network_stats(), now);
         if (screen_ == ClientScreen::Game) {
             const std::vector<GameEvent> events = session_->world().take_events();
             view_.handle(events, session_->world(), preferences_, now);
@@ -379,6 +387,9 @@ void ClientApp::draw() {
     if (screen_ == ClientScreen::Game && session_.has_value()) {
         renderer_.begin_frame(view_.background(preferences_));
         view_.draw(renderer_, session_->world(), preferences_, now);
+        if (show_lagometer_) {
+            draw_lagometer(renderer_, font_, lagometer_, preferences_);
+        }
     } else {
         renderer_.begin_frame(seen_as(render::rgb(0x0A0A1A), preferences_.vision));
         switch (screen_) {

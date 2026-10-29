@@ -387,7 +387,7 @@ void GameView::draw_messages(render::IRenderer& renderer, const ClientWorld& wor
 void GameView::draw_help(render::IRenderer& renderer, const Preferences& preferences) const {
     const render::BitmapFont& font = font_.get();
     const std::string help =
-        std::format("ESC LEAVE  F1 AUTO-FIRE {}  F2 EFFECTS {}  F3 {}  F4/F5 TEXT  M MUSIC",
+        std::format("ESC LEAVE  F1 AUTO-FIRE {}  F2 EFFECTS {}  F3 {}  F4/F5 TEXT  F6 LAG  M MUSIC",
                     preferences.controls.auto_fire().enabled() ? "ON" : "OFF",
                     preferences.effects.flashes || preferences.effects.shake ? "ON" : "OFF",
                     upper(std::string{vision_names.at(preferences.vision % vision_count)}));
