@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#51](https://github.com/Aegis2D-Dev/project-rtype/pull/51) | Network statistics | `feat/client-network-stats` | Open | 2026-10-28 | [2026-10-28-client-network-stats](changelogs/2026-10-28-client-network-stats.md) |
+| [#53](https://github.com/Aegis2D-Dev/project-rtype/pull/53) | Headless bot client | `feat/tools-headless-bot` | Open | 2026-10-29 | [2026-10-29-tools-headless-bot](changelogs/2026-10-29-tools-headless-bot.md) |
+| [#51](https://github.com/Aegis2D-Dev/project-rtype/pull/51) | Network statistics | `feat/client-network-stats` | Merged | 2026-10-28 | [2026-10-28-client-network-stats](changelogs/2026-10-28-client-network-stats.md) |
 | [#50](https://github.com/Aegis2D-Dev/project-rtype/pull/50) | Round trip time estimate | `feat/rtt-estimate` | Merged | 2026-10-27 | [2026-10-27-rtt-estimate](changelogs/2026-10-27-rtt-estimate.md) |
 | [#49](https://github.com/Aegis2D-Dev/project-rtype/pull/49) | Ship controls and player ships from the engine's shmup module | `refactor/shmup-ship-controls` | Open | 2026-10-27 | [2026-10-27-shmup-ship-controls](changelogs/2026-10-27-shmup-ship-controls.md) |
 | [#48](https://github.com/Aegis2D-Dev/project-rtype/pull/48) | Traffic counters | `feat/traffic-counters` | Merged | 2026-10-23 | [2026-10-23-traffic-counters](changelogs/2026-10-23-traffic-counters.md) |
