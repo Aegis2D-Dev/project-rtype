@@ -35,7 +35,8 @@ fill the games of the network benchmark.
   `tools/bot/` in the code map. Doxygen reads `tools/bot/include`.
 
 ## Changed
-- Changelog: #51 merged on 2026-10-28 (`bb02b79`), with its last commit.
+- Changelog: #51 merged on 2026-10-28 (`bb02b79`) and #52 on 2026-10-29 (`3330279`), with
+  their last commit.
 
 ## Commits
 - `05dc6b5` feat(tools): added r-type_bot, a headless client holding random inputs

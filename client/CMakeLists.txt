@@ -5,6 +5,7 @@ add_executable(r-type_client
     game_art.cpp
     game_sounds.cpp
     game_view.cpp
+    lagometer_view.cpp
     main.cpp
     menu_screens.cpp
     preferences.cpp
