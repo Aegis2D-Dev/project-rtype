@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Pull request | [#56](https://github.com/Aegis2D-Dev/project-rtype/pull/56) (opened 2026-10-29) |
-| Branch | `docs/net-benchmark-report` → `develop` (stacked on `feat/tools-net-benchmark`, #55) |
+| Branch | `docs/net-benchmark-report` → `develop` (stacked on `feat/tools-net-benchmark`, #55, merged) |
 | Status | Open |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#276](https://github.com/Aegis2D-Dev/aegis2d/issues/276) network benchmark report |
@@ -35,14 +35,16 @@ ticket of the *Network: measurements and lag tools* epic (Aegis2D-Dev/aegis2d#26
 - `run --label <name>` (default `baseline`): a `label` column in the CSV, and a run now
   replaces the lines of its label and profiles instead of the whole file.
 - *Getting started*: `--label`, `report` and the link to the page.
+- Changelog: #53 merged on 2026-10-29 (`024b3a8`), #54 (`49f9c0e`) and #55 (`8db2fb7`),
+  with their last commit.
 
 ## Commits
 - `2951450` feat(tools): added the report mode of the network benchmark
 - `e498317` feat(tests): added tests of the network benchmark report
 - feat(docs): documented the network benchmark report and updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
-- Stacked on #55 (on #54, on #53): merge them first.
 - Only the `lan` profile is measured so far: the degraded ones need root for netem, which
   the machine used did not give. A run with `sudo` (`python3 tools/net_benchmark.py run
   --build <build> --name "NixOS, Ryzen 5 7640U"`, then `report`) completes the table; the
