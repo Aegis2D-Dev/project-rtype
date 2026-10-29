@@ -35,3 +35,11 @@ set_target_properties(rtype_tests PROPERTIES CXX_EXTENSIONS OFF)
 aegis2d_stage_runtime(rtype_tests)
 
 catch_discover_tests(rtype_tests DISCOVERY_MODE PRE_TEST)
+
+# The report of tools/net_benchmark.py, when Python is there.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_test(NAME net_benchmark_report
+        COMMAND Python3::Interpreter -B -m unittest -v net_benchmark_test
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

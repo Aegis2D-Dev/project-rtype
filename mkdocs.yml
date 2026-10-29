@@ -67,6 +67,7 @@ nav:
   - Play: play.md
   - Architecture: architecture.md
   - Gameplay: gameplay.md
+  - Network benchmark: network-benchmark.md
   - How-to guides:
       - Common tasks: how-to.md
       - Add an enemy type: add-an-enemy.md

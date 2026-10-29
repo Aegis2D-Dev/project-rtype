@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#55](https://github.com/Aegis2D-Dev/project-rtype/pull/55) (opened 2026-10-29) |
 | Branch | `feat/tools-net-benchmark` → `develop` (stacked on `feat/tools-bot-scripts`, #54, merged) |
-| Status | Open |
+| Status | Merged on 2026-10-29 (`8db2fb7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#275](https://github.com/Aegis2D-Dev/aegis2d/issues/275) network benchmark runs |
 
@@ -45,8 +45,8 @@ measurements and lag tools* epic (Aegis2D-Dev/aegis2d#268).
 ## Commits
 - `2997770` feat(tools): added the network benchmark script and r-type_bot --stats
 - `8d3bd66` feat(tests): added bot stats tests
-- feat(docs): documented the network benchmark and updated changelogs
-- feat(changelog): updated changelogs
+- `4eddf89` feat(docs): documented the network benchmark and updated changelogs
+- `c0b908d` feat(changelog): updated changelogs
 
 ## Notes
 - The `corrections` column stays empty: the client corrects nothing yet; client-side

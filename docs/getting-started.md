@@ -201,10 +201,14 @@ datagrams with their 18-byte header, averaged over the game), `rtt_ms` and
 it starts `r-type_server`, then for each profile degrades the server's two ports on `lo`
 with the engine's `tools/netem.sh`, plays `r-type_bot --count 4 --seconds 30 --stats`, and
 writes one line per profile, the mean of the four bots, to
-`docs/network-benchmark/<machine>.csv`. One command measures every profile:
+`docs/network-benchmark/<machine>.csv`, under a `--label` (`baseline` by default, then the
+name of each optimization): a run replaces the lines of its label and keeps the others.
+One command measures every profile, another publishes the results on the
+[Network benchmark](network-benchmark.md) page:
 
 ```bash
 python3 tools/net_benchmark.py run --build build/linux-release --name "Arch, Ryzen 7"
+python3 tools/net_benchmark.py report
 ```
 
 | Profile | netem on each packet | Loss |
@@ -223,7 +227,7 @@ gives `netem.sh` when the build tree was not configured from the engine's source
 `--dry-run` prints the `tc` commands without degrading anything (nothing is written then,
 unless `--output` names a file).
 
-The CSV has, per profile: `machine`, `os`, `profile`, `delay_ms`, `loss_set_percent`,
+The CSV has, per profile: `machine`, `os`, `label`, `profile`, `delay_ms`, `loss_set_percent`,
 `bots`, `seconds`, then the means of the bots' `--stats` columns (`bytes_in_per_s`,
 `bytes_out_per_s`, `rtt_ms`, `rtt_jitter_ms`, `loss_percent`, `snapshot_jitter_ms`), and
 `corrections`, empty until the client predicts its own ship and counts the corrections of
