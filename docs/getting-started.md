@@ -87,6 +87,7 @@ Both binaries accept `--version`, which prints the version and exits. The server
 | `--udp-port <port>` | `4243` | UDP port of the game |
 | `--waves <file>` | `assets/waves/stage1.json` | Enemy waves to play |
 | `--max-packet-rate <n>` | `300` | UDP datagrams accepted per second from one IP address (1 to 100000) |
+| `--compress <bytes>` | off | Sends the snapshots and events of at least that many bytes (1 to 1182) compressed with LZ4 when that makes them smaller |
 | `--help` | | Prints the usage and exits |
 
 A port is a number from 0 to 65535; 0 lets the system pick a free one, printed at start. A
@@ -225,7 +226,8 @@ removes the rules after each profile, even after an error; the `lan` profile nee
 root. `--profiles lan,50ms` picks some, `--bots`, `--seconds` change the game, `--netem`
 gives `netem.sh` when the build tree was not configured from the engine's sources, and
 `--dry-run` prints the `tc` commands without degrading anything (nothing is written then,
-unless `--output` names a file).
+unless `--output` names a file). `--compress <bytes>` starts the server with that option, to
+measure the game with and without compression under two labels.
 
 The CSV has, per profile: `machine`, `os`, `label`, `profile`, `delay_ms`, `loss_set_percent`,
 `bots`, `seconds`, then the means of the bots' `--stats` columns (`bytes_in_per_s`,
