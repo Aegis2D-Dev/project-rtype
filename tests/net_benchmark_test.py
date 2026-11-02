@@ -5,6 +5,7 @@ import csv
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
@@ -68,6 +69,22 @@ class ReportTest(unittest.TestCase):
         self.assertEqual([(entry["label"], entry["profile"], entry["rtt_ms"]) for entry in merged],
                          [("baseline", "50ms", "2"), ("prediction", "lan", "3"),
                           ("baseline", "lan", "9")])
+
+    def test_a_run_keeps_the_other_labels_of_its_csv(self) -> None:
+        target = self.args.results / "test-8-cores.csv"
+        self.write([line("baseline", "lan", "10000.00", "10.00")])
+        run = argparse.Namespace(profiles="lan", netem=None, build=Path("build"), os="Linux",
+                                 name="Test, 8 cores", label="lz4", bots=4, seconds=30,
+                                 dry_run=False, output=target)
+        measured = line("lz4", "lan", "9000.00", "10.00")
+        fields = {key: value for key, value in measured.items()
+                  if key not in ("machine", "os", "label")}
+        with mock.patch.object(net_benchmark, "measure", return_value=fields), \
+                mock.patch.object(net_benchmark.time, "sleep"):
+            net_benchmark.run(run)
+        with target.open(newline="") as file:
+            labels = [(entry["label"], entry["bytes_in_per_s"]) for entry in csv.DictReader(file)]
+        self.assertEqual(labels, [("baseline", "10000.00"), ("lz4", "9000.00")])
 
     def test_changes_are_shown_only_when_they_mean_something(self) -> None:
         self.assertEqual(net_benchmark.change("120.00", "100.00"), "120.00 (+20 %)")
