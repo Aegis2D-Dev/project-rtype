@@ -60,6 +60,9 @@ Linux 6.18.55; 4 bots for 30.0 s per profile; in parentheses, the change from ba
 | Profile | Run | In (B/s) | Out (B/s) | RTT (ms) | RTT jitter (ms) | Loss (%) | Snapshot jitter (ms) | Corrections |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | lan | baseline | 13889.15 | 1141.20 | 13.51 | 2.04 | 0.00 | 0.25 | - |
+| lan | quantized-snapshots | 7067.90 (-49 %) | 1141.00 (-0 %) | 12.98 (-4 %) | 0.68 (-67 %) | 0.00 | 0.41 (+64 %) | - |
+| lan | delta-snapshots | 4544.42 (-67 %) | 1141.20 | 15.18 (+12 %) | 1.88 (-8 %) | 0.00 | 0.40 (+60 %) | - |
+| lan | lz4 | 4725.97 (-66 %) | 1141.10 (-0 %) | 14.75 (+9 %) | 1.80 (-12 %) | 0.00 | 0.37 (+48 %) | - |
 
 ![NixOS, Ryzen 5 7640U: bytes received per second, per bot, by profile and run.](images/network-benchmark-nixos-ryzen-5-7640u-bandwidth.svg)
 

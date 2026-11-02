@@ -1,6 +1,7 @@
 /// @file
 /// @brief Command line of `r-type_server`: ports, waves file, help and version.
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -22,7 +23,8 @@ inline constexpr std::uint32_t default_packet_rate = 300;
 /// @brief Usage line printed by `--help` and after a command line error.
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
-    "                     [--max-packet-rate <datagrams per second>] [--help] [--version]\n";
+    "                     [--max-packet-rate <datagrams per second>] [--compress <bytes>]\n"
+    "                     [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -46,6 +48,9 @@ struct ServerOptions {
     std::optional<std::filesystem::path> waves;
     /// @brief Datagrams accepted per second from one address, 1 to 100000.
     std::uint32_t packet_rate = default_packet_rate;
+    /// @brief Size from which snapshots and events are sent compressed with LZ4 when that
+    /// makes them smaller, 1 to 1182 bytes, or `std::nullopt` (the default) to never compress.
+    std::optional<std::size_t> compress_from;
 };
 
 /// @brief Reads the command line of `r-type_server`.

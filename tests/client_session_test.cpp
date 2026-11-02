@@ -5,6 +5,7 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -488,6 +489,42 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
         CHECK(received.at(index).sequence == received.at(index - 1).sequence + 1);
     }
     CHECK(actions.back() == 0x10);
+}
+
+TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    server.set_compression(128);
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    const std::uint32_t token = client.login().value_or(rtype::LoginAccepted{}).session;
+
+    // 100 still entities, whole as there is no baseline yet: one payload of about 1 KB of
+    // records alike, which LZ4 shrinks.
+    rtype::Snapshot world{.tick = 3, .players = {}, .entities = {}};
+    for (std::uint32_t id = 1; id <= 100; ++id) {
+        world.entities.push_back(rtype::EntityRecord{
+            .id = id, .kind = 3, .x = 640.0F, .y = 360.0F, .vx = 0.0F, .vy = 0.0F, .frame = 0});
+    }
+    const auto snapshot = std::make_shared<const rtype::Snapshot>(world);
+    const std::vector<std::vector<std::byte>> payloads =
+        rtype::write_delta_snapshot(*snapshot, nullptr);
+    REQUIRE(payloads.size() == 1);
+    server.send_snapshot(snapshot);
+    // The client acknowledges only the datagrams whose payload it could read (RFC 5.1).
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const rtype::SnapshotHistory* const history = server.snapshots(token);
+        return history != nullptr && history->latest_acknowledged() != nullptr;
+    }));
+    CHECK(client.snapshots().find(3) != nullptr);
+    const aegis2d::net::TrafficCount sent =
+        server.traffic(token)->total(aegis2d::net::Direction::Sent, PacketType::Snapshot);
+    CHECK(sent.datagrams == 1);
+    CHECK(sent.bytes < PacketHeader::size + payloads.front().size());
+    CHECK(client.traffic().total(aegis2d::net::Direction::Received, PacketType::Snapshot).bytes ==
+          sent.bytes);
 }
 
 TEST_CASE("a client holding right moves its ship in the server's game", "[client][input]") {

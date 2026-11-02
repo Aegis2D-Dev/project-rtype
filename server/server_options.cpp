@@ -33,6 +33,7 @@ std::optional<std::uint32_t> parse_number(std::string_view text, std::uint32_t m
 
 constexpr std::uint32_t max_port = 65535;
 constexpr std::uint32_t max_packet_rate = 100000;
+constexpr std::uint32_t max_payload = 1182;
 
 } // namespace
 
@@ -50,7 +51,7 @@ parse_server_options(std::span<const std::string_view> args) {
             return options;
         }
         if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves" &&
-            arg != "--max-packet-rate") {
+            arg != "--max-packet-rate" && arg != "--compress") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -68,6 +69,15 @@ parse_server_options(std::span<const std::string_view> args) {
                                    max_packet_rate);
             }
             options.packet_rate = *rate;
+            continue;
+        }
+        if (arg == "--compress") {
+            const std::optional<std::uint32_t> size = parse_number(value, 1, max_payload);
+            if (!size) {
+                return std::format("{}: \"{}\" is not a payload size (1 to {})", arg, value,
+                                   max_payload);
+            }
+            options.compress_from = *size;
             continue;
         }
         const std::optional<std::uint32_t> port = parse_number(value, 0, max_port);

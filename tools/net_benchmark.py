@@ -87,11 +87,14 @@ def netem(script: Path, action: str, options: list[str], dry_run: bool) -> None:
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL if not dry_run else None)
 
 
-def start_server(exe: Path, tcp: int, udp: int, log: Path) -> subprocess.Popen[bytes]:
+def start_server(exe: Path, tcp: int, udp: int, log: Path,
+                 compress: int | None = None) -> subprocess.Popen[bytes]:
     """Starts the server, its output in @p log, and waits until it listens."""
+    command = [str(exe), "--tcp-port", str(tcp), "--udp-port", str(udp)]
+    if compress is not None:
+        command += ["--compress", str(compress)]
     with log.open("wb") as output:
-        server = subprocess.Popen([str(exe), "--tcp-port", str(tcp), "--udp-port", str(udp)],
-                                  stdout=output, stderr=subprocess.STDOUT)
+        server = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         if "listening:" in log.read_text(errors="replace"):
@@ -125,7 +128,7 @@ def measure(args: argparse.Namespace, profile: str, script: Path | None) -> dict
                      "--loss", f"{loss}%", "--duplicate", "0%", "--rate", "1gbit"]
     folder = Path(tempfile.mkdtemp(prefix="net-benchmark-"))
     server = start_server(executable(args.build, "r-type_server"), args.tcp_port, args.udp_port,
-                          folder / "server.log")
+                          folder / "server.log", args.compress)
     try:
         if degraded and script is not None:
             netem(script, "start", netem_options, args.dry_run)
@@ -181,10 +184,12 @@ def run(args: argparse.Namespace) -> None:
         return
     RESULTS.mkdir(parents=True, exist_ok=True)
     target = args.output or RESULTS / f"{slug(args.name)}.csv"
+    # Read before opening for writing, which empties the file.
+    merged = merge(read_lines(target), lines)
     with target.open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=FIELDS, lineterminator="\n")
         writer.writeheader()
-        writer.writerows(merge(read_lines(target), lines))
+        writer.writerows(merged)
     print(f"{target}: {len(lines)} profile(s) of {args.label}")
 
 
@@ -334,6 +339,8 @@ def main() -> None:
                          help="the engine's tools/netem.sh, found from --build by default")
     command.add_argument("--label", default="baseline",
                          help="state of the code measured, e.g. delta-snapshots (baseline)")
+    command.add_argument("--compress", type=int, metavar="BYTES",
+                         help="have the server compress payloads from this size (off)")
     command.add_argument("--dev", default="lo", help="interface netem degrades (lo)")
     command.add_argument("--tcp-port", type=int, default=4342, help="server TCP port (4342)")
     command.add_argument("--udp-port", type=int, default=4343, help="server UDP port (4343)")

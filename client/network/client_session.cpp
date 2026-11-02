@@ -1,5 +1,6 @@
 #include <aegis2d/core/log.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -228,6 +229,16 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
     const auto now = Clock::now();
     traffic_.record(net::Direction::Received, header->type, datagram.size(), now);
     network_stats_.record(header->sequence, header->type, now);
+    // RFC section 2.6: a compressed payload is decompressed before anything reads it.
+    std::vector<std::byte> decompressed;
+    if (header->compressed) {
+        std::optional<std::vector<std::byte>> payload = net::read_payload(*header, reader);
+        if (!payload) {
+            return;
+        }
+        decompressed = std::move(payload).value_or(std::vector<std::byte>{});
+        reader = net::BinaryReader{decompressed};
+    }
     if (state_ == ClientState::Binding) {
         if (header->type != net::PacketType::Accept || !reader.at_end()) {
             return;
