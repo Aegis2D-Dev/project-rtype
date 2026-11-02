@@ -99,6 +99,10 @@ After each tick, the simulation thread hands the network thread two things:
   24 low bits of the network id), each giving the gap to the previous index and the 8 bits
   of generation: 77 bits (10 bytes) instead of 22 bytes while the gap is below 128, as it
   stays between live entities.
+  Each player's `SnapshotHistory` keeps the last 32 snapshots sent to it with the sequences
+  of their datagrams; the `ack` and `ack_bits` of every datagram the player sends mark them
+  acknowledged, a snapshot once all its datagrams are. The latest acknowledged one is the
+  baseline the delta snapshots will be encoded against.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
