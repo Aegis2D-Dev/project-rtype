@@ -40,7 +40,9 @@ of the *Network: data transmission efficiency* epic (Aegis2D-Dev/aegis2d#277).
 ## Commits
 - `6aa89dd` feat(protocol): added fixed-point position, velocity and varint encoders
 - `3a0771e` feat(tests): added round trip and bound tests of the compact encoders
-- feat(docs): documented the compact encoders and updated changelogs
+- `dc2efd9` feat(docs): documented the compact encoders and updated changelogs
+- `01cd0e8` feat(format): fixed format
+- feat(changelog): updated changelogs
 
 ## Notes
 - The position range leaves 767 px beyond the right edge and 2048 px before the left one,
