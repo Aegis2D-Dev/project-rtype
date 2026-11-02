@@ -102,7 +102,12 @@ After each tick, the simulation thread hands the network thread two things:
   Each player's `SnapshotHistory` keeps the last 32 snapshots sent to it with the sequences
   of their datagrams; the `ack` and `ack_bits` of every datagram the player sends mark them
   acknowledged, a snapshot once all its datagrams are. The latest acknowledged one is the
-  baseline the delta snapshots will be encoded against.
+  baseline of the delta snapshots (`rtype/delta_snapshot.hpp`): `write_delta_snapshot()`
+  skips the entities whose quantized fields did not change, sends only the changed fields
+  of the others (x, y, velocity, frame), every field of the new ones and the id of the
+  removed ones, or every entity without a baseline; `apply_delta()` rebuilds the snapshot
+  from the baseline and the payloads of its tick. The server and the client switch to them
+  together, with the client's decoder.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
