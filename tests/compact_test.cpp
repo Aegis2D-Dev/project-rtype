@@ -137,10 +137,13 @@ TEST_CASE("varints make the round trip with the size of their value", "[compact]
         std::uint32_t value;
         std::size_t bits;
     };
-    for (const Case& test : {Case{.value = 0, .bits = 8}, Case{.value = 1, .bits = 8}, Case{.value = 127, .bits = 8}, Case{.value = 128, .bits = 16},
-                             Case{.value = 16383, .bits = 16}, Case{.value = 16384, .bits = 24}, Case{.value = 2097151, .bits = 24},
-                             Case{.value = 2097152, .bits = 32}, Case{.value = 268435455, .bits = 32}, Case{.value = 268435456, .bits = 40},
-                             Case{.value = std::numeric_limits<std::uint32_t>::max(), .bits = 40}}) {
+    for (const Case& test :
+         {Case{.value = 0, .bits = 8}, Case{.value = 1, .bits = 8}, Case{.value = 127, .bits = 8},
+          Case{.value = 128, .bits = 16}, Case{.value = 16383, .bits = 16},
+          Case{.value = 16384, .bits = 24}, Case{.value = 2097151, .bits = 24},
+          Case{.value = 2097152, .bits = 32}, Case{.value = 268435455, .bits = 32},
+          Case{.value = 268435456, .bits = 40},
+          Case{.value = std::numeric_limits<std::uint32_t>::max(), .bits = 40}}) {
         BitWriter writer;
         rtype::write_varint(writer, test.value);
         CHECK(writer.bit_size() == test.bits);
