@@ -611,11 +611,11 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
 
     rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
-    snapshot.entities.resize(60);
+    snapshot.entities.resize(130);
     server.send_snapshot(rtype::write_snapshot(snapshot));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 3; }));
 
-    // Two datagrams (51 + 9 entities), after the Accept of sequence 0, acknowledging 1 and 0;
+    // Two datagrams (122 + 8 entities), after the Accept of sequence 0, acknowledging 1 and 0;
     // only the bound player gets them.
     CHECK(server.snapshots_sent() == 2);
     for (std::size_t index = 1; index < 3; ++index) {
@@ -626,8 +626,9 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
         CHECK(header.ack == 1);
         CHECK(header.ack_bits == 1U);
     }
-    CHECK(udp.sizes.at(1) == PacketHeader::size + 7 + (std::size_t{51} * 22));
-    CHECK(udp.sizes.at(2) == PacketHeader::size + 7 + (std::size_t{9} * 22));
+    // 51 bits, then 77 bits per record, rounded up to the byte.
+    CHECK(udp.sizes.at(1) == PacketHeader::size + ((51 + (std::size_t{122} * 77) + 7) / 8));
+    CHECK(udp.sizes.at(2) == PacketHeader::size + ((51 + (std::size_t{8} * 77) + 7) / 8));
 }
 
 namespace {
