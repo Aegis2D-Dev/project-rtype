@@ -10,6 +10,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
@@ -681,6 +682,22 @@ TEST_CASE("the server knows the latest snapshot each player acknowledged",
     CHECK(server.snapshots(first)->latest_acknowledged()->tick == 6);
     CHECK(server.snapshots(second)->latest_acknowledged()->tick == 3);
     CHECK(!server.snapshots(second)->acknowledged(6));
+
+    // The next snapshot goes to each player against the latest one it acknowledged.
+    server.send_snapshot(std::make_shared<const rtype::Snapshot>(
+        rtype::Snapshot{.tick = 9, .players = {}, .entities = {}}));
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 4 && second_udp.received.size() == 4;
+    }));
+    const auto baseline_of = [](const std::vector<std::byte>& datagram) {
+        const std::optional<rtype::DeltaSnapshot> delta =
+            rtype::read_delta_snapshot(std::span{datagram}.subspan(PacketHeader::size));
+        REQUIRE(delta.has_value());
+        return delta.value_or(rtype::DeltaSnapshot{}).baseline;
+    };
+    CHECK(baseline_of(first_udp.datagrams.back()) == 6U);
+    CHECK(baseline_of(second_udp.datagrams.back()) == 3U);
+    CHECK(server.snapshots(first)->find(9) != nullptr);
 }
 
 namespace {
