@@ -106,8 +106,12 @@ After each tick, the simulation thread hands the network thread two things:
   skips the entities whose quantized fields did not change, sends only the changed fields
   of the others (x, y, velocity, frame), every field of the new ones and the id of the
   removed ones, or every entity without a baseline; `apply_delta()` rebuilds the snapshot
-  from the baseline and the payloads of its tick. The server and the client switch to them
-  together, with the client's decoder.
+  from the baseline and the payloads of its tick. The server encodes each snapshot for each
+  player against that player's latest acknowledged one (`ServerNetwork::send_snapshot()`).
+  The client's `SnapshotDecoder` (`rtype/snapshot_decoder.hpp`) keeps the last 32 snapshots
+  it rebuilt, each from the payloads of its tick received so far, as the baselines of the
+  next ones. A payload whose baseline it no longer has is dropped and its datagram not
+  acknowledged, so the server never builds on a snapshot the client could not rebuild.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
@@ -149,6 +153,7 @@ client/
     lagometer         the network statistics of the last 10 seconds, sampled
     network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
+    snapshot_decoder  the snapshots rebuilt from their baseline and delta
   client_app          r-type_client: window, screens, settings keys
   game_view           the game screen: entities, explosions, HUD, notices
   lagometer_view      the lagometer overlay, toggled with F6
