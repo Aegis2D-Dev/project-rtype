@@ -1,6 +1,7 @@
 #include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -203,6 +204,19 @@ TEST_CASE("the packet rate limit is read from the command line", "[server][optio
               "--max-packet-rate: \"" + std::string{rate} + "\" is not a rate (1 to 100000)");
     }
     CHECK(error_of({"--max-packet-rate"}) == "--max-packet-rate needs a value");
+}
+
+TEST_CASE("the compression threshold is read from the command line", "[server][options]") {
+    CHECK(!parse({}).compress_from.has_value());
+    CHECK(parse({"--compress", "128"}).compress_from == 128U);
+    CHECK(parse({"--compress", "1"}).compress_from == 1U);
+    CHECK(parse({"--compress", "1182"}).compress_from == 1182U);
+    for (const std::string_view size : {"0", "1183", "-5", "big", ""}) {
+        CAPTURE(size);
+        CHECK(error_of({"--compress", size}) ==
+              "--compress: \"" + std::string{size} + "\" is not a payload size (1 to 1182)");
+    }
+    CHECK(error_of({"--compress"}) == "--compress needs a value");
 }
 
 TEST_CASE("help and version stop the reading", "[server][options]") {
@@ -629,6 +643,50 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     // 51 bits, then 77 bits per record, rounded up to the byte.
     CHECK(udp.sizes.at(1) == PacketHeader::size + ((51 + (std::size_t{122} * 77) + 7) / 8));
     CHECK(udp.sizes.at(2) == PacketHeader::size + ((51 + (std::size_t{8} * 77) + 7) / 8));
+}
+
+TEST_CASE("payloads from the compression threshold go compressed, and back whole",
+          "[server][snapshot][compression]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // 130 still entities in two payloads, sent plain, then compressed from 128 bytes.
+    rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
+    snapshot.entities.resize(130);
+    const std::vector<std::vector<std::byte>> payloads = rtype::write_snapshot(snapshot);
+    REQUIRE(payloads.size() == 2);
+    CHECK(!server.compression().has_value());
+    server.send_snapshot(payloads);
+    server.set_compression(128);
+    CHECK(server.compression() == 128U);
+    server.send_snapshot(payloads);
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 5; }));
+
+    for (std::size_t index = 0; index < payloads.size(); ++index) {
+        CAPTURE(index);
+        const std::vector<std::byte>& plain = udp.datagrams.at(1 + index);
+        const std::vector<std::byte>& packed = udp.datagrams.at(3 + index);
+        CHECK(!udp.received.at(1 + index).compressed);
+        // The second payload, 8 records, is below the threshold.
+        CHECK(udp.received.at(3 + index).compressed == (index == 0));
+        CHECK((packed.size() < plain.size()) == (index == 0));
+        aegis2d::net::BinaryReader reader{packed};
+        REQUIRE(std::holds_alternative<PacketHeader>(aegis2d::net::read_header(reader)));
+        CHECK(aegis2d::net::read_payload(udp.received.at(3 + index), reader) == payloads.at(index));
+    }
+
+    // A compressed payload that does not decompress is dropped before anything reads it.
+    std::vector<std::byte> broken = datagram(PacketType::Heartbeat, token, 1, {std::byte{0x10}});
+    broken.at(5) |= std::byte{PacketHeader::compressed_flag};
+    const std::uint64_t dropped = server.dropped_datagrams();
+    udp.send(server, broken);
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+    CHECK(server.game_datagrams() == 0);
 }
 
 TEST_CASE("the server knows the latest snapshot each player acknowledged",
