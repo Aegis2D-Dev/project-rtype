@@ -7,6 +7,7 @@ add_library(rtype_server STATIC
     rate_limit.cpp
     server_network.cpp
     server_options.cpp
+    snapshot_history.cpp
     sessions.cpp
     simulation.cpp
     stop_signal.cpp

@@ -631,6 +631,58 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     CHECK(udp.sizes.at(2) == PacketHeader::size + ((51 + (std::size_t{8} * 77) + 7) / 8));
 }
 
+TEST_CASE("the server knows the latest snapshot each player acknowledged",
+          "[server][snapshot][baselines]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket first_udp{context};
+    Socket second_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first, 0));
+    second_udp.send(server, datagram(PacketType::Connect, second, 0));
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 1 && second_udp.received.size() == 1;
+    }));
+    REQUIRE(server.snapshots(first) != nullptr);
+    CHECK(server.snapshots(first)->latest_acknowledged() == nullptr);
+    CHECK(server.snapshots(first + second + 1) == nullptr);
+
+    // Ticks 3 and 6, one datagram each: sequences 1 and 2 of both channels, after the Accept.
+    for (const std::uint32_t tick : {3U, 6U}) {
+        const auto snapshot = std::make_shared<const rtype::Snapshot>(
+            rtype::Snapshot{.tick = tick, .players = {}, .entities = {}});
+        server.send_snapshot(rtype::write_snapshot(*snapshot), snapshot);
+    }
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 3 && second_udp.received.size() == 3;
+    }));
+    CHECK(server.snapshots(first)->size() == 2);
+
+    // The first player received both, the second only the first one (sequence 2 lost).
+    const auto heartbeat = [](std::uint32_t session, std::uint16_t ack, std::uint32_t bits) {
+        aegis2d::net::BinaryWriter writer;
+        aegis2d::net::write_header(writer, PacketHeader{.type = PacketType::Heartbeat,
+                                                        .sequence = 1,
+                                                        .ack = ack,
+                                                        .ack_bits = bits,
+                                                        .session = session});
+        return std::vector<std::byte>{writer.data().begin(), writer.data().end()};
+    };
+    first_udp.send(server, heartbeat(first, 2, 0b11U));
+    second_udp.send(server, heartbeat(second, 1, 0b1U));
+    REQUIRE(pump(context, server, [&] {
+        const rtype::Snapshot* const one = server.snapshots(first)->latest_acknowledged();
+        const rtype::Snapshot* const two = server.snapshots(second)->latest_acknowledged();
+        return one != nullptr && two != nullptr;
+    }));
+    CHECK(server.snapshots(first)->latest_acknowledged()->tick == 6);
+    CHECK(server.snapshots(second)->latest_acknowledged()->tick == 3);
+    CHECK(!server.snapshots(second)->acknowledged(6));
+}
+
 namespace {
 
 // The events of an Event datagram, read as a client does with its channel.

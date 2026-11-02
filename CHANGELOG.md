@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#59](https://github.com/Aegis2D-Dev/project-rtype/pull/59) | Snapshot acknowledgement and baselines | `feat/protocol-snapshot-baselines` | Open | 2026-11-02 | [2026-11-02-protocol-snapshot-baselines](changelogs/2026-11-02-protocol-snapshot-baselines.md) |
 | [#58](https://github.com/Aegis2D-Dev/project-rtype/pull/58) | Quantized snapshot records | `feat/protocol-quantized-snapshots` | Open | 2026-11-02 | [2026-11-02-protocol-quantized-snapshots](changelogs/2026-11-02-protocol-quantized-snapshots.md) |
 | [#57](https://github.com/Aegis2D-Dev/project-rtype/pull/57) | Fixed-point and varint encoders | `feat/protocol-compact-encoders` | Open | 2026-11-02 | [2026-11-02-protocol-compact-encoders](changelogs/2026-11-02-protocol-compact-encoders.md) |
 | [#56](https://github.com/Aegis2D-Dev/project-rtype/pull/56) | Network benchmark report | `docs/net-benchmark-report` | Merged | 2026-10-29 | [2026-10-29-net-benchmark-report](changelogs/2026-10-29-net-benchmark-report.md) |
