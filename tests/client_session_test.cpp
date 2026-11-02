@@ -501,15 +501,24 @@ TEST_CASE("the client reads the compressed snapshots of the server", "[client][c
         pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
     const std::uint32_t token = client.login().value_or(rtype::LoginAccepted{}).session;
 
-    // 100 still entities: one payload of about 970 bytes, which LZ4 shrinks.
-    auto snapshot = std::make_shared<const rtype::Snapshot>(rtype::Snapshot{
-        .tick = 3, .players = {}, .entities = std::vector<rtype::EntityRecord>(100)});
-    const std::vector<std::vector<std::byte>> payloads = rtype::write_snapshot(*snapshot);
+    // 100 still entities, whole as there is no baseline yet: one payload of about 1 KB of
+    // records alike, which LZ4 shrinks.
+    rtype::Snapshot world{.tick = 3, .players = {}, .entities = {}};
+    for (std::uint32_t id = 1; id <= 100; ++id) {
+        world.entities.push_back(rtype::EntityRecord{
+            .id = id, .kind = 3, .x = 640.0F, .y = 360.0F, .vx = 0.0F, .vy = 0.0F, .frame = 0});
+    }
+    const auto snapshot = std::make_shared<const rtype::Snapshot>(world);
+    const std::vector<std::vector<std::byte>> payloads =
+        rtype::write_delta_snapshot(*snapshot, nullptr);
     REQUIRE(payloads.size() == 1);
-    server.send_snapshot(payloads, snapshot);
+    server.send_snapshot(snapshot);
     // The client acknowledges only the datagrams whose payload it could read (RFC 5.1).
-    REQUIRE(pump(context, &server, {&client},
-                 [&] { return server.snapshots(token)->latest_acknowledged() != nullptr; }));
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const rtype::SnapshotHistory* const history = server.snapshots(token);
+        return history != nullptr && history->latest_acknowledged() != nullptr;
+    }));
+    CHECK(client.snapshots().find(3) != nullptr);
     const aegis2d::net::TrafficCount sent =
         server.traffic(token)->total(aegis2d::net::Direction::Sent, PacketType::Snapshot);
     CHECK(sent.datagrams == 1);
