@@ -12,6 +12,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/entities.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
@@ -21,6 +22,7 @@
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_history.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -406,7 +408,8 @@ TEST_CASE("the server receives the held actions 60 times per second", "[client][
 }
 
 TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
-    // A server that numbers its datagrams: Accept is 0, then two Snapshot datagrams.
+    // A server that numbers its datagrams: Accept is 0, then three Snapshot datagrams: tick 3
+    // whole, tick 6 against it, and tick 9 against a tick 4 the client never received.
     NetworkContext context;
     TcpListener listener{context, 0};
     UdpSocket server_udp{context, 0};
@@ -422,8 +425,15 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
             PacketHeader{
                 .type = type, .sequence = sequence, .ack = ack, .ack_bits = 0, .session = token});
         if (type == PacketType::Snapshot) {
-            // A real snapshot: the client acknowledges only the datagrams it could read.
-            writer.write_bytes(rtype::write_snapshot(rtype::Snapshot{}).front());
+            // Real snapshots: the client acknowledges only the datagrams it could read and
+            // rebuild.
+            const auto at = [](std::uint32_t tick) {
+                return rtype::Snapshot{.tick = tick, .players = {}, .entities = {}};
+            };
+            const rtype::Snapshot baseline = at(sequence == 2 ? 3 : 4);
+            writer.write_bytes(
+                rtype::write_delta_snapshot(at(sequence * 3), sequence == 1 ? nullptr : &baseline)
+                    .front());
         }
         server_udp.send_to(to, writer.data());
     };
@@ -439,6 +449,7 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
             send_header(from, PacketType::Accept, 0, header->sequence);
             send_header(from, PacketType::Snapshot, 1, header->sequence);
             send_header(from, PacketType::Snapshot, 2, header->sequence);
+            send_header(from, PacketType::Snapshot, 3, header->sequence);
         } else if (header->type == PacketType::Input) {
             actions.push_back(std::to_integer<std::uint8_t>(bytes.back()));
         }
@@ -464,7 +475,11 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
     REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 3; }));
 
     // The client's sequences follow each other from its first Connect, and its last Input
-    // acknowledges the Snapshot of sequence 2 and, in its bits, 1 and the Accept.
+    // acknowledges the Snapshot of sequence 2 and, in its bits, 1 and the Accept; not 3,
+    // whose baseline it does not have.
+    CHECK(client.snapshots().find(6) != nullptr);
+    CHECK(client.snapshots().find(9) == nullptr);
+    CHECK(client.snapshots().dropped() == 1);
     const PacketHeader& last = received.back();
     CHECK(last.type == PacketType::Input);
     CHECK(last.session == token);
@@ -517,6 +532,20 @@ TEST_CASE("a client holding right moves its ship in the server's game", "[client
 
     // Stopped, the game is the test's to read.
     game_server.simulation().stop();
+    // The server sends delta snapshots, which the client rebuilds as the server took them.
+    const rtype::SnapshotHistory* const history =
+        server.snapshots(client.login().value_or(rtype::LoginAccepted{}).session);
+    REQUIRE(history != nullptr);
+    const rtype::Snapshot* const acknowledged = history->latest_acknowledged();
+    REQUIRE(acknowledged != nullptr);
+    const rtype::Snapshot* const rebuilt = client.snapshots().find(acknowledged->tick);
+    REQUIRE(rebuilt != nullptr);
+    CHECK(rebuilt->entities.size() == acknowledged->entities.size());
+    for (const rtype::EntityRecord& entity : acknowledged->entities) {
+        CHECK(std::ranges::find(rebuilt->entities, rtype::quantized(entity)) !=
+              rebuilt->entities.end());
+    }
+    CHECK(client.snapshots().dropped() == 0);
     const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
     REQUIRE(ship.has_value());
     const auto& transform = instance.game().registry().get<aegis2d::ecs::Transform>(

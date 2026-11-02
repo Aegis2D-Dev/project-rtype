@@ -12,6 +12,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
@@ -305,6 +306,31 @@ void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
 
 void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads,
                                   const std::shared_ptr<const Snapshot>& snapshot) {
+    send_snapshot(
+        [payloads](const SnapshotHistory&) {
+            return std::vector<std::vector<std::byte>>{payloads.begin(), payloads.end()};
+        },
+        snapshot);
+}
+
+void ServerNetwork::send_snapshot(const std::shared_ptr<const Snapshot>& snapshot) {
+    if (!snapshot) {
+        return;
+    }
+    send_snapshot(
+        [&snapshot](const SnapshotHistory& history) {
+            const Snapshot* baseline = history.latest_acknowledged();
+            if (baseline != nullptr && baseline->tick >= snapshot->tick) {
+                baseline = nullptr;
+            }
+            return write_delta_snapshot(*snapshot, baseline);
+        },
+        snapshot);
+}
+
+void ServerNetwork::send_snapshot(
+    const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
+    const std::shared_ptr<const Snapshot>& snapshot) {
     const auto now = Clock::now();
     for (auto& [token, peer] : peers_) {
         const Session* const session = sessions_.find(token);
@@ -316,7 +342,7 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
         }
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
         std::vector<std::uint16_t> sequences;
-        for (const std::vector<std::byte>& payload : payloads) {
+        for (const std::vector<std::byte>& payload : encode(peer.snapshots)) {
             net::BinaryWriter writer;
             const net::PacketHeader header =
                 peer.channel.next_header(net::PacketType::Snapshot, token, now);

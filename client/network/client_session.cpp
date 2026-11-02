@@ -13,9 +13,11 @@
 
 #include <rtype/client_session.hpp>
 #include <rtype/client_world.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/snapshot.hpp>
+#include <rtype/snapshot_decoder.hpp>
 
 #include <array>
 #include <cstddef>
@@ -255,18 +257,28 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
 }
 
 // RFC sections 4.3, 4.4, 5.1 and 6.3: a payload is read whole before anything is applied
-// or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored.
+// or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored, and
+// a delta snapshot whose baseline the client no longer has is neither.
 void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload,
                                      Clock::time_point now) {
     switch (header.type) {
     case net::PacketType::Snapshot: {
-        const std::optional<Snapshot> snapshot = read_snapshot(datagram_payload(payload));
-        if (!snapshot.has_value()) {
+        const std::optional<DeltaSnapshot> part = read_delta_snapshot(datagram_payload(payload));
+        if (!part.has_value()) {
             return;
         }
         last_heard_ = now;
+        // A delta whose baseline is gone is not acknowledged: the server must not build on
+        // a snapshot the client could not rebuild.
+        const DeltaSnapshot& delta = part.value_or(DeltaSnapshot{});
+        if (!snapshots_.decodable(delta)) {
+            static_cast<void>(snapshots_.decode(delta)); // Counted in dropped().
+            return;
+        }
         if (channel_.receive(header, now)) {
-            world_.apply(snapshot.value_or(Snapshot{}), now);
+            if (const std::optional<Snapshot> snapshot = snapshots_.decode(delta)) {
+                world_.apply(snapshot.value_or(Snapshot{}), now);
+            }
         }
         return;
     }
@@ -473,6 +485,10 @@ ClientWorld& ClientSession::world() noexcept {
 
 const ClientWorld& ClientSession::world() const noexcept {
     return world_;
+}
+
+const SnapshotDecoder& ClientSession::snapshots() const noexcept {
+    return snapshots_;
 }
 
 } // namespace rtype

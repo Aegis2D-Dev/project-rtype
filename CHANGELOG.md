@@ -6,6 +6,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
 | [#63](https://github.com/Aegis2D-Dev/project-rtype/pull/63) | LZ4 compression of snapshots and events, measured | `feat/server-payload-compression` | Open | 2026-11-02 | [2026-11-02-server-payload-compression](changelogs/2026-11-02-server-payload-compression.md) |
+| [#62](https://github.com/Aegis2D-Dev/project-rtype/pull/62) | Delta snapshot decoder | `feat/client-delta-snapshots` | Open | 2026-11-02 | [2026-11-02-client-delta-snapshots](changelogs/2026-11-02-client-delta-snapshots.md) |
 | [#61](https://github.com/Aegis2D-Dev/project-rtype/pull/61) | Compact and delta snapshots brought to develop | `feat/protocol-snapshot-baselines` | Merged | 2026-11-02 | [2026-11-02-develop-compact-snapshots](changelogs/2026-11-02-develop-compact-snapshots.md) |
 | [#60](https://github.com/Aegis2D-Dev/project-rtype/pull/60) | Delta snapshot encoder | `feat/server-delta-snapshots` | Merged | 2026-11-02 | [2026-11-02-server-delta-snapshots](changelogs/2026-11-02-server-delta-snapshots.md) |
 | [#59](https://github.com/Aegis2D-Dev/project-rtype/pull/59) | Snapshot acknowledgement and baselines | `feat/protocol-snapshot-baselines` | Merged | 2026-11-02 | [2026-11-02-protocol-snapshot-baselines](changelogs/2026-11-02-protocol-snapshot-baselines.md) |

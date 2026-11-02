@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
 #include <rtype/snapshot.hpp>
@@ -201,7 +202,7 @@ TEST_CASE("the client counts the datagrams a server did not send", "[client][sta
             PacketHeader{
                 .type = type, .sequence = sequence, .ack = 0, .ack_bits = 0, .session = token});
         if (type == PacketType::Snapshot) {
-            writer.write_bytes(rtype::write_snapshot(rtype::Snapshot{}).front());
+            writer.write_bytes(rtype::write_delta_snapshot(rtype::Snapshot{}, nullptr).front());
         }
         server_udp.send_to(to, writer.data());
     };
