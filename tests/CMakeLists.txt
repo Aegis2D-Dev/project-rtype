@@ -9,6 +9,7 @@ add_executable(rtype_tests
     bot_test.cpp
     client_session_test.cpp
     client_world_test.cpp
+    compact_test.cpp
     connect_form_test.cpp
     entities_test.cpp
     events_test.cpp

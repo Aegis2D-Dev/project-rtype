@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#56](https://github.com/Aegis2D-Dev/project-rtype/pull/56) (opened 2026-10-29) |
 | Branch | `docs/net-benchmark-report` → `develop` (stacked on `feat/tools-net-benchmark`, #55, merged) |
-| Status | Open |
+| Status | Merged on 2026-10-29 (`6e43307`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#276](https://github.com/Aegis2D-Dev/aegis2d/issues/276) network benchmark report |
 
