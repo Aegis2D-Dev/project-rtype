@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#59](https://github.com/Aegis2D-Dev/project-rtype/pull/59) (opened 2026-11-02) |
 | Branch | `feat/protocol-snapshot-baselines` → `develop` (stacked on `feat/protocol-quantized-snapshots`, #58) |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`df300c0`), into `feat/protocol-quantized-snapshots`; reached `develop` through #61 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#282](https://github.com/Aegis2D-Dev/aegis2d/issues/282) snapshot acknowledgement and baselines |
 

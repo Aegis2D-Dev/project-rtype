@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#58](https://github.com/Aegis2D-Dev/project-rtype/pull/58) (opened 2026-11-02) |
 | Branch | `feat/protocol-quantized-snapshots` → `develop` (stacked on `feat/protocol-compact-encoders`, #57) |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`368d17d`), into `feat/protocol-compact-encoders`; reached `develop` through #61 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#281](https://github.com/Aegis2D-Dev/aegis2d/issues/281) quantized snapshot records |
 

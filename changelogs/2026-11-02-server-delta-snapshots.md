@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#60](https://github.com/Aegis2D-Dev/project-rtype/pull/60) (opened 2026-11-02) |
 | Branch | `feat/server-delta-snapshots` → `develop` (stacked on `feat/protocol-snapshot-baselines`, #59) |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`ee393d6`), into `feat/protocol-snapshot-baselines`; reached `develop` through #61 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#283](https://github.com/Aegis2D-Dev/aegis2d/issues/283) delta snapshot encoder |
 

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#57](https://github.com/Aegis2D-Dev/project-rtype/pull/57) (opened 2026-11-02) |
 | Branch | `feat/protocol-compact-encoders` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`1bd6796`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#280](https://github.com/Aegis2D-Dev/aegis2d/issues/280) fixed-point and varint encoders |
 
