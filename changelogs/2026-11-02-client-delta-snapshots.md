@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#62](https://github.com/Aegis2D-Dev/project-rtype/pull/62) (opened 2026-11-02) |
 | Branch | `feat/client-delta-snapshots` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`bbc3aa3`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#284](https://github.com/Aegis2D-Dev/aegis2d/issues/284) delta snapshot decoder |
 
