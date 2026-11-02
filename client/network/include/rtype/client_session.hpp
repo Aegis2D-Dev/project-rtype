@@ -16,6 +16,7 @@
 #include <rtype/client_world.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
+#include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
 
 #include <chrono>
@@ -154,12 +155,18 @@ public:
 
     /// @brief The world as the server describes it, once in game.
     /// @details Updated with each `Snapshot` and `Event` datagram received (RFC sections 4.3
-    /// to 4.5): see ClientWorld.
+    /// to 4.5), each snapshot rebuilt from its baseline first: see ClientWorld.
     /// @return The world.
     [[nodiscard]] ClientWorld& world() noexcept;
 
     /// @copydoc world()
     [[nodiscard]] const ClientWorld& world() const noexcept;
+
+    /// @brief The snapshots rebuilt from the `Snapshot` datagrams, as baselines of the next.
+    /// @details A datagram whose baseline the client no longer has is dropped and not
+    /// acknowledged, so the server encodes the next snapshots against another one.
+    /// @return The decoder.
+    [[nodiscard]] const SnapshotDecoder& snapshots() const noexcept;
 
     /// @brief Number of `Input` datagrams sent.
     /// @return The count since the game state was reached.
@@ -219,6 +226,7 @@ private:
     // Last valid datagram from the server, in game.
     Clock::time_point last_heard_;
     ClientWorld world_;
+    SnapshotDecoder snapshots_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;

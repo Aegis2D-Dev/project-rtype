@@ -45,12 +45,10 @@ void GameServer::after_tick(GameInstance& instance) {
     if (!snapshot_due(instance.game().ticks())) {
         return;
     }
-    // Kept by each player's history, as a possible baseline of the next ones.
+    // Encoded for each player against its own baseline, and kept by its history as a
+    // possible baseline of the next ones.
     auto snapshot = std::make_shared<const Snapshot>(take_snapshot(instance));
-    std::vector<std::vector<std::byte>> payloads = write_snapshot(*snapshot);
-    context_.post([this, payloads = std::move(payloads), snapshot = std::move(snapshot)] {
-        network_.send_snapshot(payloads, snapshot);
-    });
+    context_.post([this, snapshot = std::move(snapshot)] { network_.send_snapshot(snapshot); });
 }
 
 // RFC section 4.6: the others learn who joined; the new player learns who is there, then
