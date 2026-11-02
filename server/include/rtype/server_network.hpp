@@ -16,11 +16,14 @@
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
+#include <rtype/snapshot_history.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -120,7 +123,10 @@ public:
     /// @details Each payload goes in its own `Snapshot` datagram, whose header takes the
     /// next sequence of the player's channel and acknowledges its datagrams (RFC 5.1).
     /// @param payloads Payloads from write_snapshot(), header excluded.
-    void send_snapshot(std::span<const std::vector<std::byte>> payloads);
+    /// @param snapshot The snapshot they encode, to keep in each player's snapshots() with
+    /// the sequences of its datagrams; none by default.
+    void send_snapshot(std::span<const std::vector<std::byte>> payloads,
+                       const std::shared_ptr<const Snapshot>& snapshot = nullptr);
 
     /// @brief Number of `Snapshot` datagrams sent, all players together.
     /// @return The count since the construction.
@@ -239,6 +245,13 @@ public:
     /// @return Its estimate, or nothing if the session is not bound or has ended.
     [[nodiscard]] const aegis2d::net::RttEstimator* rtt(std::uint32_t token) const;
 
+    /// @brief The last snapshots sent to a player and the ones it acknowledged.
+    /// @details Every valid datagram of the player acknowledges the server's datagrams it
+    /// received (`ack`, `ack_bits`): a snapshot is acknowledged once all its datagrams are.
+    /// @param token Session of the player.
+    /// @return Its history, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const SnapshotHistory* snapshots(std::uint32_t token) const;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -287,6 +300,7 @@ private:
         // When its last valid datagram arrived, for the UDP timeout.
         Clock::time_point heard = Clock::now();
         aegis2d::net::TrafficCounters traffic;
+        SnapshotHistory snapshots;
     };
     std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;

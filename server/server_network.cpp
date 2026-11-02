@@ -16,6 +16,8 @@
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
+#include <rtype/snapshot_history.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +27,7 @@
 #include <format>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -150,6 +153,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         }
         peer.heard = Clock::now();
         const bool fresh = peer.channel.receive(header, peer.heard);
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         // Only the most recent Input counts: a late or duplicated one is ignored.
@@ -173,6 +177,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
             return;
         }
         peer.heard = now;
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         return;
@@ -187,6 +192,7 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         }
         peer.heard = Clock::now();
         peer.channel.receive(header, peer.heard);
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         if (header.type == net::PacketType::Disconnect) {
@@ -232,6 +238,7 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
     net::ReliableChannel& channel = peer.channel;
     channel.receive(header, peer.heard);
+    peer.snapshots.acknowledge(header.ack, header.ack_bits);
     net::BinaryWriter writer;
     net::write_header(writer,
                       channel.next_header(net::PacketType::Accept, header.session, peer.heard));
@@ -270,7 +277,8 @@ void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
     left_ = std::move(left);
 }
 
-void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads) {
+void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads,
+                                  const std::shared_ptr<const Snapshot>& snapshot) {
     const auto now = Clock::now();
     for (auto& [token, peer] : peers_) {
         const Session* const session = sessions_.find(token);
@@ -281,15 +289,21 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
             continue;
         }
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
+        std::vector<std::uint16_t> sequences;
         for (const std::vector<std::byte>& payload : payloads) {
             net::BinaryWriter writer;
-            net::write_header(writer,
-                              peer.channel.next_header(net::PacketType::Snapshot, token, now));
+            const net::PacketHeader header =
+                peer.channel.next_header(net::PacketType::Snapshot, token, now);
+            sequences.push_back(header.sequence);
+            net::write_header(writer, header);
             writer.write_bytes(payload);
             socket_.send_to(endpoint, writer.data());
             peer.traffic.record(net::Direction::Sent, net::PacketType::Snapshot,
                                 writer.data().size(), now);
             ++snapshots_sent_;
+        }
+        if (snapshot) {
+            peer.snapshots.sent(snapshot, sequences);
         }
     }
 }
@@ -596,6 +610,11 @@ const net::TrafficCounters* ServerNetwork::traffic(std::uint32_t token) const {
 const net::RttEstimator* ServerNetwork::rtt(std::uint32_t token) const {
     const auto peer = peers_.find(token);
     return peer == peers_.end() ? nullptr : &peer->second.channel.rtt();
+}
+
+const SnapshotHistory* ServerNetwork::snapshots(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.snapshots;
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {

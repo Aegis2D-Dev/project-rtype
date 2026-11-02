@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -44,8 +45,11 @@ void GameServer::after_tick(GameInstance& instance) {
     if (!snapshot_due(instance.game().ticks())) {
         return;
     }
-    context_.post([this, payloads = write_snapshot(take_snapshot(instance))] {
-        network_.send_snapshot(payloads);
+    // Kept by each player's history, as a possible baseline of the next ones.
+    auto snapshot = std::make_shared<const Snapshot>(take_snapshot(instance));
+    std::vector<std::vector<std::byte>> payloads = write_snapshot(*snapshot);
+    context_.post([this, payloads = std::move(payloads), snapshot = std::move(snapshot)] {
+        network_.send_snapshot(payloads, snapshot);
     });
 }
 
