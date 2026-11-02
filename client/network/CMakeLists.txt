@@ -8,7 +8,8 @@ add_library(rtype_client_net STATIC
     connect_form.cpp
     lagometer.cpp
     network_stats.cpp
-    player_notices.cpp)
+    player_notices.cpp
+    snapshot_decoder.cpp)
 target_include_directories(rtype_client_net PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_client_net
     PUBLIC rtype_protocol rtype_game aegis2d::core aegis2d::ecs aegis2d::net

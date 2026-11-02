@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#61](https://github.com/Aegis2D-Dev/project-rtype/pull/61) (opened 2026-11-02) |
 | Branch | `feat/protocol-snapshot-baselines` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`2bd6f69`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#281](https://github.com/Aegis2D-Dev/aegis2d/issues/281), [#282](https://github.com/Aegis2D-Dev/aegis2d/issues/282), [#283](https://github.com/Aegis2D-Dev/aegis2d/issues/283) (merged already, through #58, #59 and #60) |
 

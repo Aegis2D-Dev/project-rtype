@@ -128,6 +128,15 @@ public:
     void send_snapshot(std::span<const std::vector<std::byte>> payloads,
                        const std::shared_ptr<const Snapshot>& snapshot = nullptr);
 
+    /// @brief Sends a snapshot to every player whose endpoint is bound, encoded against the
+    /// latest snapshot that player acknowledged.
+    /// @details write_delta_snapshot() encodes it against snapshots()'s latest
+    /// acknowledged one, or whole if there is none; the payloads go as with the other
+    /// overload, and the snapshot is kept in the player's snapshots().
+    /// @param snapshot The snapshot to send; nothing is sent if it is `nullptr`.
+    /// @throws std::invalid_argument if a field does not fit, as write_delta_snapshot().
+    void send_snapshot(const std::shared_ptr<const Snapshot>& snapshot);
+
     /// @brief Number of `Snapshot` datagrams sent, all players together.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t snapshots_sent() const noexcept;
@@ -288,6 +297,10 @@ private:
     void kick_client(std::uint64_t id);
     void end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave);
     void report_traffic(Clock::time_point now);
+    // Sends the payloads encode() gives for each bound player's history.
+    void send_snapshot(
+        const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
+        const std::shared_ptr<const Snapshot>& snapshot);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
