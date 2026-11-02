@@ -184,10 +184,12 @@ def run(args: argparse.Namespace) -> None:
         return
     RESULTS.mkdir(parents=True, exist_ok=True)
     target = args.output or RESULTS / f"{slug(args.name)}.csv"
+    # Read before opening for writing, which empties the file.
+    merged = merge(read_lines(target), lines)
     with target.open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=FIELDS, lineterminator="\n")
         writer.writeheader()
-        writer.writerows(merge(read_lines(target), lines))
+        writer.writerows(merged)
     print(f"{target}: {len(lines)} profile(s) of {args.label}")
 
 
