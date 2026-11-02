@@ -1,6 +1,7 @@
 #include <aegis2d/core/log.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -80,6 +81,20 @@ bool contained(std::string_view what, Handling&& handling) noexcept {
     return false;
 }
 
+// A datagram written by ReliableChannel, its payload compressed when that pays (RFC 2.6).
+net::BinaryWriter compressed(std::span<const std::byte> datagram,
+                             std::optional<std::size_t> threshold) {
+    net::BinaryReader reader{datagram};
+    const std::variant<net::PacketHeader, net::HeaderError> read = net::read_header(reader);
+    net::BinaryWriter writer;
+    if (const auto* const header = std::get_if<net::PacketHeader>(&read)) {
+        net::write_datagram(writer, *header, datagram.subspan(net::PacketHeader::size), threshold);
+    } else {
+        writer.write_bytes(datagram);
+    }
+    return writer;
+}
+
 } // namespace
 
 ServerNetwork::ServerNetwork(net::NetworkContext& context, std::uint16_t tcp_port,
@@ -120,6 +135,17 @@ void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::
     if (header.type == net::PacketType::Accept || header.type == net::PacketType::Snapshot) {
         drop(from, datagram, "wrong direction");
         return;
+    }
+    // RFC section 2.6: a compressed payload is decompressed before anything reads it.
+    std::vector<std::byte> decompressed;
+    if (header.compressed) {
+        std::optional<std::vector<std::byte>> payload = net::read_payload(header, reader);
+        if (!payload) {
+            drop(from, datagram, "malformed compressed payload");
+            return;
+        }
+        decompressed = std::move(payload).value_or(std::vector<std::byte>{});
+        reader = net::BinaryReader{decompressed};
     }
     if (header.type == net::PacketType::Connect) {
         on_connect(from, datagram, header, reader);
@@ -295,8 +321,7 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
             const net::PacketHeader header =
                 peer.channel.next_header(net::PacketType::Snapshot, token, now);
             sequences.push_back(header.sequence);
-            net::write_header(writer, header);
-            writer.write_bytes(payload);
+            net::write_datagram(writer, header, payload, compression_);
             socket_.send_to(endpoint, writer.data());
             peer.traffic.record(net::Direction::Sent, net::PacketType::Snapshot,
                                 writer.data().size(), now);
@@ -306,6 +331,14 @@ void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloa
             peer.snapshots.sent(snapshot, sequences);
         }
     }
+}
+
+void ServerNetwork::set_compression(std::optional<std::size_t> threshold) noexcept {
+    compression_ = threshold;
+}
+
+std::optional<std::size_t> ServerNetwork::compression() const noexcept {
+    return compression_;
 }
 
 std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
@@ -363,10 +396,11 @@ void ServerNetwork::flush_events(Clock::time_point now) {
         }
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
         while (peer.channel.has_due_events(now)) {
-            net::BinaryWriter writer;
-            if (peer.channel.write_events(writer, token, now) == 0) {
+            net::BinaryWriter events;
+            if (peer.channel.write_events(events, token, now) == 0) {
                 break;
             }
+            const net::BinaryWriter writer = compressed(events.data(), compression_);
             socket_.send_to(endpoint, writer.data());
             peer.traffic.record(net::Direction::Sent, net::PacketType::Event, writer.data().size(),
                                 now);

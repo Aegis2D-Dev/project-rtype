@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
         rtype::GameServer server{context, *instance, options.tcp_port, options.udp_port};
         rtype::ServerNetwork& network = server.network();
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
+        network.set_compression(options.compress_from);
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << ", simulation at "

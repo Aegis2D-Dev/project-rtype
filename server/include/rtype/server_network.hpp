@@ -119,6 +119,17 @@ public:
     /// @param input Called with the session and the actions it holds.
     void on_input(InputHandler input);
 
+    /// @brief Sets from which size the payloads of snapshots and events are compressed.
+    /// @details A payload of at least @p threshold bytes is sent compressed with LZ4 when that
+    /// makes it smaller (`aegis2d/net/compression.hpp`, RFC section 2.6). Whatever this
+    /// setting, compressed datagrams received are decompressed.
+    /// @param threshold Size in bytes, or `std::nullopt` (the default) to never compress.
+    void set_compression(std::optional<std::size_t> threshold) noexcept;
+
+    /// @brief From which size payloads are compressed.
+    /// @return The threshold set by set_compression(), or `std::nullopt`.
+    [[nodiscard]] std::optional<std::size_t> compression() const noexcept;
+
     /// @brief Sends a snapshot to every player whose endpoint is bound.
     /// @details Each payload goes in its own `Snapshot` datagram, whose header takes the
     /// next sequence of the player's channel and acknowledges its datagrams (RFC 5.1).
@@ -318,6 +329,7 @@ private:
     DropReport drops_;
     std::uint64_t rate_limited_ = 0;
     std::uint64_t refused_connections_ = 0;
+    std::optional<std::size_t> compression_;
     std::optional<Clock::time_point> next_traffic_report_;
 };
 
