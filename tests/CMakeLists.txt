@@ -11,6 +11,7 @@ add_executable(rtype_tests
     client_world_test.cpp
     compact_test.cpp
     connect_form_test.cpp
+    delta_snapshot_test.cpp
     entities_test.cpp
     events_test.cpp
     game_instance_test.cpp
@@ -23,6 +24,7 @@ add_executable(rtype_tests
     server_game_test.cpp
     server_test.cpp
     simulation_test.cpp
+    snapshot_history_test.cpp
     snapshot_test.cpp
     stop_signal_test.cpp
     traffic_test.cpp

@@ -91,12 +91,23 @@ After each tick, the simulation thread hands the network thread two things:
   already there.
 - **Snapshots** (`rtype/snapshot.hpp`, RFC section 4.3), every third tick: the position,
   velocity and frame of every entity, and each player's lives and score. They are not
-  resent: the next one replaces a lost one.
-  `rtype/compact.hpp` holds the encoders of the compact records to come, written bit by bit
-  with the engine's `BitWriter`: positions to the 1/8 px on 15 bits (-2048 to 2047.875,
-  off by 1/16 px at most), velocities in whole pixels per second on 12 bits (off by 0.5 px/s
-  at most), both clamped to their range, and ids as varints of 7-bit groups (8 bits below
-  128, 40 at most).
+  resent: the next one replaces a lost one. Their fields are packed bit by bit with the
+  engine's `BitWriter`, by the encoders of `rtype/compact.hpp`: positions to the 1/8 px on
+  15 bits (-2048 to 2047.875, off by 1/16 px at most), velocities in whole pixels per second
+  on 12 bits (off by 0.5 px/s at most), both clamped to their range, and numbers that grow
+  (ids, scores) as varints of 7-bit groups. The entity records go by increasing index (the
+  24 low bits of the network id), each giving the gap to the previous index and the 8 bits
+  of generation: 77 bits (10 bytes) instead of 22 bytes while the gap is below 128, as it
+  stays between live entities.
+  Each player's `SnapshotHistory` keeps the last 32 snapshots sent to it with the sequences
+  of their datagrams; the `ack` and `ack_bits` of every datagram the player sends mark them
+  acknowledged, a snapshot once all its datagrams are. The latest acknowledged one is the
+  baseline of the delta snapshots (`rtype/delta_snapshot.hpp`): `write_delta_snapshot()`
+  skips the entities whose quantized fields did not change, sends only the changed fields
+  of the others (x, y, velocity, frame), every field of the new ones and the id of the
+  removed ones, or every entity without a baseline; `apply_delta()` rebuilds the snapshot
+  from the baseline and the payloads of its tick. The server and the client switch to them
+  together, with the client's decoder.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.

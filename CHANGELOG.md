@@ -5,7 +5,11 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#57](https://github.com/Aegis2D-Dev/project-rtype/pull/57) | Fixed-point and varint encoders | `feat/protocol-compact-encoders` | Open | 2026-11-02 | [2026-11-02-protocol-compact-encoders](changelogs/2026-11-02-protocol-compact-encoders.md) |
+| [#61](https://github.com/Aegis2D-Dev/project-rtype/pull/61) | Compact and delta snapshots brought to develop | `feat/protocol-snapshot-baselines` | Open | 2026-11-02 | [2026-11-02-develop-compact-snapshots](changelogs/2026-11-02-develop-compact-snapshots.md) |
+| [#60](https://github.com/Aegis2D-Dev/project-rtype/pull/60) | Delta snapshot encoder | `feat/server-delta-snapshots` | Merged | 2026-11-02 | [2026-11-02-server-delta-snapshots](changelogs/2026-11-02-server-delta-snapshots.md) |
+| [#59](https://github.com/Aegis2D-Dev/project-rtype/pull/59) | Snapshot acknowledgement and baselines | `feat/protocol-snapshot-baselines` | Merged | 2026-11-02 | [2026-11-02-protocol-snapshot-baselines](changelogs/2026-11-02-protocol-snapshot-baselines.md) |
+| [#58](https://github.com/Aegis2D-Dev/project-rtype/pull/58) | Quantized snapshot records | `feat/protocol-quantized-snapshots` | Merged | 2026-11-02 | [2026-11-02-protocol-quantized-snapshots](changelogs/2026-11-02-protocol-quantized-snapshots.md) |
+| [#57](https://github.com/Aegis2D-Dev/project-rtype/pull/57) | Fixed-point and varint encoders | `feat/protocol-compact-encoders` | Merged | 2026-11-02 | [2026-11-02-protocol-compact-encoders](changelogs/2026-11-02-protocol-compact-encoders.md) |
 | [#56](https://github.com/Aegis2D-Dev/project-rtype/pull/56) | Network benchmark report | `docs/net-benchmark-report` | Merged | 2026-10-29 | [2026-10-29-net-benchmark-report](changelogs/2026-10-29-net-benchmark-report.md) |
 | [#55](https://github.com/Aegis2D-Dev/project-rtype/pull/55) | Network benchmark runs | `feat/tools-net-benchmark` | Merged | 2026-10-29 | [2026-10-29-tools-net-benchmark](changelogs/2026-10-29-tools-net-benchmark.md) |
 | [#54](https://github.com/Aegis2D-Dev/project-rtype/pull/54) | Several bots and input scripts | `feat/tools-bot-scripts` | Merged | 2026-10-29 | [2026-10-29-tools-bot-scripts](changelogs/2026-10-29-tools-bot-scripts.md) |
