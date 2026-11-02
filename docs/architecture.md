@@ -91,12 +91,14 @@ After each tick, the simulation thread hands the network thread two things:
   already there.
 - **Snapshots** (`rtype/snapshot.hpp`, RFC section 4.3), every third tick: the position,
   velocity and frame of every entity, and each player's lives and score. They are not
-  resent: the next one replaces a lost one.
-  `rtype/compact.hpp` holds the encoders of the compact records to come, written bit by bit
-  with the engine's `BitWriter`: positions to the 1/8 px on 15 bits (-2048 to 2047.875,
-  off by 1/16 px at most), velocities in whole pixels per second on 12 bits (off by 0.5 px/s
-  at most), both clamped to their range, and ids as varints of 7-bit groups (8 bits below
-  128, 40 at most).
+  resent: the next one replaces a lost one. Their fields are packed bit by bit with the
+  engine's `BitWriter`, by the encoders of `rtype/compact.hpp`: positions to the 1/8 px on
+  15 bits (-2048 to 2047.875, off by 1/16 px at most), velocities in whole pixels per second
+  on 12 bits (off by 0.5 px/s at most), both clamped to their range, and numbers that grow
+  (ids, scores) as varints of 7-bit groups. The entity records go by increasing index (the
+  24 low bits of the network id), each giving the gap to the previous index and the 8 bits
+  of generation: 77 bits (10 bytes) instead of 22 bytes while the gap is below 128, as it
+  stays between live entities.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
