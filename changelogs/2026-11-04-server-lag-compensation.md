@@ -37,14 +37,21 @@ Eighth ticket of the *Network: responsiveness under lag* epic (Aegis2D-Dev/aegis
 - `GameServer`: with each snapshot, on the network thread, each player's smoothed round trip
   time (`ServerNetwork::rtt()`) becomes a rewind, posted to the game when it changes.
 - *Gameplay*: the `collision` system, the new calls, and how the rewind is chosen.
+- Changelog: with `develop` merged in, #70 (`6c9e6fe`) marked as merged.
 
 ## Commits
 - `2e4df4d` feat(server): checked missiles against the enemies their shooter saw
 - `2ef0676` feat(tests): added lag compensation tests at 200 ms of round trip
-- feat(docs): documented lag compensation and updated changelogs
+- `11b15ce` feat(docs): documented lag compensation and updated changelogs
+- `2b9630c` Merge remote-tracking branch 'origin/develop' into feat/server-lag-compensation
+- feat(changelog): fixed pr numbers and merge status
 
 ## Notes
-- Stacked on #71: merge it first.
+- Stacked on #71, merged since (`1801efc`); now against `develop`, which was merged in once
+  #64 to #71 were there: the conflicts were additions on both sides (the paragraphs of
+  *Gameplay* on the ship step and on lag compensation, the test list, the includes of the
+  client tests, the index of `CHANGELOG.md`). Built again (server and client), clang-tidy
+  on the merged sources: 237 of 238 tests pass.
 - To arbitrate: the server assumes the client's first interpolation delay, 100 ms. With the
   adaptive delay of #70 (50 to 200 ms), the client should report its delay (in its `Input`,
   an RFC change) for the rewind to follow it; not done here, so as not to change the protocol
