@@ -161,6 +161,7 @@ bool ServerGame::set_input(ecs::Entity player, ecs::PlayerInput input) {
 void ServerGame::tick(aegis2d::core::Duration step) {
     spawned_.clear();
     systems_.update(registry_, step);
+    history_.record(ticks(), registry_);
 }
 
 void ServerGame::play_waves(ecs::WaveSchedule waves) {
@@ -177,6 +178,10 @@ bool ServerGame::game_over() const {
 
 std::uint64_t ServerGame::ticks() const noexcept {
     return systems_.ticks();
+}
+
+const PositionHistory& ServerGame::history() const noexcept {
+    return history_;
 }
 
 ecs::Registry& ServerGame::registry() noexcept {
