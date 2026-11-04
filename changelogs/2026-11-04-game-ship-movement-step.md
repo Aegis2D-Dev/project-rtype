@@ -41,7 +41,9 @@ it (Aegis2D-Dev/aegis2d#292). Second ticket of the *Network: responsiveness unde
 ## Commits
 - `320e995` feat(game): moved player ships with a shared one-tick step
 - `0b50c5e` feat(tests): added ship step tests against the server's ticks
-- feat(docs): documented the shared ship step and updated changelogs
+- `d8c2399` feat(docs): documented the shared ship step and updated changelogs
+- `c4dc4bb` feat(tests): kept the inputs of the ship step test alive
+- feat(changelog): updated changelogs
 
 ## Notes
 - The client does not call the step yet: client-side prediction (Aegis2D-Dev/aegis2d#292)
@@ -52,5 +54,8 @@ it (Aegis2D-Dev/aegis2d#292). Second ticket of the *Network: responsiveness unde
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too: clang-format, clang-tidy 22 on every changed source, `mkdocs build
   --strict`, Doxygen.
+- The first CI run failed under ASan: the test kept its inputs as `std::initializer_list`s
+  in a vector, whose arrays end with the statement that builds it; it keeps
+  `ecs::PlayerInput`s now, checked under ASan and UBSan on the machine used.
 - `ctest`: 207 of 208 tests pass. *a flooding address is cut off, and the players play on*
   fails on the machine used, as on `develop`, and passes in CI.
