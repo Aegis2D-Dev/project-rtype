@@ -163,8 +163,8 @@ TEST_CASE("players come from the snapshots and the events", "[client][world]") {
 
 TEST_CASE("the client's entities mirror the server's", "[client][world]") {
     aegis2d::net::NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    rtype::GameInstance& instance = game_server.room().instance();
     rtype::ServerNetwork& server = game_server.network();
     rtype::ClientSession client{
         context, rtype::ClientSettings{

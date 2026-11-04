@@ -268,8 +268,7 @@ TEST_CASE("a server silent for five seconds loses the session", "[client][lost]"
 
 TEST_CASE("a game that keeps sending keeps the session", "[client][lost]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
@@ -529,8 +528,8 @@ TEST_CASE("the client reads the compressed snapshots of the server", "[client][c
 
 TEST_CASE("a client holding right moves its ship in the server's game", "[client][input]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    rtype::GameInstance& instance = game_server.room().instance();
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();

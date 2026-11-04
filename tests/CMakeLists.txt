@@ -20,6 +20,7 @@ add_executable(rtype_tests
     network_stats_test.cpp
     player_notices_test.cpp
     rate_limit_test.cpp
+    room_test.cpp
     rtt_test.cpp
     server_game_test.cpp
     server_test.cpp
