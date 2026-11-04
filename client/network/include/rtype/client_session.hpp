@@ -14,8 +14,10 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/client_world.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
+#include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
 
@@ -27,6 +29,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -168,9 +171,34 @@ public:
     /// @return The decoder.
     [[nodiscard]] const SnapshotDecoder& snapshots() const noexcept;
 
+    /// @brief The client's own ship, moved at once by each `Input` sent.
+    /// @details Started from the position of the ship in the first snapshot that has it, and
+    /// again when the player loses a life (the server moved it back to its spawn point) or
+    /// gets another ship; stopped once the player is out. Each newer snapshot reconciles it:
+    /// the ship goes back to the server's position once it applied the input the player
+    /// record acknowledges, and the inputs after it are replayed (ShipPrediction::reconcile()).
+    /// Each update() smooths the corrections (ShipPrediction::smooth()): the screen draws the
+    /// ship at its drawn() position, so it answers the keys within a frame whatever the round
+    /// trip time, and never jumps by more than a few pixels for a small correction.
+    /// @return The prediction.
+    [[nodiscard]] const ShipPrediction& prediction() const noexcept;
+
     /// @brief Number of `Input` datagrams sent.
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
+
+    /// @brief Sequence of the last `Input` sent (RFC section 4.2).
+    /// @details The inputs are numbered from 0, one more for each, from 65535 back to 0: the
+    /// low 16 bits of inputs_sent() before it is sent.
+    /// @return The sequence, or nothing before the first `Input`.
+    [[nodiscard]] std::optional<std::uint16_t> last_input() const noexcept;
+
+    /// @brief Sequence of the last `Input` of the player the server applied, from the player
+    /// record of its own player in the snapshots (RFC section 4.3).
+    /// @details The inputs after it, up to last_input(), are those the server has not applied
+    /// yet. It only moves forward: a late snapshot does not move it back.
+    /// @return The sequence, or nothing until a snapshot says the server applied one.
+    [[nodiscard]] std::optional<std::uint16_t> acknowledged_input() const noexcept;
 
     /// @brief Datagrams exchanged with the server, by direction and packet type.
     /// @details Counts every datagram sent to the server's UDP port, and every one received
@@ -201,6 +229,7 @@ private:
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
+    void predict(const Snapshot& snapshot);
     void on_game_datagram(const aegis2d::net::PacketHeader& header,
                           aegis2d::net::BinaryReader& payload, Clock::time_point now);
 
@@ -221,12 +250,21 @@ private:
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    // The last inputs sent, oldest first: each Input carries them all.
+    std::vector<InputRecord> recent_inputs_;
     aegis2d::net::TrafficCounters traffic_;
     NetworkStats network_stats_;
     // Last valid datagram from the server, in game.
     Clock::time_point last_heard_;
     ClientWorld world_;
     SnapshotDecoder snapshots_;
+    ShipPrediction prediction_;
+    // Lives of the player when the prediction started: one less means a respawn.
+    std::uint8_t predicted_lives_ = 0;
+    // Tick of the last snapshot the prediction started from or was reconciled with.
+    std::optional<std::uint32_t> reconciled_tick_;
+    // Time of the last update(), to smooth the corrections of the prediction.
+    std::optional<Clock::time_point> last_update_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;

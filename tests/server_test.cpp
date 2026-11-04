@@ -15,17 +15,21 @@
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/input.hpp>
+#include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <initializer_list>
 #include <memory>
@@ -142,6 +146,19 @@ std::vector<std::byte> datagram(PacketType type, std::uint32_t session, std::uin
             .type = type, .sequence = sequence, .ack = 65535, .ack_bits = 0, .session = session});
     writer.write_bytes(payload);
     return {writer.data().begin(), writer.data().end()};
+}
+
+// The payload of an Input (RFC section 4.2), written by hand so it can be malformed: the
+// sequence of the newest input, little-endian, the count, then the actions, newest first.
+std::vector<std::byte> input_payload(std::uint16_t newest,
+                                     std::initializer_list<std::uint8_t> actions) {
+    std::vector<std::byte> payload{std::byte{static_cast<std::uint8_t>(newest & 0xFFU)},
+                                   std::byte{static_cast<std::uint8_t>(newest >> 8U)},
+                                   std::byte{static_cast<std::uint8_t>(actions.size())}};
+    for (const std::uint8_t held : actions) {
+        payload.push_back(std::byte{held});
+    }
+    return payload;
 }
 
 // A player's UDP socket, keeping the headers of the datagrams the server sends, and the
@@ -455,12 +472,12 @@ TEST_CASE("datagrams from unknown endpoints are dropped without an answer", "[se
 
     Socket stranger{context};
     const std::vector<std::vector<std::byte>> bad = {
-        datagram(PacketType::Input, token, 0, {std::byte{0x01}}), // endpoint not bound
-        datagram(PacketType::Connect, token),                     // session bound elsewhere
-        datagram(PacketType::Connect, token + 1),                 // unknown session
-        datagram(PacketType::Connect, 0),                         // 0 is never a token
-        datagram(PacketType::Snapshot, token),                    // wrong direction
-        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},      // truncated header
+        datagram(PacketType::Input, token, 0, input_payload(0, {0x01})), // endpoint not bound
+        datagram(PacketType::Connect, token),                            // session bound elsewhere
+        datagram(PacketType::Connect, token + 1),                        // unknown session
+        datagram(PacketType::Connect, 0),                                // 0 is never a token
+        datagram(PacketType::Snapshot, token),                           // wrong direction
+        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},             // truncated header
     };
     for (const std::vector<std::byte>& bytes : bad) {
         stranger.send(server, bytes);
@@ -544,9 +561,12 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     std::vector<std::uint8_t> inputs;
+    std::vector<std::uint16_t> sequences;
     std::vector<unsigned> left;
-    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input) {
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
         inputs.push_back(input.held);
+        sequences.push_back(sequence);
     });
     server.on_players([](const rtype::Session& /*session*/) {},
                       [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
@@ -558,24 +578,165 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
 
+    // The datagram's sequence, then the payload: the input's own sequence and its actions.
     const auto input = [&](std::uint16_t sequence, std::vector<std::byte> payload) {
         udp.send(server, datagram(PacketType::Input, token, sequence, std::move(payload)));
     };
-    input(1, {std::byte{0x08}});               // right: applied
-    input(2, {std::byte{0x20}});               // bit 5 set: malformed
-    input(3, {std::byte{0x08}, std::byte{0}}); // two bytes: malformed
-    input(5, {std::byte{0x01}});               // up: applied
-    input(4, {std::byte{0x02}});               // older than 5: ignored
-    input(5, {std::byte{0x01}});               // duplicate: ignored
-    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 2; }));
-    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 4; }));
+    std::vector<std::byte> too_long = input_payload(14, {0x08}); // count 1, two actions
+    too_long.push_back(std::byte{0});
+    input(1, input_payload(10, {0x08}));     // right: applied
+    input(2, input_payload(11, {0x20}));     // bit 5 set: malformed
+    input(3, {std::byte{11}, std::byte{0}}); // no count: malformed
+    input(4, std::move(too_long));           // a byte too many: malformed
+    input(5, input_payload(13, {0x01}));     // up: applied
+    input(6, input_payload(12, {0x02}));     // an older input in a newer datagram: ignored
+    input(5, input_payload(13, {0x01}));     // duplicate: ignored
+    input(7, input_payload(13, {0x04}));     // the same input again: ignored
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 3; }));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 5; }));
     CHECK(inputs == std::vector<std::uint8_t>{0x08, 0x01});
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13});
 
-    // The next datagram to the player acknowledges 6, 5, 4, 1 and 0, not the malformed 2 and 3.
-    udp.send(server, datagram(PacketType::Connect, token, 6));
+    // The next datagram to the player acknowledges 8, 7, 6, 5, 1 and 0, not the malformed 2
+    // to 4.
+    udp.send(server, datagram(PacketType::Connect, token, 8));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 2; }));
-    CHECK(udp.received.back().ack == 6);
-    CHECK(udp.received.back().ack_bits == 0b110011U);
+    CHECK(udp.received.back().ack == 8);
+    CHECK(udp.received.back().ack_bits == 0b11000111U);
+
+    // Input sequences wrap from 65535 to 0, as datagram sequences do (RFC section 2.2).
+    input(9, input_payload(30000, {0x08}));
+    input(10, input_payload(60000, {0x08}));
+    input(11, input_payload(65535, {0x08}));
+    input(12, input_payload(0, {0x10}));
+    input(13, input_payload(65534, {0x01})); // older than 0: ignored
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 10; }));
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13, 30000, 60000, 65535, 0});
+    CHECK(inputs.back() == 0x10);
+    CHECK(left.empty());
+}
+
+TEST_CASE("the inputs of lost datagrams arrive with the next ones, each once", "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::uint16_t> sequences;
+    std::vector<std::uint8_t> actions;
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
+        sequences.push_back(sequence);
+        actions.push_back(input.held);
+    });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // Input n holds the actions n and goes with the count - 1 before it, in the datagram of
+    // sequence n + 1.
+    const auto send = [&](std::uint16_t newest, std::size_t count) {
+        std::vector<rtype::InputRecord> inputs;
+        for (std::size_t back = count; back > 0; --back) {
+            const auto sequence = static_cast<std::uint16_t>(newest + 1 - back);
+            inputs.push_back(rtype::InputRecord{.sequence = sequence,
+                                                .actions = static_cast<std::uint8_t>(sequence)});
+        }
+        udp.send(server, datagram(PacketType::Input, token, static_cast<std::uint16_t>(newest + 1),
+                                  rtype::write_inputs(inputs)));
+    };
+    send(0, 1);
+    send(1, 2);
+    send(2, 3);
+    send(3, 4);
+    send(7, 4);  // 4 to 6 lost: they come with 7
+    send(5, 4);  // late: nothing new
+    send(12, 4); // 8 to 11 lost: 8 is lost for good, 9 to 11 come with 12
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 7; }));
+    CHECK(sequences == std::vector<std::uint16_t>{0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12});
+    CHECK(actions == std::vector<std::uint8_t>{0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12});
+    CHECK(server.dropped_datagrams() == 0);
+}
+
+TEST_CASE("with 10 % loss the server applies every input of a recorded session",
+          "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    // The whole session is sent at once: more datagrams per second than a client sends.
+    server.set_limits(
+        rtype::RateLimits{.datagrams_per_second = 100000, .connections_per_address = 8});
+    std::vector<rtype::InputRecord> applied;
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
+        applied.push_back(rtype::InputRecord{.sequence = sequence, .actions = input.held});
+    });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // The recorded session: the bot's dodge script, one input per tick for 10 seconds, then 3
+    // more inputs as the game goes on.
+    const auto script = rtype::load_input_script(RTYPE_ASSET_DIR "/../tools/bot/dodge.txt");
+    REQUIRE(std::holds_alternative<rtype::InputScript>(script));
+    const std::size_t ticks = std::size_t{10} * rtype::tuning::tick_rate;
+    std::vector<std::uint8_t> recorded;
+    while (recorded.size() < ticks) {
+        for (const rtype::ScriptStep& step : std::get<rtype::InputScript>(script).steps) {
+            const auto count = step.duration.count() * rtype::tuning::tick_rate / 1000;
+            recorded.insert(recorded.end(), static_cast<std::size_t>(count), step.held);
+        }
+    }
+    recorded.resize(ticks);
+    const std::size_t session = recorded.size() + 3;
+
+    // A link losing one datagram in ten.
+    aegis2d::core::Random random{310};
+    std::vector<bool> lost(session);
+    std::ranges::generate(lost, [&] { return random.below(100) < 10; });
+    std::size_t losses = 0;
+    std::size_t longest = 0;
+    for (std::size_t index = 0, run = 0; index < session; ++index) {
+        run = lost.at(index) ? run + 1 : 0;
+        losses += lost.at(index) ? 1 : 0;
+        longest = std::max(longest, run);
+    }
+    CAPTURE(losses, longest);
+    CHECK(losses > session / 12);
+    CHECK(losses < session / 8);
+    // Runs of 3 lost datagrams are recovered; one of 4 would lose an input.
+    REQUIRE(longest == 3);
+
+    std::vector<rtype::InputRecord> window;
+    std::uint64_t delivered = 0;
+    for (std::size_t index = 0; index < session; ++index) {
+        if (window.size() == rtype::max_inputs_per_datagram) {
+            window.erase(window.begin());
+        }
+        window.push_back(rtype::InputRecord{.sequence = static_cast<std::uint16_t>(index),
+                                            .actions = index < recorded.size() ? recorded.at(index)
+                                                                               : std::uint8_t{0}});
+        if (!lost.at(index)) {
+            udp.send(server,
+                     datagram(PacketType::Input, token, static_cast<std::uint16_t>(index + 1),
+                              rtype::write_inputs(window)));
+            ++delivered;
+        }
+        // A few at a time, so the socket's buffer never overflows.
+        if (index % 16 == 15 || index + 1 == session) {
+            REQUIRE(pump(context, server, [&] { return server.game_datagrams() == delivered; }));
+        }
+    }
+
+    // Every input of the recording, in order, once, with its actions.
+    REQUIRE(applied.size() >= recorded.size());
+    for (std::size_t index = 0; index < recorded.size(); ++index) {
+        CAPTURE(index);
+        CHECK(applied.at(index) == rtype::InputRecord{.sequence = static_cast<std::uint16_t>(index),
+                                                      .actions = recorded.at(index)});
+    }
+    CHECK(server.dropped_datagrams() == 0);
+    CHECK(server.rate_limited() == 0);
 }
 
 TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[server][input]") {
@@ -622,7 +783,7 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     Socket udp{context};
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
-    udp.send(server, datagram(PacketType::Input, token, 1, {std::byte{0x08}}));
+    udp.send(server, datagram(PacketType::Input, token, 1, input_payload(0, {0x08})));
     REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
 
     rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
@@ -1210,7 +1371,8 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                           }
                       });
     // A bug in the game's handling of player 1's inputs, standing for any exception.
-    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/) {
+    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/,
+                        std::uint16_t /*sequence*/) {
         if (session.player == 1) {
             throw std::runtime_error{"input handler failed"};
         }
@@ -1228,14 +1390,14 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                  [&] { return good_udp.received.size() == 1 && bad_udp.received.size() == 1; }));
 
     // Over UDP: the datagram that threw kicks its sender (RFC section 6.6), not the others.
-    bad_udp.send(server, datagram(PacketType::Input, bad, 1, {std::byte{0x01}}));
+    bad_udp.send(server, datagram(PacketType::Input, bad, 1, input_payload(0, {0x01})));
     REQUIRE(pump(context, server, [&] { return bad_player.closed; }));
     CHECK(server.errors() == 1);
     REQUIRE(!bad_player.received.empty());
     CHECK(bad_player.received.back() == rtype::write_logout(LogoutReason::ProtocolError));
     CHECK(left ==
           std::vector<std::pair<unsigned, rtype::LeaveReason>>{{1, rtype::LeaveReason::Kicked}});
-    good_udp.send(server, datagram(PacketType::Input, good, 1, {std::byte{0x01}}));
+    good_udp.send(server, datagram(PacketType::Input, good, 1, input_payload(0, {0x01})));
     REQUIRE(pump(context, server, [&] { return inputs.size() == 1; }));
     CHECK(inputs.front() == 0);
 

@@ -62,6 +62,7 @@ Snapshot take_snapshot(GameInstance& instance) {
             .ship = state->ship ? state->ship->id() : no_entity,
             .lives = clamp_u8(state->lives),
             .score = state->score,
+            .input = state->input,
         });
     }
     world.view<ecs::NetworkId, ecs::Transform, ecs::Collider>().each(

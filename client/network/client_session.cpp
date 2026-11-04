@@ -1,4 +1,6 @@
+#include <aegis2d/core/clock.hpp>
 #include <aegis2d/core/log.hpp>
+#include <aegis2d/ecs/system.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
@@ -15,10 +17,14 @@
 #include <rtype/client_world.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
+#include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_decoder.hpp>
+#include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -43,8 +49,11 @@ namespace {
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
 
-// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
-constexpr std::uint8_t valid_actions = 0x1FU;
+// A tick of the server in seconds, computed as its simulation does, so the prediction moves
+// the ship by the same float steps.
+constexpr float tick_seconds =
+    aegis2d::ecs::Tick{.step = aegis2d::core::step_from_rate(tuning::tick_rate), .index = 0}
+        .delta();
 
 // What the player is told for each LoginRejected reason; unknown ones are a plain refusal.
 std::string rejection_text(std::uint8_t reason) {
@@ -278,6 +287,7 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
         if (channel_.receive(header, now)) {
             if (const std::optional<Snapshot> snapshot = snapshots_.decode(delta)) {
                 world_.apply(snapshot.value_or(Snapshot{}), now);
+                predict(snapshot.value_or(Snapshot{}));
             }
         }
         return;
@@ -330,6 +340,11 @@ void ClientSession::send_connect(Clock::time_point now) {
 }
 
 void ClientSession::update(Clock::time_point now) {
+    // The drawn ship catches up with the corrections a little at each frame.
+    if (last_update_.has_value() && now > *last_update_) {
+        prediction_.smooth(std::chrono::duration<float>{now - *last_update_}.count());
+    }
+    last_update_ = now;
     if (closing_ && connection_ && connection_->stats().sent >= sent_) {
         connection_->close();
         closing_ = false;
@@ -384,7 +399,9 @@ void ClientSession::set_input(aegis2d::ecs::PlayerInput input) noexcept {
     held_ = static_cast<std::uint8_t>(input.held & valid_actions);
 }
 
-// RFC section 4.2: one byte of held actions, numbered and acknowledging like any datagram.
+// RFC section 4.2: the newest input's own sequence, 0 for the first, then one byte of held
+// actions for it and each of the 3 before it; the header is numbered and acknowledges like
+// any datagram's.
 void ClientSession::send_input(Clock::time_point now) {
     if (!socket_ || !server_udp_.has_value() || !login_.has_value()) {
         return;
@@ -392,7 +409,15 @@ void ClientSession::send_input(Clock::time_point now) {
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Input,
                                                    login_.value_or(LoginAccepted{}).session, now));
-    writer.write_u8(held_);
+    // The 3 inputs before it go along, so a lost Input arrives with one of the next three.
+    if (recent_inputs_.size() == max_inputs_per_datagram) {
+        recent_inputs_.erase(recent_inputs_.begin());
+    }
+    recent_inputs_.push_back(
+        InputRecord{.sequence = static_cast<std::uint16_t>(inputs_sent_), .actions = held_});
+    writer.write_bytes(write_inputs(recent_inputs_));
+    // The own ship moves at once, as the server will move it at one of its ticks.
+    prediction_.apply(recent_inputs_.back(), tick_seconds);
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
     traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
     ++inputs_sent_;
@@ -467,6 +492,25 @@ std::uint64_t ClientSession::inputs_sent() const noexcept {
     return inputs_sent_;
 }
 
+std::optional<std::uint16_t> ClientSession::last_input() const noexcept {
+    if (inputs_sent_ == 0) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint16_t>(inputs_sent_ - 1);
+}
+
+std::optional<std::uint16_t> ClientSession::acknowledged_input() const noexcept {
+    if (!login_.has_value()) {
+        return std::nullopt;
+    }
+    const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
+    if (player >= world_.players().size()) {
+        return std::nullopt;
+    }
+    const std::optional<RemotePlayer>& own = world_.players().at(player);
+    return own.has_value() ? own->input : std::nullopt;
+}
+
 const net::TrafficCounters& ClientSession::traffic() const noexcept {
     return traffic_;
 }
@@ -485,6 +529,46 @@ ClientWorld& ClientSession::world() noexcept {
 
 const ClientWorld& ClientSession::world() const noexcept {
     return world_;
+}
+
+const ShipPrediction& ClientSession::prediction() const noexcept {
+    return prediction_;
+}
+
+// The prediction starts from the server's position of the ship, the first time a snapshot
+// has it, and again after a death or with another ship; each newer snapshot then corrects it
+// (server reconciliation): the ship goes back to the server's position at the acknowledged
+// input, and the inputs after it are replayed.
+void ClientSession::predict(const Snapshot& snapshot) {
+    const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
+    const auto own = std::ranges::find(snapshot.players, player, &PlayerRecord::player);
+    if (own == snapshot.players.end()) {
+        return;
+    }
+    if (own->ship == no_entity) {
+        prediction_.stop();
+        return;
+    }
+    const auto ship = std::ranges::find(snapshot.entities, own->ship, &EntityRecord::id);
+    if (ship == snapshot.entities.end()) {
+        if (const std::optional<std::uint16_t>& input = own->input) {
+            prediction_.acknowledge(*input);
+        }
+        return;
+    }
+    const aegis2d::Vec2 server{ship->x, ship->y};
+    if (prediction_.ship() != own->ship || own->lives < predicted_lives_) {
+        prediction_.start(own->ship, server);
+        predicted_lives_ = own->lives;
+        reconciled_tick_ = snapshot.tick;
+        return;
+    }
+    // A late snapshot says less than the last one used: it changes nothing.
+    if (reconciled_tick_.has_value() && snapshot.tick <= *reconciled_tick_) {
+        return;
+    }
+    reconciled_tick_ = snapshot.tick;
+    static_cast<void>(prediction_.reconcile(server, own->input, tick_seconds));
 }
 
 const SnapshotDecoder& ClientSession::snapshots() const noexcept {
