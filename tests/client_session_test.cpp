@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -651,6 +652,50 @@ TEST_CASE("at 150 ms of round trip the own ship answers the keys within a frame"
     // Nothing came back: the server has applied none of them, the client keeps them all.
     CHECK(client.prediction().pending().size() >= 9);
     CHECK(client.snapshots().size() == 1);
+}
+
+TEST_CASE("reconciled with the snapshots, the own ship ends where the server's is",
+          "[client][reconciliation]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(pump(context, &server, {&client},
+                 [&] { return client.prediction().position().has_value(); }));
+
+    // Up and right for a while, then nothing: once the server has applied every input, the
+    // ship stands still on both sides.
+    PlayerInput diagonal = holding(Action::Up);
+    diagonal.set(Action::Right, true);
+    client.set_input(diagonal);
+    run_for(context, server, client, std::chrono::milliseconds{400});
+    client.set_input(PlayerInput{});
+    run_for(context, server, client, std::chrono::milliseconds{100});
+    const std::uint16_t released = client.last_input().value_or(0);
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const std::optional<std::uint16_t> acknowledged = client.acknowledged_input();
+        return acknowledged.has_value() &&
+               !aegis2d::net::sequence_less_than(acknowledged.value_or(0), released);
+    }));
+    run_for(context, server, client, std::chrono::milliseconds{100});
+
+    game_server.simulation().stop();
+    const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
+    REQUIRE(ship.has_value());
+    const aegis2d::Vec2 at =
+        instance.game()
+            .registry()
+            .get<aegis2d::ecs::Transform>(ship.value_or(aegis2d::ecs::Entity{}))
+            .position;
+    const aegis2d::Vec2 predicted = client.prediction().position().value_or(aegis2d::Vec2{});
+    CAPTURE(at.x, at.y, predicted.x, predicted.y, client.prediction().corrections());
+    CHECK(at.x > rtype::player_spawn(0).x + 50.0F);
+    // Within the rounding of the snapshots, 1/16 pixel.
+    CHECK(std::abs(predicted.x - at.x) <= 0.0625F);
+    CHECK(std::abs(predicted.y - at.y) <= 0.0625F);
+    CHECK(client.prediction().pending().size() <= 3);
 }
 
 TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {

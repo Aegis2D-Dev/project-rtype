@@ -126,7 +126,11 @@ snapshots a second move the entities smoothly at any frame rate. The player's ow
 the exception: `ShipPrediction` (`rtype/ship_prediction.hpp`) moves it at once by each input
 sent, with the server's own step (`step_ship()`), from the server's position of the ship in
 a snapshot, and keeps the inputs the snapshots have not acknowledged yet; the screen draws
-the ship there, so it answers the keys within a frame whatever the round trip time. The events applied are handed to the screen
+the ship there, so it answers the keys within a frame whatever the round trip time. Each
+newer snapshot reconciles it (`ShipPrediction::reconcile()`): the ship goes back to where the
+server had it once it applied the acknowledged input, and the inputs after it are replayed;
+when the server applied them as predicted, nothing moves (`corrections()` counts the
+times something did). The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 
