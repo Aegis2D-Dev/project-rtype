@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#66](https://github.com/Aegis2D-Dev/project-rtype/pull/66) (opened 2026-11-04) |
 | Branch | `refactor/game-ship-movement-step` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`c47cd6e`), with #67 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#291](https://github.com/Aegis2D-Dev/aegis2d/issues/291) refactor(game): shared ship movement step |
 

@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#67](https://github.com/Aegis2D-Dev/project-rtype/pull/67) (opened 2026-11-04) |
 | Branch | `feat/client-prediction` → `develop` (stacked on `feat/protocol-redundant-inputs`, #65, with `refactor/game-ship-movement-step`, #66, merged in) |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`c47cd6e`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#292](https://github.com/Aegis2D-Dev/aegis2d/issues/292) feat(client): client-side prediction |
 

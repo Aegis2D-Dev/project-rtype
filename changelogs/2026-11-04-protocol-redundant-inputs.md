@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#65](https://github.com/Aegis2D-Dev/project-rtype/pull/65) (opened 2026-11-04) |
 | Branch | `feat/protocol-redundant-inputs` → `develop` (stacked on `feat/protocol-input-sequence`, #64) |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`c47cd6e`), with #67 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#286](https://github.com/Aegis2D-Dev/aegis2d/issues/286) feat(protocol): redundant inputs |
 

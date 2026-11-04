@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#64](https://github.com/Aegis2D-Dev/project-rtype/pull/64) (opened 2026-11-04) |
 | Branch | `feat/protocol-input-sequence` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`ac70cdc`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#290](https://github.com/Aegis2D-Dev/aegis2d/issues/290) feat(protocol): input sequence numbers |
 
