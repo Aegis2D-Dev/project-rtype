@@ -130,7 +130,9 @@ the ship there, so it answers the keys within a frame whatever the round trip ti
 newer snapshot reconciles it (`ShipPrediction::reconcile()`): the ship goes back to where the
 server had it once it applied the acknowledged input, and the inputs after it are replayed;
 when the server applied them as predicted, nothing moves (`corrections()` counts the
-times something did). The events applied are handed to the screen
+times something did, for the lagometer). The drawn ship does not jump with a correction: it
+glides to the corrected position at 120 pixels per second (`smooth()`, `drawn()`), unless the
+correction is 32 pixels or more. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 
