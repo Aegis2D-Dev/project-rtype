@@ -386,7 +386,7 @@ void ClientApp::draw() {
     const Clock::time_point now = Clock::now();
     if (screen_ == ClientScreen::Game && session_.has_value()) {
         renderer_.begin_frame(view_.background(preferences_));
-        view_.draw(renderer_, session_->world(), preferences_, now);
+        view_.draw(renderer_, session_->world(), session_->prediction(), preferences_, now);
         if (show_lagometer_) {
             draw_lagometer(renderer_, font_, lagometer_, preferences_);
         }

@@ -17,6 +17,7 @@
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
+#include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
 
@@ -170,6 +171,15 @@ public:
     /// @return The decoder.
     [[nodiscard]] const SnapshotDecoder& snapshots() const noexcept;
 
+    /// @brief The client's own ship, moved at once by each `Input` sent.
+    /// @details Started from the position of the ship in the first snapshot that has it, and
+    /// again when the player loses a life (the server moved it back to its spawn point) or
+    /// gets another ship; stopped once the player is out. Each snapshot drops the inputs its
+    /// player record acknowledges. The screen draws the ship at its position(), so it
+    /// answers the keys within a frame whatever the round trip time.
+    /// @return The prediction.
+    [[nodiscard]] const ShipPrediction& prediction() const noexcept;
+
     /// @brief Number of `Input` datagrams sent.
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
@@ -216,6 +226,7 @@ private:
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
+    void predict(const Snapshot& snapshot);
     void on_game_datagram(const aegis2d::net::PacketHeader& header,
                           aegis2d::net::BinaryReader& payload, Clock::time_point now);
 
@@ -244,6 +255,9 @@ private:
     Clock::time_point last_heard_;
     ClientWorld world_;
     SnapshotDecoder snapshots_;
+    ShipPrediction prediction_;
+    // Lives of the player when the prediction started: one less means a respawn.
+    std::uint8_t predicted_lives_ = 0;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;
