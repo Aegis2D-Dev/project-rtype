@@ -119,17 +119,38 @@ TEST_CASE("a player's input moves its ship until the next one", "[server][game]"
 
     PlayerInput right;
     right.set(Action::Right, true);
-    CHECK(instance.set_input(1, right));
+    CHECK(!instance.player_state(1).value_or(rtype::PlayerState{}).input.has_value());
+    CHECK(instance.set_input(1, right, 40));
     for (int tick = 0; tick < 10; ++tick) {
         instance.game().tick(step_from_rate(tuning::tick_rate));
     }
     const float moved = x();
     CHECK(moved > start);
 
-    CHECK(instance.set_input(1, PlayerInput{}));
+    CHECK(instance.set_input(1, PlayerInput{}, 41));
     instance.game().tick(step_from_rate(tuning::tick_rate));
     CHECK(x() == moved);
 
-    CHECK(!instance.set_input(0, right));
-    CHECK(!instance.set_input(tuning::max_players, right));
+    CHECK(!instance.set_input(0, right, 42));
+    CHECK(!instance.set_input(tuning::max_players, right, 42));
+}
+
+TEST_CASE("the game keeps the sequence of the last input it applied", "[server][game]") {
+    GameInstance instance = empty_instance();
+    static_cast<void>(instance.join(1));
+    const auto input = [&] {
+        return instance.player_state(1).value_or(rtype::PlayerState{}).input;
+    };
+    CHECK(!input().has_value());
+    CHECK(instance.set_input(1, PlayerInput{}, 65535));
+    CHECK(input() == std::optional<std::uint16_t>{65535});
+    CHECK(instance.set_input(1, PlayerInput{}, 0));
+    CHECK(input() == std::optional<std::uint16_t>{0});
+
+    // A player not in the game changes nothing; one who joins again starts without.
+    CHECK(!instance.set_input(2, PlayerInput{}, 9));
+    CHECK(!instance.player_state(2).has_value());
+    CHECK(instance.leave(1));
+    static_cast<void>(instance.join(1));
+    CHECK(!input().has_value());
 }

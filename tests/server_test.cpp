@@ -144,6 +144,13 @@ std::vector<std::byte> datagram(PacketType type, std::uint32_t session, std::uin
     return {writer.data().begin(), writer.data().end()};
 }
 
+// The payload of an Input (RFC section 4.2), written by hand so it can be malformed: its
+// sequence, little-endian, then its actions.
+std::vector<std::byte> input_payload(std::uint16_t sequence, std::uint8_t actions) {
+    return {std::byte{static_cast<std::uint8_t>(sequence & 0xFFU)},
+            std::byte{static_cast<std::uint8_t>(sequence >> 8U)}, std::byte{actions}};
+}
+
 // A player's UDP socket, keeping the headers of the datagrams the server sends, and the
 // datagrams themselves.
 struct Socket {
@@ -455,12 +462,12 @@ TEST_CASE("datagrams from unknown endpoints are dropped without an answer", "[se
 
     Socket stranger{context};
     const std::vector<std::vector<std::byte>> bad = {
-        datagram(PacketType::Input, token, 0, {std::byte{0x01}}), // endpoint not bound
-        datagram(PacketType::Connect, token),                     // session bound elsewhere
-        datagram(PacketType::Connect, token + 1),                 // unknown session
-        datagram(PacketType::Connect, 0),                         // 0 is never a token
-        datagram(PacketType::Snapshot, token),                    // wrong direction
-        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},      // truncated header
+        datagram(PacketType::Input, token, 0, input_payload(0, 0x01)), // endpoint not bound
+        datagram(PacketType::Connect, token),                          // session bound elsewhere
+        datagram(PacketType::Connect, token + 1),                      // unknown session
+        datagram(PacketType::Connect, 0),                              // 0 is never a token
+        datagram(PacketType::Snapshot, token),                         // wrong direction
+        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},           // truncated header
     };
     for (const std::vector<std::byte>& bytes : bad) {
         stranger.send(server, bytes);
@@ -544,9 +551,12 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     std::vector<std::uint8_t> inputs;
+    std::vector<std::uint16_t> sequences;
     std::vector<unsigned> left;
-    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input) {
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
         inputs.push_back(input.held);
+        sequences.push_back(sequence);
     });
     server.on_players([](const rtype::Session& /*session*/) {},
                       [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
@@ -558,24 +568,42 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
 
+    // The datagram's sequence, then the payload: the input's own sequence and its actions.
     const auto input = [&](std::uint16_t sequence, std::vector<std::byte> payload) {
         udp.send(server, datagram(PacketType::Input, token, sequence, std::move(payload)));
     };
-    input(1, {std::byte{0x08}});               // right: applied
-    input(2, {std::byte{0x20}});               // bit 5 set: malformed
-    input(3, {std::byte{0x08}, std::byte{0}}); // two bytes: malformed
-    input(5, {std::byte{0x01}});               // up: applied
-    input(4, {std::byte{0x02}});               // older than 5: ignored
-    input(5, {std::byte{0x01}});               // duplicate: ignored
-    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 2; }));
-    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 4; }));
+    std::vector<std::byte> too_long = input_payload(14, 0x08);
+    too_long.push_back(std::byte{0});
+    input(1, input_payload(10, 0x08));       // right: applied
+    input(2, input_payload(11, 0x20));       // bit 5 set: malformed
+    input(3, {std::byte{11}, std::byte{0}}); // no actions: malformed
+    input(4, std::move(too_long));           // a byte too many: malformed
+    input(5, input_payload(13, 0x01));       // up: applied
+    input(6, input_payload(12, 0x02));       // an older input in a newer datagram: ignored
+    input(5, input_payload(13, 0x01));       // duplicate: ignored
+    input(7, input_payload(13, 0x04));       // the same input again: ignored
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 3; }));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 5; }));
     CHECK(inputs == std::vector<std::uint8_t>{0x08, 0x01});
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13});
 
-    // The next datagram to the player acknowledges 6, 5, 4, 1 and 0, not the malformed 2 and 3.
-    udp.send(server, datagram(PacketType::Connect, token, 6));
+    // The next datagram to the player acknowledges 8, 7, 6, 5, 1 and 0, not the malformed 2
+    // to 4.
+    udp.send(server, datagram(PacketType::Connect, token, 8));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 2; }));
-    CHECK(udp.received.back().ack == 6);
-    CHECK(udp.received.back().ack_bits == 0b110011U);
+    CHECK(udp.received.back().ack == 8);
+    CHECK(udp.received.back().ack_bits == 0b11000111U);
+
+    // Input sequences wrap from 65535 to 0, as datagram sequences do (RFC section 2.2).
+    input(9, input_payload(30000, 0x08));
+    input(10, input_payload(60000, 0x08));
+    input(11, input_payload(65535, 0x08));
+    input(12, input_payload(0, 0x10));
+    input(13, input_payload(65534, 0x01)); // older than 0: ignored
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 10; }));
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13, 30000, 60000, 65535, 0});
+    CHECK(inputs.back() == 0x10);
+    CHECK(left.empty());
 }
 
 TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[server][input]") {
@@ -622,7 +650,7 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     Socket udp{context};
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
-    udp.send(server, datagram(PacketType::Input, token, 1, {std::byte{0x08}}));
+    udp.send(server, datagram(PacketType::Input, token, 1, input_payload(0, 0x08)));
     REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
 
     rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
@@ -1210,7 +1238,8 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                           }
                       });
     // A bug in the game's handling of player 1's inputs, standing for any exception.
-    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/) {
+    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/,
+                        std::uint16_t /*sequence*/) {
         if (session.player == 1) {
             throw std::runtime_error{"input handler failed"};
         }
@@ -1228,14 +1257,14 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                  [&] { return good_udp.received.size() == 1 && bad_udp.received.size() == 1; }));
 
     // Over UDP: the datagram that threw kicks its sender (RFC section 6.6), not the others.
-    bad_udp.send(server, datagram(PacketType::Input, bad, 1, {std::byte{0x01}}));
+    bad_udp.send(server, datagram(PacketType::Input, bad, 1, input_payload(0, 0x01)));
     REQUIRE(pump(context, server, [&] { return bad_player.closed; }));
     CHECK(server.errors() == 1);
     REQUIRE(!bad_player.received.empty());
     CHECK(bad_player.received.back() == rtype::write_logout(LogoutReason::ProtocolError));
     CHECK(left ==
           std::vector<std::pair<unsigned, rtype::LeaveReason>>{{1, rtype::LeaveReason::Kicked}});
-    good_udp.send(server, datagram(PacketType::Input, good, 1, {std::byte{0x01}}));
+    good_udp.send(server, datagram(PacketType::Input, good, 1, input_payload(0, 0x01)));
     REQUIRE(pump(context, server, [&] { return inputs.size() == 1; }));
     CHECK(inputs.front() == 0);
 

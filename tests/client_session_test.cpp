@@ -4,6 +4,7 @@
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
@@ -370,9 +371,8 @@ TEST_CASE("the server receives the held actions 60 times per second", "[client][
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     std::vector<std::uint8_t> inputs;
-    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input) {
-        inputs.push_back(input.held);
-    });
+    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input,
+                        std::uint16_t /*sequence*/) { inputs.push_back(input.held); });
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
     REQUIRE(
@@ -489,6 +489,50 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
         CHECK(received.at(index).sequence == received.at(index - 1).sequence + 1);
     }
     CHECK(actions.back() == 0x10);
+}
+
+TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[client][input]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    CHECK(!client.acknowledged_input().has_value());
+    client.set_input(holding(Action::Right));
+
+    // At each step, the acknowledged input catches up with the last one sent at its start;
+    // it never goes past the inputs sent, nor back.
+    std::uint16_t previous = 0;
+    bool checked = true;
+    for (int step = 0; step < 5; ++step) {
+        REQUIRE(pump(context, &server, {&client}, [&] { return client.last_input().has_value(); }));
+        const std::uint16_t target = client.last_input().value_or(0);
+        REQUIRE(pump(context, &server, {&client}, [&] {
+            const std::optional<std::uint16_t> acknowledged = client.acknowledged_input();
+            if (!acknowledged) {
+                return false;
+            }
+            const std::uint16_t value = *acknowledged;
+            checked =
+                checked &&
+                !aegis2d::net::sequence_greater_than(value, client.last_input().value_or(0)) &&
+                !aegis2d::net::sequence_less_than(value, previous);
+            previous = value;
+            return !aegis2d::net::sequence_less_than(value, target);
+        }));
+    }
+    CHECK(checked);
+    CHECK(client.inputs_sent() > 5);
+    // The server's game applied the same input: the one of the player's record.
+    game_server.simulation().stop();
+    const std::optional<rtype::PlayerState> state = instance.player_state(0);
+    REQUIRE(state.has_value());
+    CHECK(state.value_or(rtype::PlayerState{}).input.has_value());
+    CHECK(!aegis2d::net::sequence_less_than(state.value_or(rtype::PlayerState{}).input.value_or(0),
+                                            previous));
 }
 
 TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {

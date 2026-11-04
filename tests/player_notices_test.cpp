@@ -34,7 +34,8 @@ TEST_CASE("the players who stay are told who left the game", "[client][notices]"
 
     // The world forgets a player as it applies its PlayerLeft; the notices still know it.
     std::array<std::optional<RemotePlayer>, rtype::tuning::max_players> players{};
-    players.at(2) = RemotePlayer{.name = "Matteo", .ship = 7, .lives = 3, .score = 0};
+    players.at(2) =
+        RemotePlayer{.name = "Matteo", .ship = 7, .lives = 3, .score = 0, .input = std::nullopt};
     notices.remember(players);
     notices.handle(
         GameEvent{PlayerLeftEvent{.tick = 500, .player = 2, .reason = LeaveReason::Left}},
