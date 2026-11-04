@@ -30,20 +30,25 @@ multi-instance server* epic (Aegis2D-Dev/aegis2d#298).
   event tracker and the names of the players moved to the room.
 - `r-type_server`: loads the waves, prints them and the systems of a game, then gives the
   waves to the server.
-- Tests: the 9 tests that ran a `GameServer` give it the seed and the waves, and read the
-  game with `game_server.room().instance()` where they did; nothing else changed in them.
+- Tests: the 12 tests that ran a `GameServer` (9, and 3 more from #64 to #72) give it the
+  seed and the waves, and read the game with `game_server.room().instance()` where they
+  did; nothing else changed in them.
 - *Architecture*: the room.
-- Changelog: #63 (`f4ade28`) marked as merged.
+- Changelog: #63 (`f4ade28`) marked as merged; with `develop` merged in, #72 (`b168095`) too.
 
 ## Commits
 - `c465760` feat(server): put the game, its thread and its event tracker in a room
 - `c4d2174` feat(tests): ran the server tests on the room and added a room test
-- feat(docs): documented the game room and updated changelogs
+- `3fd60a4` feat(docs): documented the game room and updated changelogs
+- `a45a7be` Merge remote-tracking branch 'origin/develop' into refactor/server-game-room
+- feat(changelog): fixed pr numbers and merge status
 
 ## Notes
-- Conflicts to expect with #72, which also changes `GameServer` (the rewinds of lag
-  compensation, on the network thread): the rewinds go to the room's simulation once both
-  are in.
+- `develop` merged in once #64 to #72 were there. In `GameServer`, the room keeps the game,
+  its thread, its event tracker and the names; the server keeps the tokens and rewinds of
+  #72, used on the network thread; the inputs with their sequence (#64) and the rewinds go to
+  `room().simulation()`. Built again (server and client), clang-tidy on the merged sources:
+  238 of 239 tests pass.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too: clang-format, clang-tidy 22 on every changed source, `mkdocs build
   --strict`, Doxygen.

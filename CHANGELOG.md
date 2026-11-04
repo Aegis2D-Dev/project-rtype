@@ -6,7 +6,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
 | [#73](https://github.com/Aegis2D-Dev/project-rtype/pull/73) | Game room | `refactor/server-game-room` | Open | 2026-11-04 | [2026-11-04-server-game-room](changelogs/2026-11-04-server-game-room.md) |
-| [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) | Lag compensation for hits | `feat/server-lag-compensation` | Open | 2026-11-04 | [2026-11-04-server-lag-compensation](changelogs/2026-11-04-server-lag-compensation.md) |
+| [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) | Lag compensation for hits | `feat/server-lag-compensation` | Merged | 2026-11-04 | [2026-11-04-server-lag-compensation](changelogs/2026-11-04-server-lag-compensation.md) |
 | [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) | Entity position history | `feat/server-position-history` | Merged | 2026-11-04 | [2026-11-04-server-position-history](changelogs/2026-11-04-server-position-history.md) |
 | [#70](https://github.com/Aegis2D-Dev/project-rtype/pull/70) | Adaptive interpolation delay | `feat/client-adaptive-delay` | Merged | 2026-11-04 | [2026-11-04-client-adaptive-delay](changelogs/2026-11-04-client-adaptive-delay.md) |
 | [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) | Correction smoothing | `feat/client-smoothing` | Merged | 2026-11-04 | [2026-11-04-client-smoothing](changelogs/2026-11-04-client-smoothing.md) |
