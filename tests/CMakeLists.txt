@@ -25,6 +25,7 @@ add_executable(rtype_tests
     server_game_test.cpp
     server_test.cpp
     ship_movement_test.cpp
+    ship_prediction_test.cpp
     simulation_test.cpp
     snapshot_decoder_test.cpp
     snapshot_history_test.cpp

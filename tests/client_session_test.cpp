@@ -1,4 +1,7 @@
+#include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/system.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
@@ -21,8 +24,10 @@
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/ship_movement.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_history.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -554,6 +559,98 @@ TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[clien
     CHECK(state.value_or(rtype::PlayerState{}).input.has_value());
     CHECK(!aegis2d::net::sequence_less_than(state.value_or(rtype::PlayerState{}).input.value_or(0),
                                             previous));
+}
+
+TEST_CASE("at 150 ms of round trip the own ship answers the keys within a frame",
+          "[client][prediction]") {
+    // A server 150 ms away: it binds the endpoint and sends the world once, the player's ship
+    // at (100, 360); nothing it sends after the key press can arrive within the 150 ms.
+    NetworkContext context;
+    TcpListener listener{context, 0};
+    UdpSocket server_udp{context, 0};
+    std::vector<std::unique_ptr<TcpConnection>> connections;
+    constexpr std::uint32_t token = 77;
+    constexpr std::uint32_t ship = 7;
+    server_udp.start_receiving([&](const Endpoint& from, std::span<const std::byte> bytes) {
+        aegis2d::net::BinaryReader reader{bytes};
+        const auto read = aegis2d::net::read_header(reader);
+        const auto* const header = std::get_if<PacketHeader>(&read);
+        if (header == nullptr) {
+            return;
+        }
+        if (header->type != PacketType::Connect) {
+            return;
+        }
+        for (const PacketType type : {PacketType::Accept, PacketType::Snapshot}) {
+            aegis2d::net::BinaryWriter writer;
+            aegis2d::net::write_header(writer, PacketHeader{.type = type,
+                                                            .sequence = type == PacketType::Accept
+                                                                            ? std::uint16_t{0}
+                                                                            : std::uint16_t{1},
+                                                            .ack = header->sequence,
+                                                            .ack_bits = 0,
+                                                            .session = token});
+            if (type == PacketType::Snapshot) {
+                const rtype::Snapshot world{
+                    .tick = 3,
+                    .players = {rtype::PlayerRecord{
+                        .player = 0, .ship = ship, .lives = 3, .score = 0, .input = std::nullopt}},
+                    .entities = {rtype::EntityRecord{.id = ship,
+                                                     .kind = 1,
+                                                     .x = 100.0F,
+                                                     .y = 360.0F,
+                                                     .vx = 0.0F,
+                                                     .vy = 0.0F,
+                                                     .frame = 0}}};
+                writer.write_bytes(rtype::write_delta_snapshot(world, nullptr).front());
+            }
+            server_udp.send_to(from, writer.data());
+        }
+    });
+    listener.start_accepting([&](TcpConnection connection) {
+        connections.push_back(std::make_unique<TcpConnection>(std::move(connection)));
+        TcpConnection& accepted = *connections.back();
+        accepted.start([&](std::span<const std::byte> message) {
+            if (rtype::read_login_request(message)) {
+                accepted.send(rtype::write_login_accepted(
+                    rtype::LoginAccepted{.session = token,
+                                         .player = 0,
+                                         .udp_port = server_udp.local_endpoint().port()}));
+            }
+        });
+    });
+    ClientSession client{context, ClientSettings{.host = "127.0.0.1",
+                                                 .tcp_port = listener.local_endpoint().port(),
+                                                 .name = "R9"}};
+    client.start();
+    REQUIRE(pump(context, nullptr, {&client},
+                 [&] { return client.prediction().position().has_value(); }));
+    const aegis2d::Vec2 start = client.prediction().position().value_or(aegis2d::Vec2{});
+    CHECK(start == aegis2d::Vec2{100.0F, 360.0F});
+    CHECK(client.prediction().ship() == std::optional{ship});
+
+    // The key goes down; one frame later at 60 frames per second, the ship has moved, as the
+    // server will move it, and goes on at each frame of the 150 ms.
+    const aegis2d::ecs::PlayerInput right = holding(Action::Right);
+    client.set_input(right);
+    const auto pressed = ClientSession::Clock::now();
+    const float tick =
+        aegis2d::ecs::Tick{.step = aegis2d::core::step_from_rate(rtype::tuning::tick_rate),
+                           .index = 0}
+            .delta();
+    aegis2d::Vec2 expected = start;
+    const std::uint64_t sent = client.inputs_sent();
+    for (int frame = 1; frame <= 9; ++frame) {
+        client.update(pressed + (frame * std::chrono::milliseconds{17}));
+        CAPTURE(frame);
+        REQUIRE(client.inputs_sent() == sent + static_cast<std::uint64_t>(frame));
+        expected = rtype::step_ship(expected, right, tick).position;
+        CHECK(client.prediction().position() == std::optional{expected});
+    }
+    CHECK(expected.x > start.x + 40.0F);
+    // Nothing came back: the server has applied none of them, the client keeps them all.
+    CHECK(client.prediction().pending().size() >= 9);
+    CHECK(client.snapshots().size() == 1);
 }
 
 TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {
