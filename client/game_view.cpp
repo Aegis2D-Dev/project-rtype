@@ -216,7 +216,7 @@ void GameView::draw_world(render::IRenderer& renderer, ClientWorld& world, std::
                        .tint = tint,
                        .layer = world_layer});
     };
-    // Every entity drawn interpolation_delay in the past, between two snapshots (#127).
+    // Every entity drawn interpolation_delay() in the past, between two snapshots (#127).
     if (const std::optional<double> tick = world.render_tick(now)) {
         world.registry().view<Replicated, Trail>().each([&](const Replicated& replicated,
                                                             const Trail& trail) {
