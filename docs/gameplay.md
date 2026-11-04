@@ -39,6 +39,7 @@ if (game.game_over()) { /* every player who joined is out */ }
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
 | `tick(step)` | Runs every system once, in order |
 | `history()` | Where each enemy was at each of the last 30 ticks (500 ms), recorded after each tick (`rtype/position_history.hpp`), for lag compensation |
+| `set_rewind(player, ticks)`, `rewind(player)` | How many ticks back a player's missiles meet the enemies: `rewind_ticks(rtt, delay)` (`rtype/lag_compensation.hpp`), at most 30 |
 | `fired()`, `enemy_fired()`, `spawned()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
 | `seed()` | Seed of the random spawns, if any |
 | `players()`, `game_over()` | Players with lives left; `true` once all of them are out |
@@ -59,12 +60,18 @@ The systems run in this order (`game.systems().names()` lists them):
 | 6 | `enemy_fire` | `trigger_auto_weapons` | Each enemy on screen with a reloaded weapon fires a missile to the left |
 | 7 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves appear at random on the right edge |
 | 8 | `waves` | `WaveSchedule::update` | The enemies of the waves file appear when due |
-| 9 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
+| 9 | `collision` | `CollisionGrid::build`, `find_contacts`, `find_rewound_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other; each player's missiles also meet the enemies where that player saw them (lag compensation) |
 | 10 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
 | 11 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
 | 12 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
 | 13 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
 | 14 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
+
+A player sees the enemies its round trip time plus its interpolation delay ago, and its
+missile leaves when its `Input` arrives: `GameServer` turns each player's smoothed round trip
+time, with the client's 100 ms of interpolation (`tuning::client_interpolation_delay`), into
+a rewind, so that a missile that hits an enemy on the player's screen hits it on the server.
+The rewind stops at the 500 ms the history keeps; an enemy destroyed since is not hit.
 
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a
