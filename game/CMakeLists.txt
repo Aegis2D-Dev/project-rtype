@@ -3,6 +3,7 @@
 # game's own code.
 add_library(rtype_game STATIC
     entities.cpp
+    position_history.cpp
     server_game.cpp
     ship_movement.cpp
     waves.cpp)

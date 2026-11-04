@@ -16,6 +16,9 @@ inline constexpr std::uint32_t tick_rate = 60;
 inline constexpr std::uint32_t snapshot_rate = 20;
 static_assert(tick_rate % snapshot_rate == 0, "a snapshot every whole number of ticks");
 
+/// @brief Ticks of enemy positions the server keeps, for lag compensation: 500 ms.
+inline constexpr std::uint32_t position_history_ticks = tick_rate / 2;
+
 /// @brief Width of the play area (logical resolution).
 inline constexpr float area_width = 1280.0F;
 /// @brief Height of the play area (logical resolution).

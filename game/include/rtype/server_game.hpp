@@ -14,6 +14,7 @@
 #include <aegis2d/ecs/system.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
+#include <rtype/position_history.hpp>
 #include <rtype/tuning.hpp>
 
 #include <array>
@@ -118,6 +119,11 @@ public:
     /// @return Completed calls to tick().
     [[nodiscard]] std::uint64_t ticks() const noexcept;
 
+    /// @brief Where the enemies were at each of the last 500 ms of ticks.
+    /// @details Recorded at the end of each tick(), under the number ticks() then has.
+    /// @return The history.
+    [[nodiscard]] const PositionHistory& history() const noexcept;
+
     /// @brief World of the game, to spawn entities and to build snapshots.
     /// @return The registry.
     [[nodiscard]] aegis2d::ecs::Registry& registry() noexcept;
@@ -187,6 +193,7 @@ private:
     std::vector<aegis2d::ecs::LifeLost> lives_lost_;
     std::vector<aegis2d::ecs::Entity> despawned_;
     std::array<aegis2d::ecs::Entity, tuning::max_players> slots_{};
+    PositionHistory history_;
     bool started_ = false;
 };
 

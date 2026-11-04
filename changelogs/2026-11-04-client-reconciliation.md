@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#68](https://github.com/Aegis2D-Dev/project-rtype/pull/68) (opened 2026-11-04) |
 | Branch | `feat/client-reconciliation` → `develop` (stacked on `feat/client-prediction`, #67) |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`2266e33`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#293](https://github.com/Aegis2D-Dev/aegis2d/issues/293) feat(client): server reconciliation |
 

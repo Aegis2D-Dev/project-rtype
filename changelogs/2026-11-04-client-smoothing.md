@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) (opened 2026-11-04) |
 | Branch | `feat/client-smoothing` → `develop` (stacked on `feat/client-reconciliation`, #68) |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`5d5ec09`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#294](https://github.com/Aegis2D-Dev/aegis2d/issues/294) feat(client): correction smoothing |
 

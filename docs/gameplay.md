@@ -38,6 +38,7 @@ if (game.game_over()) { /* every player who joined is out */ }
 | `slot_of(player)` | Slot of a player, or nothing once it is out |
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
 | `tick(step)` | Runs every system once, in order |
+| `history()` | Where each enemy was at each of the last 30 ticks (500 ms), recorded after each tick (`rtype/position_history.hpp`), for lag compensation |
 | `fired()`, `enemy_fired()`, `spawned()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
 | `seed()` | Seed of the random spawns, if any |
 | `players()`, `game_over()` | Players with lives left; `true` once all of them are out |

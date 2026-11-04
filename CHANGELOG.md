@@ -5,12 +5,13 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) | Correction smoothing | `feat/client-smoothing` | Open | 2026-11-04 | [2026-11-04-client-smoothing](changelogs/2026-11-04-client-smoothing.md) |
-| [#68](https://github.com/Aegis2D-Dev/project-rtype/pull/68) | Server reconciliation | `feat/client-reconciliation` | Open | 2026-11-04 | [2026-11-04-client-reconciliation](changelogs/2026-11-04-client-reconciliation.md) |
-| [#67](https://github.com/Aegis2D-Dev/project-rtype/pull/67) | Client-side prediction | `feat/client-prediction` | Open | 2026-11-04 | [2026-11-04-client-prediction](changelogs/2026-11-04-client-prediction.md) |
-| [#66](https://github.com/Aegis2D-Dev/project-rtype/pull/66) | Shared ship movement step | `refactor/game-ship-movement-step` | Open | 2026-11-04 | [2026-11-04-game-ship-movement-step](changelogs/2026-11-04-game-ship-movement-step.md) |
-| [#65](https://github.com/Aegis2D-Dev/project-rtype/pull/65) | Redundant inputs | `feat/protocol-redundant-inputs` | Open | 2026-11-04 | [2026-11-04-protocol-redundant-inputs](changelogs/2026-11-04-protocol-redundant-inputs.md) |
-| [#64](https://github.com/Aegis2D-Dev/project-rtype/pull/64) | Input sequence numbers | `feat/protocol-input-sequence` | Open | 2026-11-04 | [2026-11-04-protocol-input-sequence](changelogs/2026-11-04-protocol-input-sequence.md) |
+| [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) | Entity position history | `feat/server-position-history` | Open | 2026-11-04 | [2026-11-04-server-position-history](changelogs/2026-11-04-server-position-history.md) |
+| [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) | Correction smoothing | `feat/client-smoothing` | Merged | 2026-11-04 | [2026-11-04-client-smoothing](changelogs/2026-11-04-client-smoothing.md) |
+| [#68](https://github.com/Aegis2D-Dev/project-rtype/pull/68) | Server reconciliation | `feat/client-reconciliation` | Merged | 2026-11-04 | [2026-11-04-client-reconciliation](changelogs/2026-11-04-client-reconciliation.md) |
+| [#67](https://github.com/Aegis2D-Dev/project-rtype/pull/67) | Client-side prediction | `feat/client-prediction` | Merged | 2026-11-04 | [2026-11-04-client-prediction](changelogs/2026-11-04-client-prediction.md) |
+| [#66](https://github.com/Aegis2D-Dev/project-rtype/pull/66) | Shared ship movement step | `refactor/game-ship-movement-step` | Merged | 2026-11-04 | [2026-11-04-game-ship-movement-step](changelogs/2026-11-04-game-ship-movement-step.md) |
+| [#65](https://github.com/Aegis2D-Dev/project-rtype/pull/65) | Redundant inputs | `feat/protocol-redundant-inputs` | Merged | 2026-11-04 | [2026-11-04-protocol-redundant-inputs](changelogs/2026-11-04-protocol-redundant-inputs.md) |
+| [#64](https://github.com/Aegis2D-Dev/project-rtype/pull/64) | Input sequence numbers | `feat/protocol-input-sequence` | Merged | 2026-11-04 | [2026-11-04-protocol-input-sequence](changelogs/2026-11-04-protocol-input-sequence.md) |
 | [#63](https://github.com/Aegis2D-Dev/project-rtype/pull/63) | LZ4 compression of snapshots and events, measured | `feat/server-payload-compression` | Merged | 2026-11-02 | [2026-11-02-server-payload-compression](changelogs/2026-11-02-server-payload-compression.md) |
 | [#62](https://github.com/Aegis2D-Dev/project-rtype/pull/62) | Delta snapshot decoder | `feat/client-delta-snapshots` | Merged | 2026-11-02 | [2026-11-02-client-delta-snapshots](changelogs/2026-11-02-client-delta-snapshots.md) |
 | [#61](https://github.com/Aegis2D-Dev/project-rtype/pull/61) | Compact and delta snapshots brought to develop | `feat/protocol-snapshot-baselines` | Merged | 2026-11-02 | [2026-11-02-develop-compact-snapshots](changelogs/2026-11-02-develop-compact-snapshots.md) |
