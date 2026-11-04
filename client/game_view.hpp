@@ -31,7 +31,7 @@ namespace rtype {
 /// @brief Draws a game in progress, from the client's copy of the world.
 /// @details Each frame, the client hands the events the world applied (handle()), moves
 /// time forward (update()) and draws (draw()). The remote entities are drawn where they
-/// were ClientWorld::interpolation_delay ago, between two snapshots (#127): smooth at any
+/// were ClientWorld::interpolation_delay() ago, between two snapshots (#127): smooth at any
 /// frame rate though the server sends 20 snapshots a second. On top of the world:
 /// - each ship in its player's color, with the marker and number of its slot, so that
 ///   players tell each other apart without color too;

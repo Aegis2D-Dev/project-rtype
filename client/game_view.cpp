@@ -218,7 +218,7 @@ void GameView::draw_world(render::IRenderer& renderer, ClientWorld& world,
                        .tint = tint,
                        .layer = world_layer});
     };
-    // Every entity drawn interpolation_delay in the past, between two snapshots (#127), but
+    // Every entity drawn interpolation_delay() in the past, between two snapshots (#127), but
     // the player's own ship, drawn where its inputs put it.
     const std::optional<Vec2> predicted = prediction.drawn();
     if (const std::optional<double> tick = world.render_tick(now)) {

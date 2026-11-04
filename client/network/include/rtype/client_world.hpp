@@ -13,9 +13,11 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace rtype {
@@ -104,10 +106,23 @@ public:
 
     /// @brief Time after which a destroyed id is forgotten (RFC section 4.5).
     static constexpr std::chrono::seconds forget_after{10};
-    /// @brief How far behind the server the remote entities are drawn: two snapshot
-    /// intervals at 20 Hz, so that the tick drawn has a snapshot on each side even when one
-    /// datagram is late or lost.
-    static constexpr std::chrono::milliseconds interpolation_delay{100};
+    /// @brief How far behind the server the remote entities are drawn at first: two
+    /// snapshot intervals at 20 Hz, until the snapshots' arrivals are measured.
+    static constexpr std::chrono::milliseconds initial_interpolation_delay{100};
+    /// @brief Shortest interpolation delay: one snapshot interval at 20 Hz, enough when every
+    /// snapshot arrives on time.
+    static constexpr std::chrono::milliseconds min_interpolation_delay{50};
+    /// @brief Longest interpolation delay, however late the snapshots.
+    static constexpr std::chrono::milliseconds max_interpolation_delay{200};
+    /// @brief How long the lateness of the snapshots is remembered for the delay.
+    static constexpr std::chrono::seconds jitter_window{2};
+    /// @brief Speed at which the delay goes down once the snapshots arrive more regularly:
+    /// 10 ms per second, so the entities drawn speed up by 1 %, which no one sees.
+    static constexpr double delay_decrease = 0.01;
+    /// @brief Speed at which the delay goes up when the snapshots come later: half a
+    /// millisecond per millisecond, so the entities drawn slow down to half speed for a
+    /// moment, but never stop or go back.
+    static constexpr double delay_increase = 0.5;
 
     /// @brief Applies an event.
     /// @param event Event from the server, read by read_event().
@@ -131,10 +146,22 @@ public:
     /// @return The tick, fractional, or nothing before the first snapshot.
     [[nodiscard]] std::optional<double> server_tick(Clock::time_point now) const;
 
-    /// @brief Tick at which to draw the world: server_tick() interpolation_delay ago.
+    /// @brief Tick at which to draw the world: server_tick() interpolation_delay(now) ago.
     /// @param now Time of the frame.
     /// @return The tick, or nothing before the first snapshot.
     [[nodiscard]] std::optional<double> render_tick(Clock::time_point now) const;
+
+    /// @brief How far behind the server the remote entities are drawn, following the jitter.
+    /// @details Each snapshot is timed against the fastest arrival (server_tick()): how late
+    /// it came is its lateness. The delay aims at one snapshot interval (50 ms) plus 1.25
+    /// times the largest lateness of the last jitter_window, within
+    /// min_interpolation_delay and max_interpolation_delay, so the tick drawn always has a
+    /// snapshot after it: no entity stops for lack of snapshots. It moves towards its aim
+    /// with time, up by delay_increase and down by delay_decrease, so the drawing slows down
+    /// or speeds up but never jumps back in time.
+    /// @param now Time of the frame.
+    /// @return The delay, initial_interpolation_delay before the first snapshot.
+    [[nodiscard]] Clock::duration interpolation_delay(Clock::time_point now) const noexcept;
 
     /// @brief Where to draw an entity at a tick: its trail interpolated (interpolate()).
     /// @param entity Local entity of the world.
@@ -192,6 +219,7 @@ private:
     };
 
     bool spawn(const SpawnEvent& event);
+    void adapt_delay(Clock::duration lateness, Clock::time_point received);
     bool destroy(const DestroyEvent& event, Clock::time_point now);
     RemotePlayer& player(std::uint8_t number);
 
@@ -201,6 +229,12 @@ private:
     std::vector<GameEvent> applied_;
     // Estimated time of server tick 0 on the local clock: the fastest arrival seen so far.
     std::optional<Clock::time_point> tick_zero_;
+    // The lateness of each snapshot of the last jitter_window, by arrival, oldest first.
+    std::deque<std::pair<Clock::time_point, Clock::duration>> lateness_;
+    // The delay at delay_at_, moving towards aim_ since then.
+    Clock::duration delay_ = initial_interpolation_delay;
+    Clock::duration aim_ = initial_interpolation_delay;
+    std::optional<Clock::time_point> delay_at_;
 };
 
 } // namespace rtype
