@@ -2,11 +2,12 @@
 /// @brief The whole R-Type server: its sockets, its game on the simulation thread, and what
 /// goes between them.
 #pragma once
+#include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
 
-#include <rtype/event_tracker.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
+#include <rtype/room.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
@@ -19,8 +20,8 @@
 namespace rtype {
 
 /// @brief Runs a game for the players of its sockets, as `r-type_server` does.
-/// @details The sockets work on the caller's context, the game on its own Simulation
-/// thread, and they only talk through posted tasks:
+/// @details The sockets work on the caller's context, the game in its Room, on the room's
+/// Simulation thread, and they only talk through posted tasks:
 /// - a player whose UDP endpoint is bound joins the game: the others get its `PlayerJoined`,
 ///   and it gets a `PlayerJoined` of every player already there, then a `Spawn` of every
 ///   entity (RFC section 4.6);
@@ -31,21 +32,21 @@ namespace rtype {
 /// - after each tick, the events of the tick go to every bound player, and every third tick
 ///   a snapshot.
 ///
-/// The caller runs the context and calls `network().update()` a few times per second.
-/// Destroying the server stops the simulation thread; the context must not run the tasks
-/// left in it afterwards.
+/// The server keeps a single room for now. The caller runs the context and calls
+/// `network().update()` a few times per second. Destroying the server stops the simulation
+/// thread; the context must not run the tasks left in it afterwards.
 class GameServer {
 public:
-    /// @brief Opens both ports and starts the game.
+    /// @brief Opens both ports and starts the game in its room.
     /// @param context Context of the sockets; it must outlive this object.
-    /// @param instance Game to run; it must outlive this object and belongs to the
-    /// simulation thread from now on.
+    /// @param seed Seed of the random spawns of the room's game, or `std::nullopt` for none.
+    /// @param waves Waves the room plays in every game, at their start.
     /// @param tcp_port TCP port of the logins, or 0 for any free port.
     /// @param udp_port UDP port of the game, or 0 for any free port.
     /// @param rate Ticks per second.
     /// @throws aegis2d::net::SocketError If a port is already in use or cannot be bound.
-    GameServer(aegis2d::net::NetworkContext& context, GameInstance& instance,
-               std::uint16_t tcp_port, std::uint16_t udp_port,
+    GameServer(aegis2d::net::NetworkContext& context, std::optional<std::uint64_t> seed,
+               aegis2d::ecs::WaveSchedule waves, std::uint16_t tcp_port, std::uint16_t udp_port,
                std::uint32_t rate = tuning::tick_rate);
 
     GameServer(const GameServer&) = delete;
@@ -59,23 +60,23 @@ public:
     /// @return The network side.
     [[nodiscard]] ServerNetwork& network() noexcept;
 
-    /// @brief The thread running the game.
+    /// @brief The room of the game: its instance, thread and event tracker.
+    /// @return The room.
+    [[nodiscard]] Room& room() noexcept;
+
+    /// @brief The thread running the game, `room().simulation()`.
     /// @return The simulation.
     [[nodiscard]] Simulation& simulation() noexcept;
 
 private:
-    void after_tick(GameInstance& instance);
+    void after_tick(Room& room, GameInstance& instance);
     void on_joined(const Session& session);
     void on_left(const Session& session, LeaveReason reason);
 
     aegis2d::net::NetworkContext& context_;
     ServerNetwork network_;
-    // Used by the simulation thread only.
-    EventTracker events_;
-    // Names of the players in the game, by number; used by the simulation thread only.
-    std::array<std::optional<std::string>, tuning::max_players> names_{};
     // Last: its thread starts once the rest is ready, and stops first.
-    Simulation simulation_;
+    Room room_;
 };
 
 } // namespace rtype

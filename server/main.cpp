@@ -7,7 +7,6 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
-#include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_game.hpp>
@@ -59,15 +58,16 @@ int main(int argc, char** argv) {
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
 
     const std::filesystem::path waves_file = options.waves.value_or(rtype::default_waves_file());
-    std::optional<rtype::GameInstance> instance;
+    std::optional<aegis2d::ecs::WaveSchedule> loaded;
     try {
-        instance.emplace(std::nullopt, rtype::load_waves(waves_file));
+        loaded = rtype::load_waves(waves_file);
     } catch (const aegis2d::core::ConfigError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
     }
-    const rtype::ServerGame& game = instance->game();
-    const aegis2d::ecs::WaveSchedule& waves = game.waves();
+    const aegis2d::ecs::WaveSchedule& waves = *loaded;
+    // The systems of every game, as a game the room has not started yet runs them.
+    const rtype::ServerGame game;
     std::cout << "waves: " << waves_file.string() << " (" << waves.waves()
               << (waves.waves() == 1 ? " wave, " : " waves, ") << waves.spawns().size()
               << " enemies in " << waves.duration() << " s" << (waves.loops() ? ", looping" : "")
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
 
     aegis2d::net::NetworkContext context;
     try {
-        rtype::GameServer server{context, *instance, options.tcp_port, options.udp_port};
+        rtype::GameServer server{context, std::nullopt, waves, options.tcp_port, options.udp_port};
         rtype::ServerNetwork& network = server.network();
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
