@@ -44,10 +44,11 @@ OpenGL.
 ## Authoritative server
 
 The server owns the only true world. Each client sends the actions its player holds
-(one byte per tick: up, down, left, right, fire), each tick's input numbered; the server
-applies them, runs the simulation and sends back what happened, and each snapshot tells
-every player the number of its last input applied. A client never decides a hit, a kill or
-a score.
+(one byte per tick: up, down, left, right, fire), each tick's input numbered and sent
+again with the next three, so a lost datagram loses no input; the server applies each
+once, runs the simulation and sends back what happened, and each snapshot tells every
+player the number of its last input applied. A client never decides a hit, a kill or a
+score.
 
 ```mermaid
 sequenceDiagram
