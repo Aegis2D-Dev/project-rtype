@@ -14,6 +14,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <rtype/client_world.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
 #include <rtype/snapshot_decoder.hpp>
@@ -27,6 +28,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -234,6 +236,8 @@ private:
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    // The last inputs sent, oldest first: each Input carries them all.
+    std::vector<InputRecord> recent_inputs_;
     aegis2d::net::TrafficCounters traffic_;
     NetworkStats network_stats_;
     // Last valid datagram from the server, in game.

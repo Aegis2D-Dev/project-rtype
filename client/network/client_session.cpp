@@ -382,8 +382,9 @@ void ClientSession::set_input(aegis2d::ecs::PlayerInput input) noexcept {
     held_ = static_cast<std::uint8_t>(input.held & valid_actions);
 }
 
-// RFC section 4.2: the input's own sequence, 0 for the first, then one byte of held actions;
-// the header is numbered and acknowledges like any datagram's.
+// RFC section 4.2: the newest input's own sequence, 0 for the first, then one byte of held
+// actions for it and each of the 3 before it; the header is numbered and acknowledges like
+// any datagram's.
 void ClientSession::send_input(Clock::time_point now) {
     if (!socket_ || !server_udp_.has_value() || !login_.has_value()) {
         return;
@@ -391,8 +392,13 @@ void ClientSession::send_input(Clock::time_point now) {
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Input,
                                                    login_.value_or(LoginAccepted{}).session, now));
-    writer.write_bytes(write_input(
-        InputRecord{.sequence = static_cast<std::uint16_t>(inputs_sent_), .actions = held_}));
+    // The 3 inputs before it go along, so a lost Input arrives with one of the next three.
+    if (recent_inputs_.size() == max_inputs_per_datagram) {
+        recent_inputs_.erase(recent_inputs_.begin());
+    }
+    recent_inputs_.push_back(
+        InputRecord{.sequence = static_cast<std::uint16_t>(inputs_sent_), .actions = held_});
+    writer.write_bytes(write_inputs(recent_inputs_));
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
     traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
     ++inputs_sent_;

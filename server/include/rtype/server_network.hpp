@@ -114,9 +114,11 @@ public:
     void on_players(PlayerHandler joined, LeaveHandler left);
 
     /// @brief Sets what to do with the inputs of the players.
-    /// @details Called for each valid `Input` from a bound endpoint that is more recent
-    /// than the last one passed on (by the sequence of its payload, InputRecord): late,
-    /// duplicated and malformed ones are not passed on (RFC section 4.2).
+    /// @details Called for each input of a valid `Input` datagram from a bound endpoint that
+    /// is more recent than the last one passed on (by its sequence, InputRecord), oldest
+    /// first: an input whose datagram was lost is passed on when one of the next three
+    /// arrives; those passed on already, late ones and malformed datagrams are not (RFC
+    /// section 4.2).
     /// @param input Called with the session, the actions it holds and their sequence.
     void on_input(InputHandler input);
 
