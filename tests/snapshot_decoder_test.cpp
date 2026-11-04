@@ -31,7 +31,8 @@ namespace {
 
 Snapshot world(std::uint32_t tick, std::size_t entities) {
     Snapshot snapshot{.tick = tick,
-                      .players = {PlayerRecord{.player = 0, .ship = 1, .lives = 3, .score = 0}},
+                      .players = {PlayerRecord{
+                          .player = 0, .ship = 1, .lives = 3, .score = 0, .input = std::nullopt}},
                       .entities = {}};
     for (std::uint32_t id = 1; id <= entities; ++id) {
         snapshot.entities.push_back(EntityRecord{.id = id,
@@ -157,7 +158,7 @@ TEST_CASE("with 5 % loss the client's world matches the server's at every snapsh
         aegis2d::ecs::PlayerInput input;
         input.set(aegis2d::ecs::Action::Fire, true);
         input.set(player % 2 == 0 ? aegis2d::ecs::Action::Up : aegis2d::ecs::Action::Right, true);
-        instance.set_input(player, input);
+        instance.set_input(player, input, player);
     }
     // The server's history of the player, the client's decoder and acknowledgements, and a
     // link losing 5 % of the datagrams each way.

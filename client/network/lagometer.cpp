@@ -8,7 +8,9 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 
 namespace rtype {
@@ -32,6 +34,7 @@ constexpr std::array<GraphLimits, lag_graph_count> limits{{
     {.floor = 100.0, .warning = 60.0, .bad = 100.0},  // snapshot interval, ms
     {.floor = 4096.0, .warning = 0.0, .bad = 0.0},    // bytes in per second
     {.floor = 4096.0, .warning = 0.0, .bad = 0.0},    // bytes out per second
+    {.floor = 10.0, .warning = 2.0, .bad = 10.0},     // corrections per second
 }};
 
 const GraphLimits& limits_of(LagGraph graph) noexcept {
@@ -55,6 +58,7 @@ LagSample measure_lag(const net::RttEstimator& rtt, const net::TrafficCounters& 
         milliseconds(summary.snapshot_interval),
         static_cast<double>(traffic.last_second(net::Direction::Received, now).bytes),
         static_cast<double>(traffic.last_second(net::Direction::Sent, now).bytes),
+        0.0,
     };
     return sample;
 }
@@ -84,16 +88,28 @@ std::string lag_label(LagGraph graph, double value) {
         return std::format("IN {:.1f} KB/S", value / 1024.0);
     case LagGraph::BytesOut:
         return std::format("OUT {:.1f} KB/S", value / 1024.0);
+    case LagGraph::Corrections:
+        return std::format("CORRECTED {:.0f}/S", value);
     }
     return {};
 }
 
 void Lagometer::update(const net::RttEstimator& rtt, const net::TrafficCounters& traffic,
-                       const NetworkStats& stats, Clock::time_point now) {
+                       const NetworkStats& stats, Clock::time_point now,
+                       std::uint64_t corrections) {
     if (now < next_) {
         return;
     }
-    add(measure_lag(rtt, traffic, stats, now));
+    LagSample sample = measure_lag(rtt, traffic, stats, now);
+    // Those since the last sample, per second; none for the first sample of a session.
+    if (const std::optional<Clock::time_point> last = sampled_; last && now > *last) {
+        const double seconds = std::chrono::duration<double>{now - *last}.count();
+        sample.values.at(static_cast<std::size_t>(LagGraph::Corrections)) =
+            static_cast<double>(corrections - std::min(corrections, corrections_)) / seconds;
+    }
+    corrections_ = corrections;
+    sampled_ = now;
+    add(sample);
     // After a stall, the next sample comes an interval later, without a burst.
     next_ = now - next_ < sample_interval ? next_ + sample_interval : now + sample_interval;
 }
@@ -108,6 +124,8 @@ void Lagometer::add(const LagSample& sample) {
 void Lagometer::clear() noexcept {
     samples_.clear();
     next_ = {};
+    corrections_ = 0;
+    sampled_.reset();
 }
 
 const std::deque<LagSample>& Lagometer::samples() const noexcept {

@@ -78,6 +78,10 @@ struct RemotePlayer {
     std::uint8_t lives = 0;
     /// @brief Score.
     std::uint32_t score = 0;
+    /// @brief Sequence of the last `Input` of the player the server applied, or nothing
+    /// before the first: the most recent of the snapshots received, by
+    /// `aegis2d::net::sequence_greater_than()`.
+    std::optional<std::uint16_t> input;
 };
 
 /// @brief The world as the server describes it (RFC sections 4.3 to 4.5).

@@ -28,11 +28,12 @@ GameServer::GameServer(aegis2d::net::NetworkContext& context, GameInstance& inst
     network_.on_players(
         [this](const Session& session) { on_joined(session); },
         [this](const Session& session, LeaveReason reason) { on_left(session, reason); });
-    network_.on_input([this](const Session& session, aegis2d::ecs::PlayerInput input) {
-        simulation_.post([player = session.player, input](GameInstance& game) {
-            game.set_input(player, input);
+    network_.on_input(
+        [this](const Session& session, aegis2d::ecs::PlayerInput input, std::uint16_t sequence) {
+            simulation_.post([player = session.player, input, sequence](GameInstance& game) {
+                game.set_input(player, input, sequence);
+            });
         });
-    });
 }
 
 // On the simulation thread: what changed goes to the network thread as events; every third

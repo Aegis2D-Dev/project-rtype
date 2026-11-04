@@ -127,7 +127,7 @@ inputs are also the heartbeat that tells the server the player is still there.
 
 ### Lagometer
 
-F6 shows the **lagometer** at the top right of the game: six small graphs of the last 10
+F6 shows the **lagometer** at the top right of the game: seven small graphs of the last 10
 seconds, one bar every 100 ms, newest on the right, each with its last value.
 
 | Graph | What it shows | Yellow from | Red from |
@@ -137,6 +137,7 @@ seconds, one bar every 100 ms, newest on the right, each with its last value.
 | Loss | Share of the server's datagrams lost, over 2 s | 1 % | 5 % |
 | Snapshots | Mean time between two snapshots (50 ms on a sound link) | 60 ms | 100 ms |
 | In / Out | Bytes received and sent during the last second (blue) | | |
+| Corrected | Times per second the server put the player's own ship elsewhere than the client predicted | 2 | 10 |
 
 A graph keeps its bars below its top on a sound link (100 ms for the RTT, 10 % for the
 loss...), and grows when a value goes above it. To see it react, play with a degraded

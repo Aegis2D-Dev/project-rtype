@@ -127,6 +127,33 @@ TEST_CASE("each graph has its levels and its label", "[client][lag]") {
     CHECK(rtype::lag_label(LagGraph::BytesOut, 1024.0) == "OUT 1.0 KB/S");
 }
 
+TEST_CASE("the lagometer counts the corrections of the prediction per second", "[client][lag]") {
+    const RttEstimator rtt;
+    const TrafficCounters traffic;
+    const NetworkStats stats;
+    Lagometer lagometer;
+    // The first sample has nothing to compare with; then 3 corrections in 100 ms, none in the
+    // next 200 ms.
+    lagometer.update(rtt, traffic, stats, start, 7);
+    CHECK(lagometer.latest().value(LagGraph::Corrections) == 0.0);
+    lagometer.update(rtt, traffic, stats, start + milliseconds{100}, 10);
+    CHECK(lagometer.latest().value(LagGraph::Corrections) == Catch::Approx(30.0));
+    lagometer.update(rtt, traffic, stats, start + milliseconds{300}, 10);
+    CHECK(lagometer.latest().value(LagGraph::Corrections) == 0.0);
+    CHECK(lagometer.samples().size() == 3);
+    CHECK(lagometer.scale(LagGraph::Corrections) == 30.0);
+
+    CHECK(rtype::lag_label(LagGraph::Corrections, 3.0) == "CORRECTED 3/S");
+    CHECK(rtype::lag_level(LagGraph::Corrections, 0.0) == LagLevel::Good);
+    CHECK(rtype::lag_level(LagGraph::Corrections, 3.0) == LagLevel::Warning);
+    CHECK(rtype::lag_level(LagGraph::Corrections, 12.0) == LagLevel::Bad);
+
+    // A new session starts from zero.
+    lagometer.clear();
+    lagometer.update(rtt, traffic, stats, start + milliseconds{400}, 0);
+    CHECK(lagometer.latest().value(LagGraph::Corrections) == 0.0);
+}
+
 TEST_CASE("the scale of a graph follows its largest value above a floor", "[client][lag]") {
     Lagometer lagometer;
     CHECK(lagometer.scale(LagGraph::Rtt) == 100.0);

@@ -59,6 +59,9 @@ struct PlayerRecord {
     std::uint8_t lives = 0;
     /// @brief Score.
     std::uint32_t score = 0;
+    /// @brief Sequence of the last `Input` of the player the server applied (InputRecord), or
+    /// nothing before the first.
+    std::optional<std::uint16_t> input;
 
     /// @brief Field-by-field equality.
     /// @return `true` if every field is equal.

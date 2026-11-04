@@ -15,14 +15,18 @@ add_executable(rtype_tests
     entities_test.cpp
     events_test.cpp
     game_instance_test.cpp
+    input_test.cpp
     lagometer_test.cpp
     login_test.cpp
     network_stats_test.cpp
     player_notices_test.cpp
+    position_history_test.cpp
     rate_limit_test.cpp
     rtt_test.cpp
     server_game_test.cpp
     server_test.cpp
+    ship_movement_test.cpp
+    ship_prediction_test.cpp
     simulation_test.cpp
     snapshot_decoder_test.cpp
     snapshot_history_test.cpp

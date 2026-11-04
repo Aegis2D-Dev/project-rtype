@@ -147,10 +147,11 @@ TEST_CASE("players come from the snapshots and the events", "[client][world]") {
     ClientWorld world;
     const auto now = ClientWorld::Clock::now();
     world.apply(rtype::PlayerJoinedEvent{.tick = 1, .player = 2, .name = "R9"}, now);
-    world.apply(Snapshot{
-        .tick = 3,
-        .players = {rtype::PlayerRecord{.player = 2, .ship = 11, .lives = 3, .score = 400}},
-        .entities = {}});
+    world.apply(
+        Snapshot{.tick = 3,
+                 .players = {rtype::PlayerRecord{
+                     .player = 2, .ship = 11, .lives = 3, .score = 400, .input = std::nullopt}},
+                 .entities = {}});
     REQUIRE(world.players().at(2).has_value());
     const rtype::RemotePlayer player = world.players().at(2).value_or(rtype::RemotePlayer{});
     CHECK(player.name == "R9");
@@ -164,6 +165,26 @@ TEST_CASE("players come from the snapshots and the events", "[client][world]") {
                 now);
     CHECK(!world.players().at(2).has_value());
     CHECK(!world.players().at(0).has_value());
+}
+
+TEST_CASE("the input a player's record acknowledges only moves forward", "[client][world]") {
+    ClientWorld world;
+    const auto at = [](std::uint32_t tick, std::optional<std::uint16_t> input) {
+        return Snapshot{.tick = tick,
+                        .players = {rtype::PlayerRecord{
+                            .player = 1, .ship = 4, .lives = 3, .score = 0, .input = input}},
+                        .entities = {}};
+    };
+    const auto input = [&] { return world.players().at(1).value_or(rtype::RemotePlayer{}).input; };
+    world.apply(at(3, std::nullopt));
+    CHECK(!input().has_value());
+    world.apply(at(6, 65534));
+    CHECK(input() == std::optional<std::uint16_t>{65534});
+    // A late snapshot, or one saying nothing, does not take it back; the wrap moves it on.
+    world.apply(at(9, 2));
+    world.apply(at(4, 65530));
+    world.apply(at(12, std::nullopt));
+    CHECK(input() == std::optional<std::uint16_t>{2});
 }
 
 TEST_CASE("the client's entities mirror the server's", "[client][world]") {

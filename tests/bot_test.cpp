@@ -154,10 +154,11 @@ TEST_CASE("a bot joins, plays and leaves cleanly", "[bot]") {
         [&](const rtype::Session& /*session*/, rtype::LeaveReason reason) { left = reason; });
     std::set<std::uint8_t> received;
     std::size_t inputs = 0;
-    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input) {
-        received.insert(input.held);
-        ++inputs;
-    });
+    server.on_input(
+        [&](const rtype::Session& /*session*/, PlayerInput input, std::uint16_t /*sequence*/) {
+            received.insert(input.held);
+            ++inputs;
+        });
     Bot bot{context, rtype::BotSettings{.server = {.host = "127.0.0.1",
                                                    .tcp_port = server.tcp_endpoint().port(),
                                                    .name = "B1"},
@@ -297,9 +298,10 @@ TEST_CASE("four bots fill a game and play their script", "[bot][script]") {
     ServerNetwork server{context, 0, 0};
     // The actions each session held, by token.
     std::map<std::uint32_t, std::set<std::uint8_t>> received;
-    server.on_input([&](const rtype::Session& session, PlayerInput input) {
-        received[session.token].insert(input.held);
-    });
+    server.on_input(
+        [&](const rtype::Session& session, PlayerInput input, std::uint16_t /*sequence*/) {
+            received[session.token].insert(input.held);
+        });
     BotSettings base;
     base.server.tcp_port = server.tcp_endpoint().port();
     base.script = script("200 RF\n200 LF\n100 -");
