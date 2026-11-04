@@ -19,6 +19,7 @@ add_executable(rtype_tests
     login_test.cpp
     network_stats_test.cpp
     player_notices_test.cpp
+    position_history_test.cpp
     rate_limit_test.cpp
     rtt_test.cpp
     server_game_test.cpp
