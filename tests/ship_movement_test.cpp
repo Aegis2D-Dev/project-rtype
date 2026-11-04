@@ -97,17 +97,16 @@ TEST_CASE("the server moves a ship tick by tick as the ship step says", "[game][
     Vec2 predicted = world.get<aegis2d::ecs::Transform>(ship).position;
 
     // Every direction, the diagonals, against the edges and away from them, with fire.
-    const std::vector<std::initializer_list<Action>> steps{
-        {Action::Right}, {Action::Up, Action::Right},
-        {Action::Up},    {Action::Up, Action::Left},
-        {Action::Left},  {Action::Down, Action::Left},
-        {Action::Down},  {Action::Down, Action::Right},
-        {Action::Fire},  {}};
+    const std::vector<PlayerInput> steps{
+        holding({Action::Right}), holding({Action::Up, Action::Right}),
+        holding({Action::Up}),    holding({Action::Up, Action::Left}),
+        holding({Action::Left}),  holding({Action::Down, Action::Left}),
+        holding({Action::Down}),  holding({Action::Down, Action::Right}),
+        holding({Action::Fire}),  PlayerInput{}};
     for (std::size_t round = 0; round < 2; ++round) {
-        for (const std::initializer_list<Action> actions : steps) {
+        for (const PlayerInput input : steps) {
             // Long enough to reach an edge of the area.
             for (int index = 0; index < 150; ++index) {
-                const PlayerInput input = holding(actions);
                 REQUIRE(game.set_input(ship, input));
                 game.tick(step_from_rate(tuning::tick_rate));
                 const rtype::ShipMotion expected = step_ship(predicted, input, tick);
