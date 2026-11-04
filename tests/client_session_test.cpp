@@ -17,6 +17,7 @@
 #include <rtype/entities.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
@@ -416,6 +417,7 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
     std::vector<std::unique_ptr<TcpConnection>> connections;
     std::vector<PacketHeader> received;
     std::vector<std::uint8_t> actions;
+    std::vector<std::vector<rtype::InputRecord>> inputs;
     constexpr std::uint32_t token = 77;
     const auto send_header = [&](const Endpoint& to, PacketType type, std::uint16_t sequence,
                                  std::uint16_t ack) {
@@ -451,7 +453,11 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
             send_header(from, PacketType::Snapshot, 2, header->sequence);
             send_header(from, PacketType::Snapshot, 3, header->sequence);
         } else if (header->type == PacketType::Input) {
-            actions.push_back(std::to_integer<std::uint8_t>(bytes.back()));
+            const std::optional<std::vector<rtype::InputRecord>> read =
+                rtype::read_inputs(std::span{bytes}.subspan(PacketHeader::size));
+            REQUIRE(read.has_value());
+            inputs.push_back(read.value_or(std::vector<rtype::InputRecord>{}));
+            actions.push_back(inputs.back().back().actions);
         }
     });
     listener.start_accepting([&](TcpConnection connection) {
@@ -472,7 +478,7 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
                                                  .name = "R9"}};
     client.start();
     client.set_input(holding(Action::Fire));
-    REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 3; }));
+    REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 5; }));
 
     // The client's sequences follow each other from its first Connect, and its last Input
     // acknowledges the Snapshot of sequence 2 and, in its bits, 1 and the Accept; not 3,
@@ -489,6 +495,17 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
         CHECK(received.at(index).sequence == received.at(index - 1).sequence + 1);
     }
     CHECK(actions.back() == 0x10);
+
+    // Each Input carries the 3 inputs before its own, but the first three.
+    REQUIRE(inputs.size() >= 4);
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+        CAPTURE(index);
+        const std::vector<rtype::InputRecord>& carried = inputs.at(index);
+        REQUIRE(carried.size() == std::min<std::size_t>(index + 1, 4));
+        for (std::size_t back = 0; back < carried.size(); ++back) {
+            CHECK(carried.at(carried.size() - 1 - back).sequence == index - back);
+        }
+    }
 }
 
 TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[client][input]") {
