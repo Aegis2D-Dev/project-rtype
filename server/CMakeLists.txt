@@ -5,6 +5,7 @@ add_library(rtype_server STATIC
     game_instance.cpp
     game_server.cpp
     rate_limit.cpp
+    room.cpp
     server_network.cpp
     server_options.cpp
     snapshot_history.cpp

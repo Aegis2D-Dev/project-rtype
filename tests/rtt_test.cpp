@@ -189,8 +189,7 @@ TEST_CASE("both ends estimate 200 ms and the peer's wait with 100 ms of delay ea
           "[client][server][rtt]") {
     // A game, so that the server sends snapshots 20 times per second, as in a real match.
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
     DelayedRelay relay{context, server, milliseconds{100}};
     ClientSession client{

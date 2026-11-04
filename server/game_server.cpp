@@ -1,4 +1,5 @@
 #include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/rtt.hpp>
 
@@ -6,6 +7,7 @@
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/lag_compensation.hpp>
+#include <rtype/room.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/simulation.hpp>
@@ -23,16 +25,18 @@
 
 namespace rtype {
 
-GameServer::GameServer(aegis2d::net::NetworkContext& context, GameInstance& instance,
-                       std::uint16_t tcp_port, std::uint16_t udp_port, std::uint32_t rate)
+GameServer::GameServer(aegis2d::net::NetworkContext& context, std::optional<std::uint64_t> seed,
+                       aegis2d::ecs::WaveSchedule waves, std::uint16_t tcp_port,
+                       std::uint16_t udp_port, std::uint32_t rate)
     : context_{context}, network_{context, tcp_port, udp_port},
-      simulation_{instance, rate, [this](GameInstance& game) { after_tick(game); }} {
+      room_{seed, std::move(waves), rate,
+            [this](Room& room, GameInstance& game) { after_tick(room, game); }} {
     network_.on_players(
         [this](const Session& session) { on_joined(session); },
         [this](const Session& session, LeaveReason reason) { on_left(session, reason); });
     network_.on_input(
         [this](const Session& session, aegis2d::ecs::PlayerInput input, std::uint16_t sequence) {
-            simulation_.post([player = session.player, input, sequence](GameInstance& game) {
+            room_.simulation().post([player = session.player, input, sequence](GameInstance& game) {
                 game.set_input(player, input, sequence);
             });
         });
@@ -40,8 +44,8 @@ GameServer::GameServer(aegis2d::net::NetworkContext& context, GameInstance& inst
 
 // On the simulation thread: what changed goes to the network thread as events; every third
 // tick, the state of the game goes too, as a snapshot.
-void GameServer::after_tick(GameInstance& instance) {
-    if (std::vector<std::vector<std::byte>> changes = write_events(events_.update(instance));
+void GameServer::after_tick(Room& room, GameInstance& instance) {
+    if (std::vector<std::vector<std::byte>> changes = write_events(room.events().update(instance));
         !changes.empty()) {
         context_.post([this, changes = std::move(changes)] { network_.send_events(changes); });
     }
@@ -75,7 +79,8 @@ void GameServer::update_rewinds() {
             continue;
         }
         rewinds_.at(player) = ticks;
-        simulation_.post([player, ticks](GameInstance& game) { game.set_rewind(player, ticks); });
+        room_.simulation().post(
+            [player, ticks](GameInstance& game) { game.set_rewind(player, ticks); });
     }
 }
 
@@ -85,21 +90,22 @@ void GameServer::update_rewinds() {
 void GameServer::on_joined(const Session& session) {
     tokens_.at(session.player) = session.token;
     rewinds_.at(session.player) = 0;
-    simulation_.post([this, player = session.player, token = session.token,
-                      name = session.name](GameInstance& game) {
+    room_.simulation().post([this, player = session.player, token = session.token,
+                             name = session.name](GameInstance& game) {
         game.join(player);
         const auto tick = static_cast<std::uint32_t>(game.game().ticks());
         std::vector<GameEvent> welcome;
         for (std::uint8_t other = 0; other < tuning::max_players; ++other) {
-            if (const std::optional<std::string>& other_name = names_.at(other); other_name) {
+            if (const std::optional<std::string>& other_name = room_.names().at(other);
+                other_name) {
                 welcome.emplace_back(
                     PlayerJoinedEvent{.tick = tick, .player = other, .name = *other_name});
             }
         }
-        for (GameEvent& spawn : events_.spawns(game)) {
+        for (GameEvent& spawn : room_.events().spawns(game)) {
             welcome.push_back(std::move(spawn));
         }
-        names_.at(player) = name;
+        room_.names().at(player) = name;
         std::vector<std::vector<std::byte>> joined = write_events(std::vector<GameEvent>{
             PlayerJoinedEvent{.tick = tick, .player = player, .name = name}});
         context_.post([this, token, joined = std::move(joined), welcome = write_events(welcome)] {
@@ -115,8 +121,8 @@ void GameServer::on_joined(const Session& session) {
 // ship, which comes with the next tick's events.
 void GameServer::on_left(const Session& session, LeaveReason reason) {
     tokens_.at(session.player).reset();
-    simulation_.post([this, player = session.player, reason](GameInstance& game) {
-        names_.at(player).reset();
+    room_.simulation().post([this, player = session.player, reason](GameInstance& game) {
+        room_.names().at(player).reset();
         if (!game.leave(player)) {
             return;
         }
@@ -132,8 +138,12 @@ ServerNetwork& GameServer::network() noexcept {
     return network_;
 }
 
+Room& GameServer::room() noexcept {
+    return room_;
+}
+
 Simulation& GameServer::simulation() noexcept {
-    return simulation_;
+    return room_.simulation();
 }
 
 } // namespace rtype

@@ -1008,8 +1008,7 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
 TEST_CASE("a player whose TCP connection closes is gone from the game within a second",
           "[server][disconnect]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player staying_player{context, server};
@@ -1143,8 +1142,7 @@ TEST_CASE("a bound player silent for 5 seconds loses its session", "[server][tim
 
 TEST_CASE("a player whose UDP traffic stops is gone from the game", "[server][timeout]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player staying_player{context, server};
@@ -1292,8 +1290,7 @@ struct EventLog {
 TEST_CASE("players learn who joins, and who leaves before its ship is destroyed",
           "[server][leave]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player first_player{context, server};
@@ -1416,8 +1413,7 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
 TEST_CASE("a flood of forged packets from players in the game crashes nothing",
           "[server][errors]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     // An honest player, which must go on playing.
@@ -1590,8 +1586,7 @@ TEST_CASE("an address cannot open more connections than its share", "[server][ra
 
 TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
     const std::uint16_t port = server.udp_endpoint().port();
 

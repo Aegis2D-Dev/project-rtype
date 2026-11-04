@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) (opened 2026-11-04) |
 | Branch | `feat/server-lag-compensation` → `develop` (stacked on `feat/server-position-history`, #71) |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`b168095`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#297](https://github.com/Aegis2D-Dev/aegis2d/issues/297) feat(server): lag compensation for hits |
 
