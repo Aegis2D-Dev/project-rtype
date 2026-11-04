@@ -174,9 +174,11 @@ public:
     /// @brief The client's own ship, moved at once by each `Input` sent.
     /// @details Started from the position of the ship in the first snapshot that has it, and
     /// again when the player loses a life (the server moved it back to its spawn point) or
-    /// gets another ship; stopped once the player is out. Each snapshot drops the inputs its
-    /// player record acknowledges. The screen draws the ship at its position(), so it
-    /// answers the keys within a frame whatever the round trip time.
+    /// gets another ship; stopped once the player is out. Each newer snapshot reconciles it:
+    /// the ship goes back to the server's position once it applied the input the player
+    /// record acknowledges, and the inputs after it are replayed (ShipPrediction::reconcile()).
+    /// The screen draws the ship at its position(), so it answers the keys within a frame
+    /// whatever the round trip time.
     /// @return The prediction.
     [[nodiscard]] const ShipPrediction& prediction() const noexcept;
 
@@ -258,6 +260,8 @@ private:
     ShipPrediction prediction_;
     // Lives of the player when the prediction started: one less means a respawn.
     std::uint8_t predicted_lives_ = 0;
+    // Tick of the last snapshot the prediction started from or was reconciled with.
+    std::optional<std::uint32_t> reconciled_tick_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;

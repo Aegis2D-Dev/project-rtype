@@ -6,6 +6,7 @@
 #include <rtype/ship_movement.hpp>
 #include <rtype/ship_prediction.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <optional>
@@ -42,6 +43,36 @@ void ShipPrediction::acknowledge(std::uint16_t sequence) {
     while (!pending_.empty() && !net::sequence_greater_than(pending_.front().sequence, sequence)) {
         pending_.pop_front();
     }
+}
+
+float ShipPrediction::reconcile(Vec2 server, std::optional<std::uint16_t> acknowledged,
+                                float delta) {
+    if (!ship_.has_value()) {
+        return 0.0F;
+    }
+    if (acknowledged.has_value()) {
+        acknowledge(*acknowledged);
+    }
+    const Vec2 before = position_;
+    position_ = server;
+    for (const InputRecord& input : pending_) {
+        position_ =
+            step_ship(position_, aegis2d::ecs::PlayerInput{.held = input.actions}, delta).position;
+    }
+    const Vec2 moved = position_ - before;
+    last_correction_ = std::hypot(moved.x, moved.y);
+    if (last_correction_ > correction_threshold) {
+        ++corrections_;
+    }
+    return last_correction_;
+}
+
+std::uint64_t ShipPrediction::corrections() const noexcept {
+    return corrections_;
+}
+
+float ShipPrediction::last_correction() const noexcept {
+    return last_correction_;
 }
 
 std::optional<std::uint32_t> ShipPrediction::ship() const noexcept {

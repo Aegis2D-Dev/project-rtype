@@ -531,7 +531,9 @@ const ShipPrediction& ClientSession::prediction() const noexcept {
 }
 
 // The prediction starts from the server's position of the ship, the first time a snapshot
-// has it, and again after a death or with another ship; the acknowledged inputs are dropped.
+// has it, and again after a death or with another ship; each newer snapshot then corrects it
+// (server reconciliation): the ship goes back to the server's position at the acknowledged
+// input, and the inputs after it are replayed.
 void ClientSession::predict(const Snapshot& snapshot) {
     const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
     const auto own = std::ranges::find(snapshot.players, player, &PlayerRecord::player);
@@ -542,17 +544,26 @@ void ClientSession::predict(const Snapshot& snapshot) {
         prediction_.stop();
         return;
     }
-    if (const std::optional<std::uint16_t>& input = own->input) {
-        prediction_.acknowledge(*input);
-    }
-    if (prediction_.ship() == own->ship && own->lives >= predicted_lives_) {
+    const auto ship = std::ranges::find(snapshot.entities, own->ship, &EntityRecord::id);
+    if (ship == snapshot.entities.end()) {
+        if (const std::optional<std::uint16_t>& input = own->input) {
+            prediction_.acknowledge(*input);
+        }
         return;
     }
-    const auto ship = std::ranges::find(snapshot.entities, own->ship, &EntityRecord::id);
-    if (ship != snapshot.entities.end()) {
-        prediction_.start(own->ship, aegis2d::Vec2{ship->x, ship->y});
+    const aegis2d::Vec2 server{ship->x, ship->y};
+    if (prediction_.ship() != own->ship || own->lives < predicted_lives_) {
+        prediction_.start(own->ship, server);
         predicted_lives_ = own->lives;
+        reconciled_tick_ = snapshot.tick;
+        return;
     }
+    // A late snapshot says less than the last one used: it changes nothing.
+    if (reconciled_tick_.has_value() && snapshot.tick <= *reconciled_tick_) {
+        return;
+    }
+    reconciled_tick_ = snapshot.tick;
+    static_cast<void>(prediction_.reconcile(server, own->input, tick_seconds));
 }
 
 const SnapshotDecoder& ClientSession::snapshots() const noexcept {
