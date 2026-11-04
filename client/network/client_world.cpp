@@ -2,6 +2,7 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/net/sequence.hpp>
 
 #include <rtype/client_world.hpp>
 #include <rtype/events.hpp>
@@ -23,6 +24,7 @@
 namespace rtype {
 
 namespace ecs = aegis2d::ecs;
+namespace net = aegis2d::net;
 using aegis2d::Vec2;
 
 namespace {
@@ -185,6 +187,12 @@ void ClientWorld::apply(const Snapshot& snapshot) {
         updated.ship = record.ship;
         updated.lives = record.lives;
         updated.score = record.score;
+        // A late snapshot does not take the input back: the server only moves forward.
+        const std::optional<std::uint16_t>& known = updated.input;
+        if (const std::optional<std::uint16_t>& input = record.input;
+            input && (!known || net::sequence_greater_than(*input, *known))) {
+            updated.input = input;
+        }
     }
     for (const EntityRecord& record : snapshot.entities) {
         const auto found = known_.find(record.id);

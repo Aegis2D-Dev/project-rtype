@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#63](https://github.com/Aegis2D-Dev/project-rtype/pull/63) (opened 2026-11-02) |
 | Branch | `feat/server-payload-compression` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-02 (`f4ade28`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#287](https://github.com/Aegis2D-Dev/aegis2d/issues/287) feat(net): payload compression |
 

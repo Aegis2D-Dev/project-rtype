@@ -61,7 +61,7 @@ Snapshot parsed(std::span<const std::byte> payload) {
 Snapshot rfc_example() {
     return Snapshot{
         .tick = 600,
-        .players = {PlayerRecord{.player = 0, .ship = 2, .lives = 3, .score = 100}},
+        .players = {PlayerRecord{.player = 0, .ship = 2, .lives = 3, .score = 100, .input = 41}},
         .entities = {EntityRecord{.id = 2,
                                   .kind = static_cast<std::uint8_t>(EntityKind::PlayerShip),
                                   .x = 100.0F,
@@ -85,11 +85,13 @@ TEST_CASE("snapshots are due 20 times per second", "[server][snapshot]") {
 }
 
 TEST_CASE("a snapshot follows the RFC example bit by bit", "[server][snapshot]") {
-    // RFC section 4.7: 155 bits, the entity record 77 of them.
+    // RFC section 4.7 without the has_baseline and change fields of 4.8: 172 bits, the
+    // entity record 77 of them.
     const std::vector<std::vector<std::byte>> payloads = rtype::write_snapshot(rfc_example());
     REQUIRE(payloads.size() == 1);
-    CHECK(payloads.front() == bytes({0x58, 0x02, 0x00, 0x00, 0xA1, 0xC0, 0x00, 0x59, 0x00, 0x80,
-                                     0x00, 0x40, 0x40, 0x06, 0x40, 0x0B, 0x00, 0x00, 0x00, 0x00}));
+    CHECK(payloads.front() ==
+          bytes({0x58, 0x02, 0x00, 0x00, 0xA1, 0xC0, 0x00, 0xD9, 0x14, 0x80, 0x00,
+                 0x00, 0x01, 0x80, 0x80, 0x0C, 0x80, 0x16, 0x00, 0x00, 0x00, 0x00}));
     CHECK(rtype::read_snapshot(payloads.front()) == std::optional{rfc_example()});
     CHECK(rtype::entity_record_bits(2) == 77);
 }
@@ -118,7 +120,7 @@ TEST_CASE("snapshots of a game are drawn within half a pixel", "[server][snapsho
         aegis2d::ecs::PlayerInput input;
         input.set(aegis2d::ecs::Action::Fire, true);
         input.set(player % 2 == 0 ? aegis2d::ecs::Action::Up : aegis2d::ecs::Action::Right, true);
-        instance.set_input(player, input);
+        instance.set_input(player, input, player);
     }
     std::size_t records = 0;
     std::optional<Snapshot> last_sent;
@@ -177,7 +179,8 @@ TEST_CASE("snapshots of a game are drawn within half a pixel", "[server][snapsho
 TEST_CASE("a large world is split into datagrams", "[server][snapshot]") {
     Snapshot snapshot{.tick = 7, .players = {}, .entities = {}};
     for (std::uint8_t player = 0; player < tuning::max_players; ++player) {
-        snapshot.players.push_back(PlayerRecord{.player = player, .ship = player, .lives = 1});
+        snapshot.players.push_back(PlayerRecord{
+            .player = player, .ship = player, .lives = 1, .score = 0, .input = player});
     }
     // In reverse order: the records are sent by increasing id.
     for (std::uint32_t id = 300; id > 0; --id) {
@@ -195,11 +198,11 @@ TEST_CASE("a large world is split into datagrams", "[server][snapshot]") {
         CHECK(part.players == snapshot.players);
         entities.insert(entities.end(), part.entities.begin(), part.entities.end());
     }
-    // 51 bits, 4 players of 27 bits, then 120 records of 77 bits: 9399 of the 9456 bits of
-    // a payload.
-    CHECK(payloads.at(0).size() == 1175);
-    CHECK(parsed(payloads.at(0)).entities.size() == 120);
-    CHECK(parsed(payloads.at(2)).entities.size() == 60);
+    // 51 bits, 4 players of 44 bits (27, and 17 for their input), then 119 records of 77 bits:
+    // 9390 of the 9456 bits of a payload.
+    CHECK(payloads.at(0).size() == 1174);
+    CHECK(parsed(payloads.at(0)).entities.size() == 119);
+    CHECK(parsed(payloads.at(2)).entities.size() == 62);
     std::ranges::reverse(snapshot.entities);
     CHECK(entities == snapshot.entities);
 
@@ -247,9 +250,9 @@ TEST_CASE("malformed snapshots are rejected", "[server][snapshot]") {
         CAPTURE(size);
         CHECK(!rtype::read_snapshot(std::span{valid}.first(size)).has_value());
     }
-    // The 5 bits after the 155 of the example are padding, and must be 0.
+    // The 4 bits after the 172 of the example are padding, and must be 0.
     std::vector<std::byte> padding = valid;
-    padding.back() |= std::byte{0x08};
+    padding.back() |= std::byte{0x80};
     CHECK(!rtype::read_snapshot(padding).has_value());
 
     Snapshot five = rfc_example();
@@ -268,6 +271,7 @@ TEST_CASE("malformed snapshots are rejected", "[server][snapshot]") {
     overlong.write_bool(false);
     overlong.write_bits(3, 8);
     rtype::write_varint(overlong, 100);
+    overlong.write_bool(false);
     overlong.write_bits(0, 16);
     CHECK(!rtype::read_snapshot(overlong.data()).has_value());
 
@@ -291,14 +295,17 @@ TEST_CASE("the snapshot holds the players and the entities of the game", "[serve
     const Entity ship = instance.join(2);
     instance.game().registry().get<Score>(ship).points = 300;
     const Entity bydos = rtype::spawn_bydos_slave(instance.game().registry(), {900.0F, 200.0F});
+    CHECK(instance.set_input(2, aegis2d::ecs::PlayerInput{}, 41));
     instance.game().tick(step_from_rate(tuning::tick_rate));
 
     const Snapshot snapshot = rtype::take_snapshot(instance);
     CHECK(snapshot.tick == 1);
     REQUIRE(snapshot.players.size() == 1);
-    CHECK(
-        snapshot.players.front() ==
-        PlayerRecord{.player = 2, .ship = ship.id(), .lives = tuning::player_lives, .score = 300});
+    CHECK(snapshot.players.front() == PlayerRecord{.player = 2,
+                                                   .ship = ship.id(),
+                                                   .lives = tuning::player_lives,
+                                                   .score = 300,
+                                                   .input = 41});
     REQUIRE(snapshot.entities.size() == 2);
     for (const EntityRecord& entity : snapshot.entities) {
         const Entity handle = entity.id == ship.id() ? ship : bydos;
@@ -318,8 +325,9 @@ TEST_CASE("the snapshot holds the players and the entities of the game", "[serve
     }
     const Snapshot after = rtype::take_snapshot(instance);
     REQUIRE(after.players.size() == 1);
-    CHECK(after.players.front() ==
-          PlayerRecord{.player = 2, .ship = rtype::no_entity, .lives = 0, .score = 300});
+    CHECK(
+        after.players.front() ==
+        PlayerRecord{.player = 2, .ship = rtype::no_entity, .lives = 0, .score = 300, .input = 41});
 }
 
 TEST_CASE("the tick handler runs after each tick on the simulation thread",

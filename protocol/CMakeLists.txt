@@ -3,6 +3,7 @@ add_library(rtype_protocol STATIC
     compact.cpp
     delta_snapshot.cpp
     events.cpp
+    input.cpp
     login.cpp
     snapshot.cpp)
 target_include_directories(rtype_protocol PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

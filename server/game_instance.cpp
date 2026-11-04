@@ -39,6 +39,7 @@ void GameInstance::start() {
     game_->play_waves(waves_);
     ships_.fill(std::nullopt);
     scores_.fill(0);
+    inputs_.fill(std::nullopt);
     ++games_;
 }
 
@@ -52,6 +53,7 @@ ecs::Entity GameInstance::join(std::uint8_t player) {
     }
     ship = game_->add_player(player);
     scores_.at(player) = 0;
+    inputs_.at(player).reset();
     return *ship;
 }
 
@@ -72,9 +74,13 @@ bool GameInstance::leave(std::uint8_t player) {
     return true;
 }
 
-bool GameInstance::set_input(std::uint8_t player, ecs::PlayerInput input) {
+bool GameInstance::set_input(std::uint8_t player, ecs::PlayerInput input, std::uint16_t sequence) {
     const std::optional<ecs::Entity> found = ship(player);
-    return found.has_value() && game_->set_input(*found, input);
+    if (!found.has_value() || !game_->set_input(*found, input)) {
+        return false;
+    }
+    inputs_.at(player) = sequence;
+    return true;
 }
 
 std::optional<ecs::Entity> GameInstance::ship(std::uint8_t player) const {
@@ -94,7 +100,10 @@ std::optional<PlayerState> GameInstance::player_state(std::uint8_t player) {
     }
     const std::optional<ecs::Entity> alive = ship(player);
     if (!alive) {
-        return PlayerState{.ship = std::nullopt, .lives = 0, .score = scores_.at(player)};
+        return PlayerState{.ship = std::nullopt,
+                           .lives = 0,
+                           .score = scores_.at(player),
+                           .input = inputs_.at(player)};
     }
     const ecs::Registry& world = game_->registry();
     const auto* const lives = find<ecs::Lives>(world, *alive);
@@ -102,8 +111,10 @@ std::optional<PlayerState> GameInstance::player_state(std::uint8_t player) {
     if (score != nullptr) {
         scores_.at(player) = score->points;
     }
-    return PlayerState{
-        .ship = alive, .lives = lives != nullptr ? lives->count : 0, .score = scores_.at(player)};
+    return PlayerState{.ship = alive,
+                       .lives = lives != nullptr ? lives->count : 0,
+                       .score = scores_.at(player),
+                       .input = inputs_.at(player)};
 }
 
 std::size_t GameInstance::players() const noexcept {

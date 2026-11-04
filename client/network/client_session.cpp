@@ -15,6 +15,7 @@
 #include <rtype/client_world.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_decoder.hpp>
@@ -42,9 +43,6 @@ namespace {
 
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
-
-// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
-constexpr std::uint8_t valid_actions = 0x1FU;
 
 // What the player is told for each LoginRejected reason; unknown ones are a plain refusal.
 std::string rejection_text(std::uint8_t reason) {
@@ -384,7 +382,8 @@ void ClientSession::set_input(aegis2d::ecs::PlayerInput input) noexcept {
     held_ = static_cast<std::uint8_t>(input.held & valid_actions);
 }
 
-// RFC section 4.2: one byte of held actions, numbered and acknowledging like any datagram.
+// RFC section 4.2: the input's own sequence, 0 for the first, then one byte of held actions;
+// the header is numbered and acknowledges like any datagram's.
 void ClientSession::send_input(Clock::time_point now) {
     if (!socket_ || !server_udp_.has_value() || !login_.has_value()) {
         return;
@@ -392,7 +391,8 @@ void ClientSession::send_input(Clock::time_point now) {
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Input,
                                                    login_.value_or(LoginAccepted{}).session, now));
-    writer.write_u8(held_);
+    writer.write_bytes(write_input(
+        InputRecord{.sequence = static_cast<std::uint16_t>(inputs_sent_), .actions = held_}));
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
     traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
     ++inputs_sent_;
@@ -465,6 +465,25 @@ std::uint64_t ClientSession::connects_sent() const noexcept {
 
 std::uint64_t ClientSession::inputs_sent() const noexcept {
     return inputs_sent_;
+}
+
+std::optional<std::uint16_t> ClientSession::last_input() const noexcept {
+    if (inputs_sent_ == 0) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint16_t>(inputs_sent_ - 1);
+}
+
+std::optional<std::uint16_t> ClientSession::acknowledged_input() const noexcept {
+    if (!login_.has_value()) {
+        return std::nullopt;
+    }
+    const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
+    if (player >= world_.players().size()) {
+        return std::nullopt;
+    }
+    const std::optional<RemotePlayer>& own = world_.players().at(player);
+    return own.has_value() ? own->input : std::nullopt;
 }
 
 const net::TrafficCounters& ClientSession::traffic() const noexcept {
