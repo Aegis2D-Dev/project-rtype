@@ -346,7 +346,8 @@ void ClientApp::update_session() {
             screen_ = ClientScreen::Game;
             core::log_info("in game as player {}", player + 1);
         }
-        lagometer_.update(session_->rtt(), session_->traffic(), session_->network_stats(), now);
+        lagometer_.update(session_->rtt(), session_->traffic(), session_->network_stats(), now,
+                          session_->prediction().corrections());
         if (screen_ == ClientScreen::Game) {
             const std::vector<GameEvent> events = session_->world().take_events();
             view_.handle(events, session_->world(), preferences_, now);
