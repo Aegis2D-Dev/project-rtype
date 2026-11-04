@@ -1,9 +1,11 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/context.hpp>
+#include <aegis2d/net/rtt.hpp>
 
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/lag_compensation.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/simulation.hpp>
@@ -49,13 +51,40 @@ void GameServer::after_tick(GameInstance& instance) {
     // Encoded for each player against its own baseline, and kept by its history as a
     // possible baseline of the next ones.
     auto snapshot = std::make_shared<const Snapshot>(take_snapshot(instance));
-    context_.post([this, snapshot = std::move(snapshot)] { network_.send_snapshot(snapshot); });
+    context_.post([this, snapshot = std::move(snapshot)] {
+        network_.send_snapshot(snapshot);
+        update_rewinds();
+    });
+}
+
+// On the network thread: each player's smoothed round trip time, as the ticks its missiles
+// are compensated by, goes to the game when it changes.
+void GameServer::update_rewinds() {
+    for (std::uint8_t player = 0; player < tuning::max_players; ++player) {
+        const std::optional<std::uint32_t> token = tokens_.at(player);
+        if (!token.has_value()) {
+            continue;
+        }
+        const aegis2d::net::RttEstimator* const rtt = network_.rtt(*token);
+        if (rtt == nullptr || !rtt->has_estimate()) {
+            continue;
+        }
+        const std::uint32_t ticks =
+            rewind_ticks(rtt->smoothed(), tuning::client_interpolation_delay);
+        if (ticks == rewinds_.at(player)) {
+            continue;
+        }
+        rewinds_.at(player) = ticks;
+        simulation_.post([player, ticks](GameInstance& game) { game.set_rewind(player, ticks); });
+    }
 }
 
 // RFC section 4.6: the others learn who joined; the new player learns who is there, then
 // gets the world as it is. Its own ship comes with the next tick's events, like for the
 // others.
 void GameServer::on_joined(const Session& session) {
+    tokens_.at(session.player) = session.token;
+    rewinds_.at(session.player) = 0;
     simulation_.post([this, player = session.player, token = session.token,
                       name = session.name](GameInstance& game) {
         game.join(player);
@@ -85,6 +114,7 @@ void GameServer::on_joined(const Session& session) {
 // RFC section 4.6: the others learn that the player left and why, before the Destroy of its
 // ship, which comes with the next tick's events.
 void GameServer::on_left(const Session& session, LeaveReason reason) {
+    tokens_.at(session.player).reset();
     simulation_.post([this, player = session.player, reason](GameInstance& game) {
         names_.at(player).reset();
         if (!game.leave(player)) {

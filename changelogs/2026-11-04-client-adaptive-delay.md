@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#70](https://github.com/Aegis2D-Dev/project-rtype/pull/70) (opened 2026-11-04) |
 | Branch | `feat/client-adaptive-delay` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`6c9e6fe`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#295](https://github.com/Aegis2D-Dev/aegis2d/issues/295) feat(client): adaptive interpolation delay |
 

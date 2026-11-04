@@ -107,6 +107,18 @@ public:
     /// @return `false` if the player is not in the game any more (a late packet).
     bool set_input(aegis2d::ecs::Entity player, aegis2d::ecs::PlayerInput input);
 
+    /// @brief Sets how many ticks back a player's missiles meet the enemies (lag
+    /// compensation): its rewind_ticks(), from its round trip time.
+    /// @param player Ship returned by add_player().
+    /// @param ticks 0 for none, at most PositionHistory::capacity.
+    /// @return `false` if the player is out.
+    bool set_rewind(aegis2d::ecs::Entity player, std::uint32_t ticks);
+
+    /// @brief How many ticks back a player's missiles meet the enemies.
+    /// @param player Ship returned by add_player().
+    /// @return The rewind, 0 for a player out or never set.
+    [[nodiscard]] std::uint32_t rewind(aegis2d::ecs::Entity player) const;
+
     /// @brief Runs one simulation step: every system, in order.
     /// @param step Duration of the step, `core::step_from_rate(tuning::tick_rate)`.
     void tick(aegis2d::core::Duration step);
@@ -194,6 +206,7 @@ private:
     std::vector<aegis2d::ecs::Entity> despawned_;
     std::array<aegis2d::ecs::Entity, tuning::max_players> slots_{};
     PositionHistory history_;
+    std::array<std::uint32_t, tuning::max_players> rewinds_{};
     bool started_ = false;
 };
 

@@ -7,6 +7,7 @@
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
@@ -21,6 +22,7 @@
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/input.hpp>
+#include <rtype/lag_compensation.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
@@ -34,6 +36,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -696,6 +699,39 @@ TEST_CASE("reconciled with the snapshots, the own ship ends where the server's i
     CHECK(std::abs(predicted.x - at.x) <= 0.0625F);
     CHECK(std::abs(predicted.y - at.y) <= 0.0625F);
     CHECK(client.prediction().pending().size() <= 3);
+}
+
+TEST_CASE("the server compensates each player by its round trip time", "[client][lag]") {
+    NetworkContext context;
+    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
+    rtype::GameServer game_server{context, instance, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    const std::uint32_t token = client.login().value_or(rtype::LoginAccepted{}).session;
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const aegis2d::net::RttEstimator* const rtt = server.rtt(token);
+        return rtt != nullptr && rtt->has_estimate();
+    }));
+    run_for(context, server, client, std::chrono::milliseconds{300});
+
+    // On loopback the round trip is a few milliseconds at most: the rewind is about the
+    // client's interpolation delay, 6 ticks.
+    game_server.simulation().stop();
+    const aegis2d::net::RttEstimator* const rtt = server.rtt(token);
+    REQUIRE(rtt != nullptr);
+    const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
+    REQUIRE(ship.has_value());
+    // Within a tick of the latest estimate: the last change may still wait in the queue of
+    // the simulation when it stops.
+    const auto rewind =
+        static_cast<std::int64_t>(instance.game().rewind(ship.value_or(aegis2d::ecs::Entity{})));
+    const auto expected = static_cast<std::int64_t>(
+        rtype::rewind_ticks(rtt->smoothed(), rtype::tuning::client_interpolation_delay));
+    CHECK(std::abs(rewind - expected) <= 1);
+    CHECK(rewind >= 6);
 }
 
 TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {

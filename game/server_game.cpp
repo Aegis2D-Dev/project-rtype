@@ -3,6 +3,7 @@
 #include <aegis2d/shmup/weapons.hpp>
 
 #include <rtype/entities.hpp>
+#include <rtype/lag_compensation.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/ship_movement.hpp>
 
@@ -81,9 +82,14 @@ void ServerGame::register_systems() {
             spawned_.push_back(spawn_enemy(world, spawn.type, spawn.position));
         }
     });
-    systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
+    systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& tick) {
         grid_.build(world);
         ecs::find_contacts(world, grid_.pairs(), contacts_);
+        // Lag compensation: each player's missiles also meet the enemies where that player
+        // saw them; the state of this tick will be tick.index + 1 in the history.
+        find_rewound_contacts(
+            world, history_, tick.index + 1,
+            [this](ecs::Entity shooter) { return rewind(shooter); }, contacts_);
     });
     systems_.add("damage", [this](ecs::Registry& world, const ecs::Tick& /*tick*/) {
         ecs::apply_damage(world, contacts_, damage_);
@@ -120,6 +126,7 @@ ecs::Entity ServerGame::add_player(std::size_t slot) {
         throw std::logic_error{"rtype: this player slot is taken"};
     }
     ship = spawn_player(registry_, slot);
+    rewinds_.at(slot) = 0;
     started_ = true;
     return ship;
 }
@@ -177,6 +184,20 @@ bool ServerGame::game_over() const {
 
 std::uint64_t ServerGame::ticks() const noexcept {
     return systems_.ticks();
+}
+
+bool ServerGame::set_rewind(ecs::Entity player, std::uint32_t ticks) {
+    const std::optional<std::size_t> slot = slot_of(player);
+    if (!slot.has_value()) {
+        return false;
+    }
+    rewinds_.at(*slot) = std::min<std::uint32_t>(ticks, PositionHistory::capacity);
+    return true;
+}
+
+std::uint32_t ServerGame::rewind(ecs::Entity player) const {
+    const std::optional<std::size_t> slot = slot_of(player);
+    return slot.has_value() ? rewinds_.at(*slot) : 0;
 }
 
 const PositionHistory& ServerGame::history() const noexcept {

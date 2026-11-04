@@ -83,6 +83,11 @@ bool GameInstance::set_input(std::uint8_t player, ecs::PlayerInput input, std::u
     return true;
 }
 
+bool GameInstance::set_rewind(std::uint8_t player, std::uint32_t ticks) {
+    const std::optional<ecs::Entity> found = ship(player);
+    return found.has_value() && game_->set_rewind(*found, ticks);
+}
+
 std::optional<ecs::Entity> GameInstance::ship(std::uint8_t player) const {
     if (player >= ships_.size()) {
         return std::nullopt;
