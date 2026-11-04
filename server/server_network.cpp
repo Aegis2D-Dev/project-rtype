@@ -14,6 +14,7 @@
 
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_network.hpp>
@@ -45,9 +46,6 @@ namespace core = aegis2d::core;
 namespace ecs = aegis2d::ecs;
 
 namespace {
-
-// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
-constexpr std::uint8_t valid_actions = 0x1FU;
 
 // "round trip 203 ms (jitter 4 ms)", in whole milliseconds, or that none was measured yet.
 std::string describe_rtt(const net::RttEstimator& rtt) {
@@ -94,6 +92,12 @@ net::BinaryWriter compressed(std::span<const std::byte> datagram,
         writer.write_bytes(datagram);
     }
     return writer;
+}
+
+// The bytes of a payload not read yet.
+std::span<const std::byte> rest_of(net::BinaryReader& payload) {
+    const std::optional<std::span<const std::byte>> rest = payload.read_bytes(payload.remaining());
+    return rest.value_or(std::span<const std::byte>{});
 }
 
 } // namespace
@@ -172,25 +176,27 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
     Peer& peer = peers_[session.token];
     switch (header.type) {
     case net::PacketType::Input: {
-        // One byte of held actions, bits 5 to 7 clear (RFC section 4.2).
-        const std::optional<std::uint8_t> actions = payload.read_u8();
-        if (!actions || !payload.at_end() || (*actions & ~valid_actions) != 0U) {
+        // Its sequence, then one byte of held actions, bits 5 to 7 clear (RFC section 4.2).
+        const std::optional<InputRecord> read = read_input(rest_of(payload));
+        if (!read) {
             drop(from, datagram, "malformed Input");
             return;
         }
+        const InputRecord input = read.value_or(InputRecord{});
         peer.heard = Clock::now();
-        const bool fresh = peer.channel.receive(header, peer.heard);
+        peer.channel.receive(header, peer.heard);
         peer.snapshots.acknowledge(header.ack, header.ack_bits);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
-        // Only the most recent Input counts: a late or duplicated one is ignored.
-        if (!fresh ||
-            (peer.last_input && !net::sequence_greater_than(header.sequence, *peer.last_input))) {
+        // Only the most recent Input counts, by its own sequence: a late or duplicated one is
+        // ignored.
+        if (const std::optional<std::uint16_t> last = peer.last_input;
+            last && !net::sequence_greater_than(input.sequence, *last)) {
             return;
         }
-        peer.last_input = header.sequence;
+        peer.last_input = input.sequence;
         if (input_) {
-            input_(session, ecs::PlayerInput{.held = *actions});
+            input_(session, ecs::PlayerInput{.held = input.actions}, input.sequence);
         }
         return;
     }

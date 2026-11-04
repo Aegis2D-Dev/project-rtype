@@ -172,6 +172,19 @@ public:
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
 
+    /// @brief Sequence of the last `Input` sent (RFC section 4.2).
+    /// @details The inputs are numbered from 0, one more for each, from 65535 back to 0: the
+    /// low 16 bits of inputs_sent() before it is sent.
+    /// @return The sequence, or nothing before the first `Input`.
+    [[nodiscard]] std::optional<std::uint16_t> last_input() const noexcept;
+
+    /// @brief Sequence of the last `Input` of the player the server applied, from the player
+    /// record of its own player in the snapshots (RFC section 4.3).
+    /// @details The inputs after it, up to last_input(), are those the server has not applied
+    /// yet. It only moves forward: a late snapshot does not move it back.
+    /// @return The sequence, or nothing until a snapshot says the server applied one.
+    [[nodiscard]] std::optional<std::uint16_t> acknowledged_input() const noexcept;
+
     /// @brief Datagrams exchanged with the server, by direction and packet type.
     /// @details Counts every datagram sent to the server's UDP port, and every one received
     /// with the token of the session, since the login: the source of the network
