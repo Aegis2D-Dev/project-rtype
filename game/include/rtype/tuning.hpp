@@ -3,6 +3,7 @@
 #pragma once
 #include <aegis2d/core/math.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 
@@ -18,6 +19,9 @@ static_assert(tick_rate % snapshot_rate == 0, "a snapshot every whole number of 
 
 /// @brief Ticks of enemy positions the server keeps, for lag compensation: 500 ms.
 inline constexpr std::uint32_t position_history_ticks = tick_rate / 2;
+/// @brief How far behind the server a client draws the world, as the server assumes it for
+/// lag compensation: the client's first interpolation delay, which clients do not report.
+inline constexpr std::chrono::milliseconds client_interpolation_delay{100};
 
 /// @brief Width of the play area (logical resolution).
 inline constexpr float area_width = 1280.0F;

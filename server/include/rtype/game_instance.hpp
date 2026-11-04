@@ -57,6 +57,13 @@ public:
     /// @return `false` if the player is not in the game or is out of lives.
     bool set_input(std::uint8_t player, aegis2d::ecs::PlayerInput input);
 
+    /// @brief Sets how many ticks back a player's missiles meet the enemies (lag
+    /// compensation, `ServerGame::set_rewind()`).
+    /// @param player Player number of the session.
+    /// @param ticks rewind_ticks() of its round trip time.
+    /// @return `false` if the player is not in the game or is out of lives.
+    bool set_rewind(std::uint8_t player, std::uint32_t ticks);
+
     /// @brief Ship of a player.
     /// @param player Player number.
     /// @return The ship, or `std::nullopt` if the player is not in the game or is out.

@@ -3,6 +3,7 @@
 # game's own code.
 add_library(rtype_game STATIC
     entities.cpp
+    lag_compensation.cpp
     position_history.cpp
     server_game.cpp
     waves.cpp)
