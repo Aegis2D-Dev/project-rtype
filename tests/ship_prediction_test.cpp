@@ -1,7 +1,9 @@
 #include <aegis2d/core/clock.hpp>
 #include <aegis2d/core/math.hpp>
+#include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/system.hpp>
+#include <aegis2d/net/sequence.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -12,12 +14,15 @@
 #include <rtype/ship_prediction.hpp>
 #include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <optional>
 #include <utility>
+#include <vector>
 
 using aegis2d::Vec2;
 using aegis2d::ecs::Action;
@@ -217,4 +222,131 @@ TEST_CASE("a server correction is replayed from where the server put the ship",
     ShipPrediction idle;
     CHECK(idle.reconcile(start, std::uint16_t{1}, tick) == 0.0F);
     CHECK(!idle.position().has_value());
+}
+
+TEST_CASE("a small correction is drawn over a few frames, a large one at once",
+          "[client][smoothing]") {
+    ShipPrediction prediction;
+    const Vec2 start{400.0F, 360.0F};
+    prediction.start(7, start);
+    CHECK(prediction.drawn() == std::optional{start});
+
+    // The server had the ship 10 pixels lower: the ship is there, the drawn one not yet.
+    prediction.reconcile(start + Vec2{0.0F, 10.0F}, std::nullopt, tick);
+    CHECK(prediction.position() == std::optional{start + Vec2{0.0F, 10.0F}});
+    CHECK(prediction.drawn() == std::optional{start});
+    // 2 pixels a frame at 60 frames per second: there in 5 frames.
+    float previous = start.y;
+    for (int frame = 0; frame < 5; ++frame) {
+        prediction.smooth(1.0F / 60.0F);
+        const float y = prediction.drawn().value_or(Vec2{}).y;
+        CHECK(y - previous == Catch::Approx(2.0F).margin(0.001F));
+        previous = y;
+    }
+    prediction.smooth(1.0F / 60.0F);
+    CHECK(prediction.drawn() == prediction.position());
+
+    // From snap_distance on, the ship is drawn where it is at once.
+    prediction.reconcile(start + Vec2{ShipPrediction::snap_distance, 10.0F}, std::nullopt, tick);
+    CHECK(prediction.drawn() == prediction.position());
+
+    // A start leaves no gap.
+    prediction.reconcile(prediction.position().value_or(start) + Vec2{0.0F, 4.0F}, std::nullopt,
+                         tick);
+    CHECK(prediction.drawn() != prediction.position());
+    prediction.start(7, start);
+    CHECK(prediction.drawn() == std::optional{start});
+    prediction.stop();
+    CHECK(!prediction.drawn().has_value());
+}
+
+TEST_CASE("at 5 % loss the ship never jumps more than a few pixels per frame",
+          "[client][smoothing]") {
+    // A server 150 ms away (5 ticks each way): each Input datagram carries 4 inputs, the
+    // server sets those it has not applied before its next tick and holds the last one;
+    // snapshots every third tick. 5 % of the datagrams are lost each way.
+    constexpr std::size_t latency = 5;
+    rtype::ServerGame server;
+    const aegis2d::ecs::Entity ship = server.add_player(0);
+    struct Snapshot {
+        std::size_t tick;
+        Vec2 position;
+        std::optional<std::uint16_t> input;
+    };
+    std::deque<std::pair<std::size_t, std::vector<InputRecord>>> to_server;
+    std::deque<std::pair<std::size_t, Snapshot>> to_client;
+    std::optional<std::uint16_t> applied;
+    std::vector<InputRecord> window;
+    ShipPrediction prediction;
+    aegis2d::core::Random random{294};
+    const auto lost = [&random] { return random.below(100) < 5; };
+    const std::array<std::uint8_t, 6> directions{
+        held(Action::Right), held(Action::Up), held(Action::Left), held(Action::Down), 0,
+        held(Action::Right)};
+    std::uint8_t actions = 0;
+    std::optional<Vec2> drawn;
+    float largest_jump = 0.0F;
+    float largest_correction = 0.0F;
+    std::uint16_t sequence = 0;
+    for (std::size_t now = 0; now < 3600; ++now) {
+        // A new direction every 8 ticks, once the prediction runs.
+        if (prediction.ship().has_value() && now % 8 == 0) {
+            actions = directions.at(random.below(static_cast<std::uint32_t>(directions.size())));
+        }
+        const InputRecord input{.sequence = sequence++, .actions = actions};
+        prediction.apply(input, tick);
+        if (window.size() == rtype::max_inputs_per_datagram) {
+            window.erase(window.begin());
+        }
+        window.push_back(input);
+        if (!lost()) {
+            to_server.emplace_back(now + latency, window);
+        }
+
+        while (!to_server.empty() && to_server.front().first == now) {
+            for (const InputRecord& arrived : to_server.front().second) {
+                if (!applied || aegis2d::net::sequence_greater_than(arrived.sequence, *applied)) {
+                    REQUIRE(server.set_input(ship, PlayerInput{.held = arrived.actions}));
+                    applied = arrived.sequence;
+                }
+            }
+            to_server.pop_front();
+        }
+        server.tick(aegis2d::core::step_from_rate(rtype::tuning::tick_rate));
+        if (now % 3 == 0 && !lost()) {
+            const Vec2 at = server.registry().get<aegis2d::ecs::Transform>(ship).position;
+            const rtype::EntityRecord sent =
+                rtype::quantized(rtype::EntityRecord{.id = 1, .kind = 1, .x = at.x, .y = at.y});
+            to_client.emplace_back(
+                now + latency,
+                Snapshot{.tick = now, .position = {sent.x, sent.y}, .input = applied});
+        }
+        while (!to_client.empty() && to_client.front().first == now) {
+            const Snapshot received = to_client.front().second;
+            to_client.pop_front();
+            if (!prediction.ship().has_value()) {
+                prediction.start(1, received.position);
+            } else {
+                largest_correction =
+                    std::max(largest_correction,
+                             prediction.reconcile(received.position, received.input, tick));
+            }
+        }
+
+        // One frame per tick, at 60 frames per second.
+        prediction.smooth(tick);
+        if (const std::optional<Vec2> at = prediction.drawn()) {
+            if (drawn) {
+                const Vec2 moved = *at - *drawn;
+                largest_jump = std::max(largest_jump, std::hypot(moved.x, moved.y));
+            }
+            drawn = at;
+        }
+    }
+    CAPTURE(prediction.corrections(), largest_correction, largest_jump);
+    // The loss makes the server apply some inputs for more or fewer ticks than the client.
+    CHECK(prediction.corrections() > 10);
+    CHECK(largest_correction > 5.0F);
+    // The ship's own move (5 pixels a tick) and 2 pixels of correction at most.
+    CHECK(largest_jump <= (rtype::tuning::player_speed * tick) + 2.0F + 0.01F);
 }
