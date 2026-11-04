@@ -50,10 +50,10 @@ The systems run in this order (`game.systems().names()` lists them):
 
 | # | System | Engine function | What happens |
 |---|---|---|---|
-| 1 | `steering` | `steer_player_ships` | Each ship takes the velocity of its held directions; diagonals are as fast as straight lines |
+| 1 | `steering` | `steer_ships` | Each ship takes the velocity of its held directions; diagonals are as fast as straight lines |
 | 2 | `movement` | `apply_velocity` | Every entity moves by `velocity × step` |
 | 3 | `sine_motion` | `apply_sine_motion` | Bydos slaves weave up and down on top of their velocity |
-| 4 | `play_area` | `clamp_player_ships` | Ships are kept fully on screen |
+| 4 | `play_area` | `keep_ships_in_area` | Ships are kept fully on screen |
 | 5 | `weapons` | `trigger_weapons` | A ship holding fire with a reloaded weapon fires a missile from its nose |
 | 6 | `enemy_fire` | `trigger_auto_weapons` | Each enemy on screen with a reloaded weapon fires a missile to the left |
 | 7 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves appear at random on the right edge |
@@ -64,6 +64,11 @@ The systems run in this order (`game.systems().names()` lists them):
 | 12 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
 | 13 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
 | 14 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
+
+Systems 1, 2 and 4 move a player ship as `step_ship(position, input, delta)` does
+(`rtype/ship_movement.hpp`): the velocity of its input (`ship_velocity()`), the move, then
+the clamping to the play area (`keep_ship_in_area()`), with the same arithmetic. A client
+that runs it on its own inputs finds the positions the server will send.
 
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a

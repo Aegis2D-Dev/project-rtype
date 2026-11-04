@@ -176,27 +176,29 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
     Peer& peer = peers_[session.token];
     switch (header.type) {
     case net::PacketType::Input: {
-        // Its sequence, then one byte of held actions, bits 5 to 7 clear (RFC section 4.2).
-        const std::optional<InputRecord> read = read_input(rest_of(payload));
+        // The newest input and up to 3 before it, each one byte of held actions with bits 5
+        // to 7 clear (RFC section 4.2).
+        const std::optional<std::vector<InputRecord>> read = read_inputs(rest_of(payload));
         if (!read) {
             drop(from, datagram, "malformed Input");
             return;
         }
-        const InputRecord input = read.value_or(InputRecord{});
         peer.heard = Clock::now();
         peer.channel.receive(header, peer.heard);
         peer.snapshots.acknowledge(header.ack, header.ack_bits);
         peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
-        // Only the most recent Input counts, by its own sequence: a late or duplicated one is
-        // ignored.
-        if (const std::optional<std::uint16_t> last = peer.last_input;
-            last && !net::sequence_greater_than(input.sequence, *last)) {
-            return;
-        }
-        peer.last_input = input.sequence;
-        if (input_) {
-            input_(session, ecs::PlayerInput{.held = input.actions}, input.sequence);
+        // Oldest first, each input not applied yet, by its own sequence: those of a lost
+        // datagram arrive with the next ones, those already applied are ignored.
+        for (const InputRecord& input : read.value_or(std::vector<InputRecord>{})) {
+            if (const std::optional<std::uint16_t> last = peer.last_input;
+                last && !net::sequence_greater_than(input.sequence, *last)) {
+                continue;
+            }
+            peer.last_input = input.sequence;
+            if (input_) {
+                input_(session, ecs::PlayerInput{.held = input.actions}, input.sequence);
+            }
         }
         return;
     }
