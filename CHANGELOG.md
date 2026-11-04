@@ -5,7 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) | Entity position history | `feat/server-position-history` | Open | 2026-11-04 | [2026-11-04-server-position-history](changelogs/2026-11-04-server-position-history.md) |
+| [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) | Entity position history | `feat/server-position-history` | Merged | 2026-11-04 | [2026-11-04-server-position-history](changelogs/2026-11-04-server-position-history.md) |
 | [#70](https://github.com/Aegis2D-Dev/project-rtype/pull/70) | Adaptive interpolation delay | `feat/client-adaptive-delay` | Open | 2026-11-04 | [2026-11-04-client-adaptive-delay](changelogs/2026-11-04-client-adaptive-delay.md) |
 | [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) | Correction smoothing | `feat/client-smoothing` | Merged | 2026-11-04 | [2026-11-04-client-smoothing](changelogs/2026-11-04-client-smoothing.md) |
 | [#68](https://github.com/Aegis2D-Dev/project-rtype/pull/68) | Server reconciliation | `feat/client-reconciliation` | Merged | 2026-11-04 | [2026-11-04-client-reconciliation](changelogs/2026-11-04-client-reconciliation.md) |

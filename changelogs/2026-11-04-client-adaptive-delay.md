@@ -36,12 +36,14 @@ ticket of the *Network: responsiveness under lag* epic (Aegis2D-Dev/aegis2d#289)
 - Tests: *remote entities move smoothly between snapshots sent at 20 Hz* expects the 1 % of
   a delay going down, its snapshots arriving on time.
 - *Architecture*: how far behind the entities are drawn.
-- Changelog: #63 (`f4ade28`) marked as merged.
+- Changelog: #63 (`f4ade28`) marked as merged; with `develop` merged in, #71 (`1801efc`) too.
 
 ## Commits
 - `79998e0` feat(client): followed the snapshots' jitter with the interpolation delay
 - `3c32d51` feat(tests): added interpolation delay tests with and without jitter
-- feat(docs): documented the adaptive interpolation delay and updated changelogs
+- `99b4b54` feat(docs): documented the adaptive interpolation delay and updated changelogs
+- `f987e6e` Merge remote-tracking branch 'origin/develop' into feat/client-adaptive-delay
+- feat(changelog): fixed pr numbers and merge status
 
 ## Notes
 - The lateness is measured where the client already times the ticks (`server_tick()`),
@@ -52,5 +54,9 @@ ticket of the *Network: responsiveness under lag* epic (Aegis2D-Dev/aegis2d#289)
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too: clang-format, clang-tidy 22 on every changed source, `mkdocs build
   --strict`, Doxygen; the world tests also under ASan and UBSan.
+- `develop` merged in once #64 to #71 were in: the comment of the drawing loop and the
+  paragraph of *Architecture* on the client now tell of both the prediction and the
+  adaptive delay, and the index of `CHANGELOG.md` keeps every row. Built again (server and
+  client), clang-tidy on the merged files: 233 of 234 tests pass.
 - `ctest`: 207 of 208 tests pass. *a flooding address is cut off, and the players play on*
   fails on the machine used, as on `develop`, and passes in CI.

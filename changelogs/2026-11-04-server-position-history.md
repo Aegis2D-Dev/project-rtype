@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) (opened 2026-11-04) |
 | Branch | `feat/server-position-history` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`1801efc`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#296](https://github.com/Aegis2D-Dev/aegis2d/issues/296) feat(server): entity position history |
 
