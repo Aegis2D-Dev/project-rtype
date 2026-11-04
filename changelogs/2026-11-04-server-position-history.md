@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) (opened 2026-11-04) |
 | Branch | `feat/server-position-history` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`1801efc`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#296](https://github.com/Aegis2D-Dev/aegis2d/issues/296) feat(server): entity position history |
 
@@ -31,12 +31,15 @@ end of every tick, and reads the position of an enemy at a past tick: what lag c
 
 ## Changed
 - *Gameplay*: `history()` in the calls of the server game.
-- Changelog: #63 (`f4ade28`) marked as merged.
+- Changelog: #63 (`f4ade28`) marked as merged; with `develop` merged in, #64 (`ac70cdc`), #65
+  and #66 (with #67), #67 (`c47cd6e`), #68 (`2266e33`) and #69 (`5d5ec09`) too.
 
 ## Commits
 - `1b161ea` feat(server): kept the positions of the enemies over the last 500 ms
 - `869e1be` feat(tests): added position history tests at past ticks
-- feat(docs): documented the position history and updated changelogs
+- `0a6c64a` feat(docs): documented the position history and updated changelogs
+- `c5c3d3b` Merge remote-tracking branch 'origin/develop' into feat/server-position-history
+- feat(changelog): fixed pr numbers and merge status
 
 ## Notes
 - Each tick costs a copy of the enemies' positions (a handle and two floats each) and a
@@ -46,5 +49,7 @@ end of every tick, and reads the position of an enemy at a past tick: what lag c
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too: clang-format, clang-tidy 22 on every changed source, `mkdocs build
   --strict`, Doxygen.
+- `develop` merged in once #64 to #69 were in (a conflict in the index of `CHANGELOG.md`
+  only); built and tested again: 230 of 231 tests pass.
 - `ctest`: 207 of 208 tests pass. *a flooding address is cut off, and the players play on*
   fails on the machine used, as on `develop`, and passes in CI.

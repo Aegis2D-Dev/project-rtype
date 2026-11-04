@@ -24,6 +24,8 @@ struct PlayerState {
     std::uint32_t lives = 0;
     /// @brief Score; once out, the last score of its ship.
     std::uint32_t score = 0;
+    /// @brief Sequence of the last input applied to its ship, or nothing before the first.
+    std::optional<std::uint16_t> input;
 };
 
 /// @brief The one game of the server, with up to tuning::max_players players.
@@ -52,10 +54,14 @@ public:
     bool leave(std::uint8_t player);
 
     /// @brief Sets the actions a player holds, applied at every tick until the next call.
+    /// @details The sequence of the input is kept for the snapshots (PlayerState::input), so
+    /// the client knows which of its inputs the server applied (RFC section 4.3).
     /// @param player Player number of the session.
     /// @param input Held actions, from the player's most recent `Input`.
-    /// @return `false` if the player is not in the game or is out of lives.
-    bool set_input(std::uint8_t player, aegis2d::ecs::PlayerInput input);
+    /// @param sequence Sequence of that `Input` (InputRecord::sequence).
+    /// @return `false` if the player is not in the game or is out of lives; the input and its
+    /// sequence are then ignored.
+    bool set_input(std::uint8_t player, aegis2d::ecs::PlayerInput input, std::uint16_t sequence);
 
     /// @brief Sets how many ticks back a player's missiles meet the enemies (lag
     /// compensation, `ServerGame::set_rewind()`).
@@ -100,6 +106,7 @@ private:
     std::unique_ptr<ServerGame> game_;
     std::array<std::optional<aegis2d::ecs::Entity>, tuning::max_players> ships_;
     std::array<std::uint32_t, tuning::max_players> scores_{};
+    std::array<std::optional<std::uint16_t>, tuning::max_players> inputs_{};
     std::uint64_t games_ = 0;
 };
 

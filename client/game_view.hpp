@@ -15,6 +15,7 @@
 #include <rtype/client_world.hpp>
 #include <rtype/events.hpp>
 #include <rtype/player_notices.hpp>
+#include <rtype/ship_prediction.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -30,7 +31,7 @@ namespace rtype {
 /// @brief Draws a game in progress, from the client's copy of the world.
 /// @details Each frame, the client hands the events the world applied (handle()), moves
 /// time forward (update()) and draws (draw()). The remote entities are drawn where they
-/// were ClientWorld::interpolation_delay ago, between two snapshots (#127): smooth at any
+/// were ClientWorld::interpolation_delay() ago, between two snapshots (#127): smooth at any
 /// frame rate though the server sends 20 snapshots a second. On top of the world:
 /// - each ship in its player's color, with the marker and number of its slot, so that
 ///   players tell each other apart without color too;
@@ -73,10 +74,13 @@ public:
     /// @brief Draws the frame.
     /// @param renderer Renderer, between begin_frame() and end_frame().
     /// @param world The world to draw.
+    /// @param prediction The player's own ship, drawn where its inputs put it rather than in
+    /// the past with the others (client-side prediction), its corrections smoothed.
     /// @param preferences The player's settings: text size, color vision, auto-fire.
     /// @param now Time of the frame.
     void draw(aegis2d::render::IRenderer& renderer, ClientWorld& world,
-              const Preferences& preferences, Clock::time_point now);
+              const ShipPrediction& prediction, const Preferences& preferences,
+              Clock::time_point now);
 
     /// @brief Shows the keys of the game at the top for a few seconds (they also show for
     /// the first seconds of a game), after the player changed a setting.
@@ -94,8 +98,8 @@ public:
 
 private:
     void explode(aegis2d::Vec2 position);
-    void draw_world(aegis2d::render::IRenderer& renderer, ClientWorld& world, std::size_t vision,
-                    Clock::time_point now);
+    void draw_world(aegis2d::render::IRenderer& renderer, ClientWorld& world,
+                    const ShipPrediction& prediction, std::size_t vision, Clock::time_point now);
     void draw_hud(aegis2d::render::IRenderer& renderer, const ClientWorld& world,
                   const Preferences& preferences) const;
     void draw_messages(aegis2d::render::IRenderer& renderer, const ClientWorld& world,

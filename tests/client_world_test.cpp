@@ -1,3 +1,4 @@
+#include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/waves.hpp>
@@ -14,11 +15,15 @@
 #include <rtype/tuning.hpp>
 #include <rtype/world_snapshot.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ratio>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -142,10 +147,11 @@ TEST_CASE("players come from the snapshots and the events", "[client][world]") {
     ClientWorld world;
     const auto now = ClientWorld::Clock::now();
     world.apply(rtype::PlayerJoinedEvent{.tick = 1, .player = 2, .name = "R9"}, now);
-    world.apply(Snapshot{
-        .tick = 3,
-        .players = {rtype::PlayerRecord{.player = 2, .ship = 11, .lives = 3, .score = 400}},
-        .entities = {}});
+    world.apply(
+        Snapshot{.tick = 3,
+                 .players = {rtype::PlayerRecord{
+                     .player = 2, .ship = 11, .lives = 3, .score = 400, .input = std::nullopt}},
+                 .entities = {}});
     REQUIRE(world.players().at(2).has_value());
     const rtype::RemotePlayer player = world.players().at(2).value_or(rtype::RemotePlayer{});
     CHECK(player.name == "R9");
@@ -159,6 +165,26 @@ TEST_CASE("players come from the snapshots and the events", "[client][world]") {
                 now);
     CHECK(!world.players().at(2).has_value());
     CHECK(!world.players().at(0).has_value());
+}
+
+TEST_CASE("the input a player's record acknowledges only moves forward", "[client][world]") {
+    ClientWorld world;
+    const auto at = [](std::uint32_t tick, std::optional<std::uint16_t> input) {
+        return Snapshot{.tick = tick,
+                        .players = {rtype::PlayerRecord{
+                            .player = 1, .ship = 4, .lives = 3, .score = 0, .input = input}},
+                        .entities = {}};
+    };
+    const auto input = [&] { return world.players().at(1).value_or(rtype::RemotePlayer{}).input; };
+    world.apply(at(3, std::nullopt));
+    CHECK(!input().has_value());
+    world.apply(at(6, 65534));
+    CHECK(input() == std::optional<std::uint16_t>{65534});
+    // A late snapshot, or one saying nothing, does not take it back; the wrap moves it on.
+    world.apply(at(9, 2));
+    world.apply(at(4, 65530));
+    world.apply(at(12, std::nullopt));
+    CHECK(input() == std::optional<std::uint16_t>{2});
 }
 
 TEST_CASE("the client's entities mirror the server's", "[client][world]") {
@@ -257,8 +283,9 @@ TEST_CASE("remote entities move smoothly between snapshots sent at 20 Hz", "[cli
     }
     const Entity bydos_entity = world.entity(7).value_or(Entity{});
 
-    // Every 16 ms frame, drawn 100 ms behind: the position goes down by the same step each
-    // frame instead of jumping 15 pixels every third frame.
+    // Every 16 ms frame, drawn about 100 ms behind: the position goes down by the same step
+    // each frame instead of jumping 15 pixels every third frame. The snapshots come on time,
+    // so the delay goes down meanwhile, and the drawing runs 1 % fast.
     const auto now = start + 30ms + (interval * 10);
     float previous = 0.0F;
     for (int frame = 0; frame < 6; ++frame) {
@@ -267,7 +294,8 @@ TEST_CASE("remote entities move smoothly between snapshots sent at 20 Hz", "[cli
         REQUIRE(tick.has_value());
         const float x = world.position_at(bydos_entity, tick.value_or(0.0)).x;
         if (frame > 0) {
-            CHECK(std::abs((previous - x) - (16.0F * 0.3F)) < 0.01F); // 300 px/s
+            // 300 px/s.
+            CHECK(std::abs((previous - x) - (16.0F * 0.3F * (1.0F + 0.01F))) < 0.01F);
         }
         previous = x;
     }
@@ -279,6 +307,115 @@ TEST_CASE("remote entities move smoothly between snapshots sent at 20 Hz", "[cli
     REQUIRE(before.has_value());
     REQUIRE(after.has_value());
     CHECK(std::abs(before.value_or(0.0) - after.value_or(0.0)) < 1.0);
+}
+
+namespace {
+
+// When the server ran a tick, from its start.
+ClientWorld::Clock::duration at_tick(std::uint32_t tick) {
+    return std::chrono::duration_cast<ClientWorld::Clock::duration>(
+        std::chrono::duration<double, std::ratio<1, rtype::tuning::tick_rate>>{tick});
+}
+
+// A Bydos moving left at 300 px/s, a snapshot every 3 ticks for a minute, each arriving 30 ms
+// after it left plus up to jitter more; a frame every 4 ms. Returns the frames at which the
+// Bydos drawn did not move, and the delay at the end.
+struct Drawn {
+    int stops = 0;
+    ClientWorld::Clock::duration delay{};
+    ClientWorld::Clock::duration longest{};
+};
+
+Drawn play(std::uint32_t jitter_ms) {
+    ClientWorld world;
+    const ClientWorld::Clock::time_point start{};
+    world.apply(GameEvent{spawn(0, 7, 2000.0F)}, start);
+    aegis2d::core::Random random{295};
+    std::vector<std::pair<ClientWorld::Clock::time_point, std::uint32_t>> arrivals;
+    for (std::uint32_t tick_index = 3; tick_index <= 3600; tick_index += 3) {
+        const auto jitter = std::chrono::milliseconds{random.below(jitter_ms + 1)};
+        arrivals.emplace_back(start + at_tick(tick_index) + 30ms + jitter, tick_index);
+    }
+    std::ranges::sort(arrivals);
+    Drawn drawn;
+    std::size_t next = 0;
+    std::optional<float> previous;
+    for (auto now = start; next < arrivals.size(); now += 4ms) {
+        while (next < arrivals.size() && arrivals.at(next).first <= now) {
+            const std::uint32_t sent = arrivals.at(next).second;
+            world.apply(snapshot(sent, 7, 2000.0F - (5.0F * static_cast<float>(sent))),
+                        arrivals.at(next).first);
+            ++next;
+        }
+        drawn.longest = std::max(drawn.longest, world.interpolation_delay(now));
+        const std::optional<double> at = world.render_tick(now);
+        // From the second second on: the first snapshots set the clock.
+        if (!at.has_value() || now < start + 1s) {
+            continue;
+        }
+        const float x = world.position_at(world.entity(7).value_or(Entity{}), *at).x;
+        if (previous.has_value() && x >= *previous) {
+            ++drawn.stops;
+        }
+        previous = x;
+    }
+    drawn.delay = world.interpolation_delay(arrivals.back().first);
+    return drawn;
+}
+
+} // namespace
+
+TEST_CASE("with no jitter the interpolation delay goes down to 50 ms", "[client][world]") {
+    const Drawn drawn = play(0);
+    CHECK(drawn.delay == ClientWorld::min_interpolation_delay);
+    CHECK(drawn.longest == ClientWorld::initial_interpolation_delay);
+    CHECK(drawn.stops == 0);
+}
+
+TEST_CASE("with 40 ms of jitter no entity stops for lack of snapshots", "[client][world]") {
+    const Drawn drawn = play(40);
+    const double delay_ms = std::chrono::duration<double, std::milli>{drawn.delay}.count();
+    const double longest_ms = std::chrono::duration<double, std::milli>{drawn.longest}.count();
+    CAPTURE(delay_ms, longest_ms);
+    CHECK(drawn.stops == 0);
+    // About 50 ms, plus 1.25 times the 40 ms of the latest snapshots.
+    CHECK(drawn.delay > 90ms);
+    CHECK(drawn.delay <= ClientWorld::max_interpolation_delay);
+}
+
+TEST_CASE("the interpolation delay rises fast and goes down slowly, within its bounds",
+          "[client][world]") {
+    ClientWorld world;
+    const ClientWorld::Clock::time_point start{};
+    CHECK(world.interpolation_delay(start) == ClientWorld::initial_interpolation_delay);
+    world.apply(snapshot(3, 7, 0.0F), start + at_tick(3));
+    // 80 ms late: it aims at 50 + 1.25 x 80 = 150 ms, and gets there at half real time, so
+    // the drawing slows down without going back.
+    const auto late = start + at_tick(6) + 80ms;
+    world.apply(snapshot(6, 7, 0.0F), late);
+    const auto before = world.interpolation_delay(late);
+    CHECK(before <= ClientWorld::initial_interpolation_delay);
+    CHECK(std::chrono::abs(world.interpolation_delay(late + 50ms) - before - 25ms) < 1ms);
+    CHECK(std::chrono::abs(world.interpolation_delay(late + 200ms) - 150ms) < 1ms);
+    CHECK(world.render_tick(late + 50ms) > world.render_tick(late));
+    // 1 s late: 200 ms at most.
+    const auto later = start + at_tick(9) + 1s;
+    world.apply(snapshot(9, 7, 0.0F), later);
+    CHECK(world.interpolation_delay(later + 1s) == ClientWorld::max_interpolation_delay);
+    // On time again: the late ones count for 2 s, then 10 ms less per second.
+    const auto on_time = [&](std::uint32_t from, std::uint32_t to) {
+        for (std::uint32_t index = from; index <= to; ++index) {
+            world.apply(snapshot(index * 3, 7, 0.0F), start + at_tick(index * 3));
+        }
+        return start + at_tick(to * 3);
+    };
+    auto now = on_time(10, 60); // until 3 s, the window of the 1 s late one
+    CHECK(world.interpolation_delay(now) == ClientWorld::max_interpolation_delay);
+    now = on_time(61, 120); // 3 s more
+    CHECK(world.interpolation_delay(now) < ClientWorld::max_interpolation_delay);
+    CHECK(world.interpolation_delay(now) > 160ms);
+    now = on_time(121, 600); // 24 s more: down to the floor
+    CHECK(world.interpolation_delay(now) == ClientWorld::min_interpolation_delay);
 }
 
 TEST_CASE("the applied events are handed out once, the ignored ones are not", "[client][world]") {

@@ -1,11 +1,11 @@
 #include <aegis2d/ecs/despawn.hpp>
 #include <aegis2d/ecs/movement.hpp>
-#include <aegis2d/shmup/ships.hpp>
 #include <aegis2d/shmup/weapons.hpp>
 
 #include <rtype/entities.hpp>
 #include <rtype/lag_compensation.hpp>
 #include <rtype/server_game.hpp>
+#include <rtype/ship_movement.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -46,12 +46,11 @@ ServerGame::ServerGame(std::optional<std::uint64_t> seed)
 }
 
 void ServerGame::register_systems() {
-    systems_.add("steering", shmup::steer_player_ships);
+    // A player ship moves as step_ship() says: steering, movement, then play_area.
+    systems_.add("steering", steer_ships);
     systems_.add("movement", ecs::apply_velocity);
     systems_.add("sine_motion", ecs::apply_sine_motion);
-    systems_.add("play_area", [](ecs::Registry& world, const ecs::Tick& /*tick*/) {
-        shmup::clamp_player_ships(world, play_area());
-    });
+    systems_.add("play_area", keep_ships_in_area);
     systems_.add("weapons", [this](ecs::Registry& world, const ecs::Tick& tick) {
         shmup::trigger_weapons(world, tick, shooters_);
         fired_.clear();
