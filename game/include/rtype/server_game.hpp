@@ -27,10 +27,10 @@ namespace rtype {
 /// @brief One R-Type game on the server: the world, its systems in order, and the players.
 /// @details The constructor registers the server systems in the order of a tick:
 ///
-/// 1. `steering`: player ships take the velocity of their held directions;
+/// 1. `steering`: player ships take the velocity of their held directions (steer_ships());
 /// 2. `movement`: every entity moves by its velocity;
 /// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
-/// 4. `play_area`: player ships are kept on screen;
+/// 4. `play_area`: player ships are kept on screen (keep_ships_in_area());
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
 /// 6. `enemy_fire`: enemies on screen with a reloaded weapon fire a missile to the left;
 /// 7. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
@@ -41,6 +41,9 @@ namespace rtype {
 /// 12. `lives`: killed players lose a life and respawn, or are out;
 /// 13. `cleanup`: the dead and the spent missiles are destroyed;
 /// 14. `despawn`: missiles and enemies that left the screen for good are destroyed.
+///
+/// Systems 1, 2 and 4 move a player ship as step_ship() does, which the client runs to
+/// predict its own ship.
 ///
 /// The network layer (#112, #113, #114) creates it with a seed, gives it the waves of the
 /// level (play_waves(load_waves(...))), calls set_input() with each
