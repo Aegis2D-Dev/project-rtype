@@ -49,7 +49,9 @@ Aegis2D-Dev/aegis2d#435. First ticket of the *Network: responsiveness under lag*
 ## Commits
 - `b1725ed` feat(protocol): numbered inputs and acknowledged them in player records
 - `58574d1` feat(tests): added input sequence tests and the rfc examples bit by bit
-- feat(docs): documented input sequences and updated changelogs
+- `6d194b2` feat(docs): documented input sequences and updated changelogs
+- `137b9c8` feat(tests): waited for a new input at each step of the acknowledged input test
+- feat(changelog): updated changelogs
 
 ## Notes
 - A client and a server of different builds no longer understand each other's `Input` and
@@ -60,5 +62,8 @@ Aegis2D-Dev/aegis2d#435. First ticket of the *Network: responsiveness under lag*
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too (`-DSDL_UNIX_CONSOLE_BUILD=ON`): clang-format, clang-tidy 22 on every
   changed source, `mkdocs build --strict`.
+- The first CI run failed under ASan and UBSan: the end-to-end test could reach its five
+  steps with 3 inputs sent, the acknowledged input having caught up already; each step now
+  waits for a new input first.
 - `ctest`: 211 of 212 tests pass. *a flooding address is cut off, and the players play on*
   fails on the machine used, as on `develop`, and passes in CI.

@@ -520,13 +520,17 @@ TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[clien
     CHECK(!client.acknowledged_input().has_value());
     client.set_input(holding(Action::Right));
 
-    // At each step, the acknowledged input catches up with the last one sent at its start;
-    // it never goes past the inputs sent, nor back.
+    // At each step, a new input is sent, then the acknowledged input catches up with it; it
+    // never goes past the inputs sent, nor back.
     std::uint16_t previous = 0;
+    std::optional<std::uint16_t> sent;
     bool checked = true;
     for (int step = 0; step < 5; ++step) {
-        REQUIRE(pump(context, &server, {&client}, [&] { return client.last_input().has_value(); }));
-        const std::uint16_t target = client.last_input().value_or(0);
+        REQUIRE(pump(context, &server, {&client}, [&] {
+            return client.last_input().has_value() && client.last_input() != sent;
+        }));
+        sent = client.last_input();
+        const std::uint16_t target = sent.value_or(0);
         REQUIRE(pump(context, &server, {&client}, [&] {
             const std::optional<std::uint16_t> acknowledged = client.acknowledged_input();
             if (!acknowledged) {
@@ -542,7 +546,7 @@ TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[clien
         }));
     }
     CHECK(checked);
-    CHECK(client.inputs_sent() > 5);
+    CHECK(client.inputs_sent() >= 5);
     // The server's game applied the same input: the one of the player's record.
     game_server.simulation().stop();
     const std::optional<rtype::PlayerState> state = instance.player_state(0);
