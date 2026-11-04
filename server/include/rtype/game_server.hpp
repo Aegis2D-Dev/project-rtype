@@ -30,7 +30,9 @@ namespace rtype {
 ///   tick, the `Destroy` of its ship;
 /// - the most recent `Input` of each player steers its ship;
 /// - after each tick, the events of the tick go to every bound player, and every third tick
-///   a snapshot.
+///   a snapshot;
+/// - with each snapshot, the round trip time of each player sets how far back its missiles
+///   meet the enemies (lag compensation, rewind_ticks()), when it changes.
 ///
 /// The server keeps a single room for now. The caller runs the context and calls
 /// `network().update()` a few times per second. Destroying the server stops the simulation
@@ -72,9 +74,14 @@ private:
     void after_tick(Room& room, GameInstance& instance);
     void on_joined(const Session& session);
     void on_left(const Session& session, LeaveReason reason);
+    void update_rewinds();
 
     aegis2d::net::NetworkContext& context_;
     ServerNetwork network_;
+    // Tokens of the players in the game, by number, and the last rewind posted to the game;
+    // used by the network thread only.
+    std::array<std::optional<std::uint32_t>, tuning::max_players> tokens_{};
+    std::array<std::uint32_t, tuning::max_players> rewinds_{};
     // Last: its thread starts once the rest is ready, and stops first.
     Room room_;
 };

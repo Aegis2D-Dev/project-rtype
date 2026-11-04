@@ -3,7 +3,10 @@
 # game's own code.
 add_library(rtype_game STATIC
     entities.cpp
+    lag_compensation.cpp
+    position_history.cpp
     server_game.cpp
+    ship_movement.cpp
     waves.cpp)
 target_include_directories(rtype_game PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_game

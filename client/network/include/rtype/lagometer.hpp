@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <string>
 
 namespace rtype {
@@ -29,10 +30,12 @@ enum class LagGraph : std::uint8_t {
     BytesIn,
     /// @brief Bytes sent per second.
     BytesOut,
+    /// @brief Corrections of the predicted ship per second (ShipPrediction::corrections()).
+    Corrections,
 };
 
 /// @brief Number of graphs: LagGraph values are 0 to lag_graph_count - 1.
-inline constexpr std::size_t lag_graph_count = 6;
+inline constexpr std::size_t lag_graph_count = 7;
 
 /// @brief How a figure compares with a sound link.
 enum class LagLevel : std::uint8_t {
@@ -98,8 +101,10 @@ public:
     /// @param traffic Datagrams exchanged with the server.
     /// @param stats Loss and snapshots of the server's datagrams.
     /// @param now Current time.
+    /// @param corrections Corrections of the predicted ship so far
+    /// (ShipPrediction::corrections()): the sample gives those since the last one, per second.
     void update(const aegis2d::net::RttEstimator& rtt, const aegis2d::net::TrafficCounters& traffic,
-                const NetworkStats& stats, Clock::time_point now);
+                const NetworkStats& stats, Clock::time_point now, std::uint64_t corrections = 0);
 
     /// @brief Adds a sample, forgetting the oldest beyond length.
     /// @param sample Sample to add.
@@ -125,6 +130,9 @@ public:
 private:
     std::deque<LagSample> samples_;
     Clock::time_point next_{};
+    // Corrections and time of the last sample, for the corrections per second.
+    std::uint64_t corrections_ = 0;
+    std::optional<Clock::time_point> sampled_;
 };
 
 } // namespace rtype

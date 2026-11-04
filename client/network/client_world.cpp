@@ -2,6 +2,7 @@
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/net/sequence.hpp>
 
 #include <rtype/client_world.hpp>
 #include <rtype/events.hpp>
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <iterator>
 #include <optional>
 #include <ratio>
@@ -23,6 +25,7 @@
 namespace rtype {
 
 namespace ecs = aegis2d::ecs;
+namespace net = aegis2d::net;
 using aegis2d::Vec2;
 
 namespace {
@@ -185,6 +188,12 @@ void ClientWorld::apply(const Snapshot& snapshot) {
         updated.ship = record.ship;
         updated.lives = record.lives;
         updated.score = record.score;
+        // A late snapshot does not take the input back: the server only moves forward.
+        const std::optional<std::uint16_t>& known = updated.input;
+        if (const std::optional<std::uint16_t>& input = record.input;
+            input && (!known || net::sequence_greater_than(*input, *known))) {
+            updated.input = input;
+        }
     }
     for (const EntityRecord& record : snapshot.entities) {
         const auto found = known_.find(record.id);
@@ -210,12 +219,46 @@ void ClientWorld::apply(const Snapshot& snapshot, Clock::time_point received) {
     const auto sent =
         std::chrono::duration_cast<Clock::duration>(Ticks{static_cast<double>(snapshot.tick)});
     const Clock::time_point zero = received - sent;
+    Clock::duration lateness{};
     if (!tick_zero_.has_value() || zero < *tick_zero_) {
         tick_zero_ = zero;
     } else {
-        const auto late = std::chrono::duration<double>{zero - *tick_zero_};
+        lateness = zero - *tick_zero_;
+        const auto late = std::chrono::duration<double>{lateness};
         tick_zero_ = *tick_zero_ + std::chrono::duration_cast<Clock::duration>(late * drift);
     }
+    adapt_delay(lateness, received);
+}
+
+// The delay aims at a snapshot interval plus 1.25 times the largest lateness of the window,
+// and moves there with time.
+void ClientWorld::adapt_delay(Clock::duration lateness, Clock::time_point received) {
+    lateness_.emplace_back(received, lateness);
+    while (!lateness_.empty() && received - lateness_.front().first > jitter_window) {
+        lateness_.pop_front();
+    }
+    Clock::duration largest{};
+    for (const auto& [arrival, late] : lateness_) {
+        largest = std::max(largest, late);
+    }
+    delay_ = interpolation_delay(received);
+    delay_at_ = std::max(received, delay_at_.value_or(received));
+    aim_ = std::clamp<Clock::duration>(min_interpolation_delay + ((largest * 5) / 4),
+                                       min_interpolation_delay, max_interpolation_delay);
+}
+
+ClientWorld::Clock::duration
+ClientWorld::interpolation_delay(Clock::time_point now) const noexcept {
+    if (!delay_at_.has_value() || now <= *delay_at_) {
+        return delay_;
+    }
+    const std::chrono::duration<double> elapsed = now - *delay_at_;
+    if (aim_ >= delay_) {
+        return std::min(
+            aim_, delay_ + std::chrono::duration_cast<Clock::duration>(elapsed * delay_increase));
+    }
+    return std::max(aim_,
+                    delay_ - std::chrono::duration_cast<Clock::duration>(elapsed * delay_decrease));
 }
 
 std::optional<double> ClientWorld::server_tick(Clock::time_point now) const {
@@ -226,7 +269,7 @@ std::optional<double> ClientWorld::server_tick(Clock::time_point now) const {
 }
 
 std::optional<double> ClientWorld::render_tick(Clock::time_point now) const {
-    return server_tick(now - interpolation_delay);
+    return server_tick(now - interpolation_delay(now));
 }
 
 Vec2 ClientWorld::position_at(ecs::Entity entity, double tick) const {

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -35,6 +36,14 @@ constexpr auto bits(EntityField field) {
     return static_cast<std::uint8_t>(field);
 }
 
+std::vector<std::byte> bytes(std::initializer_list<std::uint8_t> values) {
+    std::vector<std::byte> out;
+    for (const std::uint8_t value : values) {
+        out.push_back(std::byte{value});
+    }
+    return out;
+}
+
 EntityRecord bydos(std::uint32_t id, float x, float y) {
     return EntityRecord{.id = id, .kind = 3, .x = x, .y = y, .vx = -120.0F, .vy = 0.0F, .frame = 1};
 }
@@ -42,7 +51,7 @@ EntityRecord bydos(std::uint32_t id, float x, float y) {
 Snapshot baseline() {
     return Snapshot{
         .tick = 30,
-        .players = {PlayerRecord{.player = 0, .ship = 1, .lives = 3, .score = 0}},
+        .players = {PlayerRecord{.player = 0, .ship = 1, .lives = 3, .score = 0, .input = 12}},
         .entities =
             {EntityRecord{
                  .id = 1, .kind = 1, .x = 100.0F, .y = 360.0F, .vx = 0.0F, .vy = 0.0F, .frame = 0},
@@ -83,6 +92,44 @@ Snapshot expected(const Snapshot& snapshot) {
 
 } // namespace
 
+TEST_CASE("delta snapshots follow the RFC examples bit by bit", "[snapshot][delta]") {
+    // RFC section 4.7: player 0 (ship 2, 3 lives, score 100, input 41), its ship alone.
+    const Snapshot full{
+        .tick = 600,
+        .players = {PlayerRecord{.player = 0, .ship = 2, .lives = 3, .score = 100, .input = 41}},
+        .entities = {EntityRecord{
+            .id = 2, .kind = 1, .x = 100.0F, .y = 360.0F, .vx = 0.0F, .vy = 0.0F, .frame = 0}}};
+    const std::vector<std::vector<std::byte>> first = rtype::write_delta_snapshot(full, nullptr);
+    REQUIRE(first.size() == 1);
+    // 175 bits.
+    CHECK(first.front() ==
+          bytes({0x58, 0x02, 0x00, 0x00, 0xA1, 0xC0, 0x00, 0xD9, 0x14, 0x00, 0x01,
+                 0x00, 0x02, 0x00, 0x05, 0x64, 0x00, 0xB4, 0x00, 0x00, 0x00, 0x00}));
+    CHECK(rtype::apply_delta(
+              nullptr,
+              std::vector{rtype::read_delta_snapshot(first.front()).value_or(DeltaSnapshot{})}) ==
+          std::optional{full});
+
+    // Section 4.8: at tick 603, against it, input 44; the ship moved, a Bydos appeared.
+    Snapshot next = full;
+    next.tick = 603;
+    next.players.front().input = 44;
+    next.entities.front().x = 105.0F;
+    next.entities.front().vx = 300.0F;
+    next.entities.push_back(EntityRecord{
+        .id = 5, .kind = 3, .x = 1300.0F, .y = 200.0F, .vx = -120.0F, .vy = 0.0F, .frame = 1});
+    const std::vector<std::vector<std::byte>> second = rtype::write_delta_snapshot(next, &full);
+    REQUIRE(second.size() == 1);
+    // 244 bits.
+    CHECK(second.front() == bytes({0x5B, 0x02, 0x00, 0x00, 0xA1, 0xC0, 0x00, 0x59, 0x16, 0x80, 0x03,
+                                   0x02, 0x00, 0x02, 0x00, 0x14, 0xD2, 0x80, 0x25, 0x00, 0x60, 0x00,
+                                   0xA0, 0x81, 0xA2, 0x80, 0x0C, 0x88, 0x0F, 0x00, 0x01}));
+    CHECK(rtype::apply_delta(
+              &full,
+              std::vector{rtype::read_delta_snapshot(second.front()).value_or(DeltaSnapshot{})}) ==
+          std::optional{next});
+}
+
 TEST_CASE("without a baseline every entity is added", "[snapshot][delta]") {
     const Sent sent = send(baseline(), nullptr);
     REQUIRE(sent.parts.size() == 1);
@@ -108,9 +155,10 @@ TEST_CASE("unchanged entities are skipped", "[snapshot][delta]") {
     Snapshot rebuilt = expected(base);
     rebuilt.tick = 33;
     CHECK(sent.rebuilt == rebuilt);
-    // The tick, the player, the baseline and an empty list: 87 bits, against 309 in full.
-    CHECK(sent.payloads.front().size() == 11);
-    CHECK(rtype::write_snapshot(same).front().size() == 39);
+    // The tick, the player and its input, the baseline and an empty list: 104 bits, against
+    // 326 in full.
+    CHECK(sent.payloads.front().size() == 13);
+    CHECK(rtype::write_snapshot(same).front().size() == 41);
 }
 
 TEST_CASE("moved entities carry only the fields that changed", "[snapshot][delta]") {
@@ -263,7 +311,7 @@ TEST_CASE("deltas against acknowledged snapshots rebuild a game exactly", "[snap
         aegis2d::ecs::PlayerInput input;
         input.set(aegis2d::ecs::Action::Fire, true);
         input.set(player % 2 == 0 ? aegis2d::ecs::Action::Down : aegis2d::ecs::Action::Right, true);
-        instance.set_input(player, input);
+        instance.set_input(player, input, player);
     }
     // The client acknowledges every other snapshot: the baseline is 2 snapshots old.
     std::vector<Snapshot> sent;

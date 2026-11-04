@@ -1,9 +1,14 @@
+#include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/system.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
+#include <aegis2d/net/rtt.hpp>
+#include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
@@ -16,16 +21,22 @@
 #include <rtype/entities.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/input.hpp>
+#include <rtype/lag_compensation.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/ship_movement.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_history.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -369,9 +380,8 @@ TEST_CASE("the server receives the held actions 60 times per second", "[client][
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     std::vector<std::uint8_t> inputs;
-    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input) {
-        inputs.push_back(input.held);
-    });
+    server.on_input([&](const rtype::Session& /*session*/, PlayerInput input,
+                        std::uint16_t /*sequence*/) { inputs.push_back(input.held); });
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
     REQUIRE(
@@ -415,6 +425,7 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
     std::vector<std::unique_ptr<TcpConnection>> connections;
     std::vector<PacketHeader> received;
     std::vector<std::uint8_t> actions;
+    std::vector<std::vector<rtype::InputRecord>> inputs;
     constexpr std::uint32_t token = 77;
     const auto send_header = [&](const Endpoint& to, PacketType type, std::uint16_t sequence,
                                  std::uint16_t ack) {
@@ -450,7 +461,11 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
             send_header(from, PacketType::Snapshot, 2, header->sequence);
             send_header(from, PacketType::Snapshot, 3, header->sequence);
         } else if (header->type == PacketType::Input) {
-            actions.push_back(std::to_integer<std::uint8_t>(bytes.back()));
+            const std::optional<std::vector<rtype::InputRecord>> read =
+                rtype::read_inputs(std::span{bytes}.subspan(PacketHeader::size));
+            REQUIRE(read.has_value());
+            inputs.push_back(read.value_or(std::vector<rtype::InputRecord>{}));
+            actions.push_back(inputs.back().back().actions);
         }
     });
     listener.start_accepting([&](TcpConnection connection) {
@@ -471,7 +486,7 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
                                                  .name = "R9"}};
     client.start();
     client.set_input(holding(Action::Fire));
-    REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 3; }));
+    REQUIRE(pump(context, nullptr, {&client}, [&] { return actions.size() >= 5; }));
 
     // The client's sequences follow each other from its first Connect, and its last Input
     // acknowledges the Snapshot of sequence 2 and, in its bits, 1 and the Accept; not 3,
@@ -488,6 +503,234 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
         CHECK(received.at(index).sequence == received.at(index - 1).sequence + 1);
     }
     CHECK(actions.back() == 0x10);
+
+    // Each Input carries the 3 inputs before its own, but the first three.
+    REQUIRE(inputs.size() >= 4);
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+        CAPTURE(index);
+        const std::vector<rtype::InputRecord>& carried = inputs.at(index);
+        REQUIRE(carried.size() == std::min<std::size_t>(index + 1, 4));
+        for (std::size_t back = 0; back < carried.size(); ++back) {
+            CHECK(carried.at(carried.size() - 1 - back).sequence == index - back);
+        }
+    }
+}
+
+TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[client][input]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    rtype::GameInstance& instance = game_server.room().instance();
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    CHECK(!client.acknowledged_input().has_value());
+    client.set_input(holding(Action::Right));
+
+    // At each step, a new input is sent, then the acknowledged input catches up with it; it
+    // never goes past the inputs sent, nor back.
+    std::uint16_t previous = 0;
+    std::optional<std::uint16_t> sent;
+    bool checked = true;
+    for (int step = 0; step < 5; ++step) {
+        REQUIRE(pump(context, &server, {&client}, [&] {
+            return client.last_input().has_value() && client.last_input() != sent;
+        }));
+        sent = client.last_input();
+        const std::uint16_t target = sent.value_or(0);
+        REQUIRE(pump(context, &server, {&client}, [&] {
+            const std::optional<std::uint16_t> acknowledged = client.acknowledged_input();
+            if (!acknowledged) {
+                return false;
+            }
+            const std::uint16_t value = *acknowledged;
+            checked =
+                checked &&
+                !aegis2d::net::sequence_greater_than(value, client.last_input().value_or(0)) &&
+                !aegis2d::net::sequence_less_than(value, previous);
+            previous = value;
+            return !aegis2d::net::sequence_less_than(value, target);
+        }));
+    }
+    CHECK(checked);
+    CHECK(client.inputs_sent() >= 5);
+    // The server's game applied the same input: the one of the player's record.
+    game_server.simulation().stop();
+    const std::optional<rtype::PlayerState> state = instance.player_state(0);
+    REQUIRE(state.has_value());
+    CHECK(state.value_or(rtype::PlayerState{}).input.has_value());
+    CHECK(!aegis2d::net::sequence_less_than(state.value_or(rtype::PlayerState{}).input.value_or(0),
+                                            previous));
+}
+
+TEST_CASE("at 150 ms of round trip the own ship answers the keys within a frame",
+          "[client][prediction]") {
+    // A server 150 ms away: it binds the endpoint and sends the world once, the player's ship
+    // at (100, 360); nothing it sends after the key press can arrive within the 150 ms.
+    NetworkContext context;
+    TcpListener listener{context, 0};
+    UdpSocket server_udp{context, 0};
+    std::vector<std::unique_ptr<TcpConnection>> connections;
+    constexpr std::uint32_t token = 77;
+    constexpr std::uint32_t ship = 7;
+    server_udp.start_receiving([&](const Endpoint& from, std::span<const std::byte> bytes) {
+        aegis2d::net::BinaryReader reader{bytes};
+        const auto read = aegis2d::net::read_header(reader);
+        const auto* const header = std::get_if<PacketHeader>(&read);
+        if (header == nullptr) {
+            return;
+        }
+        if (header->type != PacketType::Connect) {
+            return;
+        }
+        for (const PacketType type : {PacketType::Accept, PacketType::Snapshot}) {
+            aegis2d::net::BinaryWriter writer;
+            aegis2d::net::write_header(writer, PacketHeader{.type = type,
+                                                            .sequence = type == PacketType::Accept
+                                                                            ? std::uint16_t{0}
+                                                                            : std::uint16_t{1},
+                                                            .ack = header->sequence,
+                                                            .ack_bits = 0,
+                                                            .session = token});
+            if (type == PacketType::Snapshot) {
+                const rtype::Snapshot world{
+                    .tick = 3,
+                    .players = {rtype::PlayerRecord{
+                        .player = 0, .ship = ship, .lives = 3, .score = 0, .input = std::nullopt}},
+                    .entities = {rtype::EntityRecord{.id = ship,
+                                                     .kind = 1,
+                                                     .x = 100.0F,
+                                                     .y = 360.0F,
+                                                     .vx = 0.0F,
+                                                     .vy = 0.0F,
+                                                     .frame = 0}}};
+                writer.write_bytes(rtype::write_delta_snapshot(world, nullptr).front());
+            }
+            server_udp.send_to(from, writer.data());
+        }
+    });
+    listener.start_accepting([&](TcpConnection connection) {
+        connections.push_back(std::make_unique<TcpConnection>(std::move(connection)));
+        TcpConnection& accepted = *connections.back();
+        accepted.start([&](std::span<const std::byte> message) {
+            if (rtype::read_login_request(message)) {
+                accepted.send(rtype::write_login_accepted(
+                    rtype::LoginAccepted{.session = token,
+                                         .player = 0,
+                                         .udp_port = server_udp.local_endpoint().port()}));
+            }
+        });
+    });
+    ClientSession client{context, ClientSettings{.host = "127.0.0.1",
+                                                 .tcp_port = listener.local_endpoint().port(),
+                                                 .name = "R9"}};
+    client.start();
+    REQUIRE(pump(context, nullptr, {&client},
+                 [&] { return client.prediction().position().has_value(); }));
+    const aegis2d::Vec2 start = client.prediction().position().value_or(aegis2d::Vec2{});
+    CHECK(start == aegis2d::Vec2{100.0F, 360.0F});
+    CHECK(client.prediction().ship() == std::optional{ship});
+
+    // The key goes down; one frame later at 60 frames per second, the ship has moved, as the
+    // server will move it, and goes on at each frame of the 150 ms.
+    const aegis2d::ecs::PlayerInput right = holding(Action::Right);
+    client.set_input(right);
+    const auto pressed = ClientSession::Clock::now();
+    const float tick =
+        aegis2d::ecs::Tick{.step = aegis2d::core::step_from_rate(rtype::tuning::tick_rate),
+                           .index = 0}
+            .delta();
+    aegis2d::Vec2 expected = start;
+    const std::uint64_t sent = client.inputs_sent();
+    for (int frame = 1; frame <= 9; ++frame) {
+        client.update(pressed + (frame * std::chrono::milliseconds{17}));
+        CAPTURE(frame);
+        REQUIRE(client.inputs_sent() == sent + static_cast<std::uint64_t>(frame));
+        expected = rtype::step_ship(expected, right, tick).position;
+        CHECK(client.prediction().position() == std::optional{expected});
+    }
+    CHECK(expected.x > start.x + 40.0F);
+    // Nothing came back: the server has applied none of them, the client keeps them all.
+    CHECK(client.prediction().pending().size() >= 9);
+    CHECK(client.snapshots().size() == 1);
+}
+
+TEST_CASE("reconciled with the snapshots, the own ship ends where the server's is",
+          "[client][reconciliation]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    rtype::GameInstance& instance = game_server.room().instance();
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(pump(context, &server, {&client},
+                 [&] { return client.prediction().position().has_value(); }));
+
+    // Up and right for a while, then nothing: once the server has applied every input, the
+    // ship stands still on both sides.
+    PlayerInput diagonal = holding(Action::Up);
+    diagonal.set(Action::Right, true);
+    client.set_input(diagonal);
+    run_for(context, server, client, std::chrono::milliseconds{400});
+    client.set_input(PlayerInput{});
+    run_for(context, server, client, std::chrono::milliseconds{100});
+    const std::uint16_t released = client.last_input().value_or(0);
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const std::optional<std::uint16_t> acknowledged = client.acknowledged_input();
+        return acknowledged.has_value() &&
+               !aegis2d::net::sequence_less_than(acknowledged.value_or(0), released);
+    }));
+    run_for(context, server, client, std::chrono::milliseconds{100});
+
+    game_server.simulation().stop();
+    const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
+    REQUIRE(ship.has_value());
+    const aegis2d::Vec2 at =
+        instance.game()
+            .registry()
+            .get<aegis2d::ecs::Transform>(ship.value_or(aegis2d::ecs::Entity{}))
+            .position;
+    const aegis2d::Vec2 predicted = client.prediction().position().value_or(aegis2d::Vec2{});
+    CAPTURE(at.x, at.y, predicted.x, predicted.y, client.prediction().corrections());
+    CHECK(at.x > rtype::player_spawn(0).x + 50.0F);
+    // Within the rounding of the snapshots, 1/16 pixel.
+    CHECK(std::abs(predicted.x - at.x) <= 0.0625F);
+    CHECK(std::abs(predicted.y - at.y) <= 0.0625F);
+    CHECK(client.prediction().pending().size() <= 3);
+}
+
+TEST_CASE("the server compensates each player by its round trip time", "[client][lag]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    rtype::GameInstance& instance = game_server.room().instance();
+    ServerNetwork& server = game_server.network();
+    ClientSession client{context, settings_for(server, "R9")};
+    client.start();
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    const std::uint32_t token = client.login().value_or(rtype::LoginAccepted{}).session;
+    REQUIRE(pump(context, &server, {&client}, [&] {
+        const aegis2d::net::RttEstimator* const rtt = server.rtt(token);
+        return rtt != nullptr && rtt->has_estimate();
+    }));
+    run_for(context, server, client, std::chrono::milliseconds{300});
+
+    // On loopback the round trip is a few milliseconds at most: the rewind is about the
+    // client's interpolation delay, 6 ticks.
+    game_server.simulation().stop();
+    const aegis2d::net::RttEstimator* const rtt = server.rtt(token);
+    REQUIRE(rtt != nullptr);
+    const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
+    REQUIRE(ship.has_value());
+    // Within a tick of the latest estimate: the last change may still wait in the queue of
+    // the simulation when it stops.
+    const auto rewind =
+        static_cast<std::int64_t>(instance.game().rewind(ship.value_or(aegis2d::ecs::Entity{})));
+    const auto expected = static_cast<std::int64_t>(
+        rtype::rewind_ticks(rtt->smoothed(), rtype::tuning::client_interpolation_delay));
+    CHECK(std::abs(rewind - expected) <= 1);
+    CHECK(rewind >= 6);
 }
 
 TEST_CASE("the client reads the compressed snapshots of the server", "[client][compression]") {

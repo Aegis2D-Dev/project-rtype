@@ -7,6 +7,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/snapshot.hpp>
@@ -110,12 +111,16 @@ TEST_CASE("both ends count the datagrams of a known exchange", "[client][server]
                on_client.total(Direction::Received, PacketType::Event) == sent;
     }));
 
-    // Inputs, one every tick: 18 bytes of header and one of actions each.
+    // Inputs, one every tick: 18 bytes of header, then the newest input's sequence, the count
+    // and the actions of 4 inputs, of 1 to 3 for the first three.
     REQUIRE(pump(context, server, client, [&] {
         return on_server->total(Direction::Received, PacketType::Input).datagrams >= 30;
     }));
     const TrafficCount inputs = on_server->total(Direction::Received, PacketType::Input);
-    CHECK(inputs.bytes == (PacketHeader::size + 1) * inputs.datagrams);
+    CHECK(inputs.bytes ==
+          ((PacketHeader::size + rtype::input_payload_size(rtype::max_inputs_per_datagram)) *
+           inputs.datagrams) -
+              (3 + 2 + 1));
     CHECK(on_client.total(Direction::Sent, PacketType::Input).datagrams >= inputs.datagrams);
     // The client received the Accept, the snapshots and the events, nothing else.
     TrafficCount expected = connects;

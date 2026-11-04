@@ -44,16 +44,19 @@ OpenGL.
 ## Authoritative server
 
 The server owns the only true world. Each client sends the actions its player holds
-(one byte per tick: up, down, left, right, fire); the server applies them, runs the
-simulation and sends back what happened. A client never decides a hit, a kill or a score.
+(one byte per tick: up, down, left, right, fire), each tick's input numbered and sent
+again with the next three, so a lost datagram loses no input; the server applies each
+once, runs the simulation and sends back what happened, and each snapshot tells every
+player the number of its last input applied. A client never decides a hit, a kill or a
+score.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant N as Server network thread
     participant G as ServerGame (simulation thread)
-    C->>N: input (held actions)
-    N->>G: set_input(player, input)
+    C->>N: input (sequence, held actions)
+    N->>G: set_input(player, input, sequence)
     loop every 1/60 s
         G->>G: tick(step): every system in order
     end
@@ -117,10 +120,25 @@ After each tick, the simulation thread hands the network thread two things:
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
-`ClientSession` sends the held actions every tick and applies what arrives to
-`ClientWorld`, its copy of the world; the screen draws that copy where it was 100 ms ago,
-between two snapshots (`interpolate()`), so that 20 snapshots a second move the entities
-smoothly at any frame rate. The events applied are handed to the screen
+`ClientSession` sends the held actions every tick, numbered from 0 (`last_input()`), and
+applies what arrives to `ClientWorld`, its copy of the world, where its player's record
+gives the last of its inputs the server applied (`acknowledged_input()`); the screen draws
+that copy where it was a moment ago, between two snapshots (`interpolate()`), so that 20
+snapshots a second move the entities smoothly at any frame rate. The moment follows the
+jitter (`interpolation_delay()`): one snapshot interval, 50 ms, plus 1.25 times the latest
+snapshot of the last 2 seconds, up to 200 ms, so the tick drawn always has a snapshot after
+it; it rises at half real time and goes down by 10 ms a second, so the drawing never jumps
+back. The player's own ship is the exception: `ShipPrediction` (`rtype/ship_prediction.hpp`)
+moves it at once by each input sent, with the server's own step (`step_ship()`), from the
+server's position of the ship in a snapshot, and keeps the inputs the snapshots have not
+acknowledged yet; the screen draws the ship there, so it answers the keys within a frame
+whatever the round trip time. Each newer snapshot reconciles it
+(`ShipPrediction::reconcile()`): the ship goes back to where the server had it once it
+applied the acknowledged input, and the inputs after it are replayed; when the server
+applied them as predicted, nothing moves (`corrections()` counts the times something did,
+for the lagometer). The drawn ship does not jump with a correction: it glides to the
+corrected position at 120 pixels per second (`smooth()`, `drawn()`), unless the correction
+is 32 pixels or more. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 

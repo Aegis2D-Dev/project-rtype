@@ -14,6 +14,7 @@
 #include <aegis2d/ecs/system.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
+#include <rtype/position_history.hpp>
 #include <rtype/tuning.hpp>
 
 #include <array>
@@ -27,10 +28,10 @@ namespace rtype {
 /// @brief One R-Type game on the server: the world, its systems in order, and the players.
 /// @details The constructor registers the server systems in the order of a tick:
 ///
-/// 1. `steering`: player ships take the velocity of their held directions;
+/// 1. `steering`: player ships take the velocity of their held directions (steer_ships());
 /// 2. `movement`: every entity moves by its velocity;
 /// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
-/// 4. `play_area`: player ships are kept on screen;
+/// 4. `play_area`: player ships are kept on screen (keep_ships_in_area());
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
 /// 6. `enemy_fire`: enemies on screen with a reloaded weapon fire a missile to the left;
 /// 7. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
@@ -41,6 +42,9 @@ namespace rtype {
 /// 12. `lives`: killed players lose a life and respawn, or are out;
 /// 13. `cleanup`: the dead and the spent missiles are destroyed;
 /// 14. `despawn`: missiles and enemies that left the screen for good are destroyed.
+///
+/// Systems 1, 2 and 4 move a player ship as step_ship() does, which the client runs to
+/// predict its own ship.
 ///
 /// The network layer (#112, #113, #114) creates it with a seed, gives it the waves of the
 /// level (play_waves(load_waves(...))), calls set_input() with each
@@ -103,6 +107,18 @@ public:
     /// @return `false` if the player is not in the game any more (a late packet).
     bool set_input(aegis2d::ecs::Entity player, aegis2d::ecs::PlayerInput input);
 
+    /// @brief Sets how many ticks back a player's missiles meet the enemies (lag
+    /// compensation): its rewind_ticks(), from its round trip time.
+    /// @param player Ship returned by add_player().
+    /// @param ticks 0 for none, at most PositionHistory::capacity.
+    /// @return `false` if the player is out.
+    bool set_rewind(aegis2d::ecs::Entity player, std::uint32_t ticks);
+
+    /// @brief How many ticks back a player's missiles meet the enemies.
+    /// @param player Ship returned by add_player().
+    /// @return The rewind, 0 for a player out or never set.
+    [[nodiscard]] std::uint32_t rewind(aegis2d::ecs::Entity player) const;
+
     /// @brief Runs one simulation step: every system, in order.
     /// @param step Duration of the step, `core::step_from_rate(tuning::tick_rate)`.
     void tick(aegis2d::core::Duration step);
@@ -114,6 +130,11 @@ public:
     /// @brief Number of ticks run.
     /// @return Completed calls to tick().
     [[nodiscard]] std::uint64_t ticks() const noexcept;
+
+    /// @brief Where the enemies were at each of the last 500 ms of ticks.
+    /// @details Recorded at the end of each tick(), under the number ticks() then has.
+    /// @return The history.
+    [[nodiscard]] const PositionHistory& history() const noexcept;
 
     /// @brief World of the game, to spawn entities and to build snapshots.
     /// @return The registry.
@@ -184,6 +205,8 @@ private:
     std::vector<aegis2d::ecs::LifeLost> lives_lost_;
     std::vector<aegis2d::ecs::Entity> despawned_;
     std::array<aegis2d::ecs::Entity, tuning::max_players> slots_{};
+    PositionHistory history_;
+    std::array<std::uint32_t, tuning::max_players> rewinds_{};
     bool started_ = false;
 };
 

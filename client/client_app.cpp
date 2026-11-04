@@ -346,7 +346,8 @@ void ClientApp::update_session() {
             screen_ = ClientScreen::Game;
             core::log_info("in game as player {}", player + 1);
         }
-        lagometer_.update(session_->rtt(), session_->traffic(), session_->network_stats(), now);
+        lagometer_.update(session_->rtt(), session_->traffic(), session_->network_stats(), now,
+                          session_->prediction().corrections());
         if (screen_ == ClientScreen::Game) {
             const std::vector<GameEvent> events = session_->world().take_events();
             view_.handle(events, session_->world(), preferences_, now);
@@ -386,7 +387,7 @@ void ClientApp::draw() {
     const Clock::time_point now = Clock::now();
     if (screen_ == ClientScreen::Game && session_.has_value()) {
         renderer_.begin_frame(view_.background(preferences_));
-        view_.draw(renderer_, session_->world(), preferences_, now);
+        view_.draw(renderer_, session_->world(), session_->prediction(), preferences_, now);
         if (show_lagometer_) {
             draw_lagometer(renderer_, font_, lagometer_, preferences_);
         }

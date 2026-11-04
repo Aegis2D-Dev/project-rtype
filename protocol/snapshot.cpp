@@ -21,11 +21,12 @@ namespace {
 constexpr unsigned player_count_bits = 3;
 constexpr unsigned player_bits = 2;
 constexpr unsigned lives_bits = 8;
+constexpr unsigned input_bits = 16;
 
 std::size_t player_record_bits(const PlayerRecord& player) noexcept {
     const bool has_ship = player.ship != no_entity;
     return player_bits + 1 + (has_ship ? varint_bits(player.ship) : 0) + lives_bits +
-           varint_bits(player.score);
+           varint_bits(player.score) + 1 + (player.input ? input_bits : 0);
 }
 
 std::optional<PlayerRecord> read_player(net::BitReader& reader) {
@@ -38,13 +39,23 @@ std::optional<PlayerRecord> read_player(net::BitReader& reader) {
         *has_ship ? read_varint(reader) : std::optional{no_entity};
     const std::optional<std::uint64_t> lives = reader.read_bits(lives_bits);
     const std::optional<std::uint32_t> score = read_varint(reader);
-    if (!ship || !lives || !score) {
+    const std::optional<bool> has_input = reader.read_bool();
+    if (!ship || !lives || !score || !has_input) {
         return std::nullopt;
+    }
+    std::optional<std::uint16_t> input;
+    if (*has_input) {
+        const std::optional<std::uint64_t> sequence = reader.read_bits(input_bits);
+        if (!sequence) {
+            return std::nullopt;
+        }
+        input = static_cast<std::uint16_t>(*sequence);
     }
     return PlayerRecord{.player = static_cast<std::uint8_t>(*player),
                         .ship = *ship,
                         .lives = static_cast<std::uint8_t>(*lives),
-                        .score = *score};
+                        .score = *score,
+                        .input = input};
 }
 
 } // namespace
@@ -70,6 +81,10 @@ void write_players(net::BitWriter& writer, const Snapshot& snapshot) {
         }
         writer.write_bits(player.lives, lives_bits);
         write_varint(writer, player.score);
+        writer.write_bool(player.input.has_value());
+        if (const std::optional<std::uint16_t>& input = player.input) {
+            writer.write_bits(*input, input_bits);
+        }
     }
 }
 

@@ -74,9 +74,10 @@ public:
     /// acknowledges no event, `Kicked` for a protocol error.
     using LeaveHandler = std::function<void(const Session& session, LeaveReason reason)>;
 
-    /// @brief Called with the actions a player holds, from its most recent `Input`.
-    using InputHandler =
-        std::function<void(const Session& session, aegis2d::ecs::PlayerInput input)>;
+    /// @brief Called with the actions a player holds and the sequence of the `Input` they
+    /// come from, its most recent one.
+    using InputHandler = std::function<void(const Session& session, aegis2d::ecs::PlayerInput input,
+                                            std::uint16_t sequence)>;
 
     /// @brief Time a new connection has to send its `LoginRequest`.
     static constexpr std::chrono::seconds login_timeout{5};
@@ -113,10 +114,12 @@ public:
     void on_players(PlayerHandler joined, LeaveHandler left);
 
     /// @brief Sets what to do with the inputs of the players.
-    /// @details Called for each valid `Input` from a bound endpoint that is more recent
-    /// than the last one applied (by `sequence`): late, duplicated and malformed ones are
-    /// not passed on (RFC section 4.2).
-    /// @param input Called with the session and the actions it holds.
+    /// @details Called for each input of a valid `Input` datagram from a bound endpoint that
+    /// is more recent than the last one passed on (by its sequence, InputRecord), oldest
+    /// first: an input whose datagram was lost is passed on when one of the next three
+    /// arrives; those passed on already, late ones and malformed datagrams are not (RFC
+    /// section 4.2).
+    /// @param input Called with the session, the actions it holds and their sequence.
     void on_input(InputHandler input);
 
     /// @brief Sets from which size the payloads of snapshots and events are compressed.
@@ -320,6 +323,7 @@ private:
     // What the server keeps of each bound session's datagrams, by token.
     struct Peer {
         aegis2d::net::ReliableChannel channel;
+        // Sequence of the last Input passed on (InputRecord::sequence).
         std::optional<std::uint16_t> last_input;
         // When its last valid datagram arrived, for the UDP timeout.
         Clock::time_point heard = Clock::now();
