@@ -122,7 +122,11 @@ gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), th
 applies what arrives to `ClientWorld`, its copy of the world, where its player's record
 gives the last of its inputs the server applied (`acknowledged_input()`); the screen draws
 that copy where it was 100 ms ago, between two snapshots (`interpolate()`), so that 20
-snapshots a second move the entities smoothly at any frame rate. The events applied are handed to the screen
+snapshots a second move the entities smoothly at any frame rate. The player's own ship is
+the exception: `ShipPrediction` (`rtype/ship_prediction.hpp`) moves it at once by each input
+sent, with the server's own step (`step_ship()`), from the server's position of the ship in
+a snapshot, and keeps the inputs the snapshots have not acknowledged yet; the screen draws
+the ship there, so it answers the keys within a frame whatever the round trip time. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 

@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#67](https://github.com/Aegis2D-Dev/project-rtype/pull/67) | Client-side prediction | `feat/client-prediction` | Open | 2026-11-04 | [2026-11-04-client-prediction](changelogs/2026-11-04-client-prediction.md) |
 | [#66](https://github.com/Aegis2D-Dev/project-rtype/pull/66) | Shared ship movement step | `refactor/game-ship-movement-step` | Open | 2026-11-04 | [2026-11-04-game-ship-movement-step](changelogs/2026-11-04-game-ship-movement-step.md) |
 | [#65](https://github.com/Aegis2D-Dev/project-rtype/pull/65) | Redundant inputs | `feat/protocol-redundant-inputs` | Open | 2026-11-04 | [2026-11-04-protocol-redundant-inputs](changelogs/2026-11-04-protocol-redundant-inputs.md) |
 | [#64](https://github.com/Aegis2D-Dev/project-rtype/pull/64) | Input sequence numbers | `feat/protocol-input-sequence` | Open | 2026-11-04 | [2026-11-04-protocol-input-sequence](changelogs/2026-11-04-protocol-input-sequence.md) |
