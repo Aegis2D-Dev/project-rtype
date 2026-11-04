@@ -116,9 +116,12 @@ After each tick, the simulation thread hands the network thread two things:
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
 `ClientSession` sends the held actions every tick and applies what arrives to
-`ClientWorld`, its copy of the world; the screen draws that copy where it was 100 ms ago,
+`ClientWorld`, its copy of the world; the screen draws that copy where it was a moment ago,
 between two snapshots (`interpolate()`), so that 20 snapshots a second move the entities
-smoothly at any frame rate. The events applied are handed to the screen
+smoothly at any frame rate. The moment follows the jitter (`interpolation_delay()`): one
+snapshot interval, 50 ms, plus 1.25 times the latest snapshot of the last 2 seconds, up to
+200 ms, so the tick drawn always has a snapshot after it; it rises at half real time and
+goes down by 10 ms a second, so the drawing never jumps back. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
 
