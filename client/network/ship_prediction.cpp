@@ -20,11 +20,13 @@ void ShipPrediction::start(std::uint32_t ship, Vec2 position) {
     ship_ = ship;
     position_ = position;
     pending_.clear();
+    gap_ = {};
 }
 
 void ShipPrediction::stop() noexcept {
     ship_.reset();
     pending_.clear();
+    gap_ = {};
 }
 
 void ShipPrediction::apply(const InputRecord& input, float delta) {
@@ -64,7 +66,25 @@ float ShipPrediction::reconcile(Vec2 server, std::optional<std::uint16_t> acknow
     if (last_correction_ > correction_threshold) {
         ++corrections_;
     }
+    // The drawn ship stays where it was, and smooth() brings it to the new position.
+    gap_ -= moved;
+    if (std::hypot(gap_.x, gap_.y) >= snap_distance) {
+        gap_ = {};
+    }
     return last_correction_;
+}
+
+void ShipPrediction::smooth(float seconds) noexcept {
+    const float length = std::hypot(gap_.x, gap_.y);
+    const float step = smoothing_speed * seconds;
+    gap_ = length <= step ? Vec2{} : gap_ * ((length - step) / length);
+}
+
+std::optional<Vec2> ShipPrediction::drawn() const noexcept {
+    if (!ship_.has_value()) {
+        return std::nullopt;
+    }
+    return position_ + gap_;
 }
 
 std::uint64_t ShipPrediction::corrections() const noexcept {

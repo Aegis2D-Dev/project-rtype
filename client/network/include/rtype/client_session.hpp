@@ -177,8 +177,9 @@ public:
     /// gets another ship; stopped once the player is out. Each newer snapshot reconciles it:
     /// the ship goes back to the server's position once it applied the input the player
     /// record acknowledges, and the inputs after it are replayed (ShipPrediction::reconcile()).
-    /// The screen draws the ship at its position(), so it answers the keys within a frame
-    /// whatever the round trip time.
+    /// Each update() smooths the corrections (ShipPrediction::smooth()): the screen draws the
+    /// ship at its drawn() position, so it answers the keys within a frame whatever the round
+    /// trip time, and never jumps by more than a few pixels for a small correction.
     /// @return The prediction.
     [[nodiscard]] const ShipPrediction& prediction() const noexcept;
 
@@ -262,6 +263,8 @@ private:
     std::uint8_t predicted_lives_ = 0;
     // Tick of the last snapshot the prediction started from or was reconciled with.
     std::optional<std::uint32_t> reconciled_tick_;
+    // Time of the last update(), to smooth the corrections of the prediction.
+    std::optional<Clock::time_point> last_update_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;

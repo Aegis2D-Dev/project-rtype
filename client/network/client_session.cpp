@@ -340,6 +340,11 @@ void ClientSession::send_connect(Clock::time_point now) {
 }
 
 void ClientSession::update(Clock::time_point now) {
+    // The drawn ship catches up with the corrections a little at each frame.
+    if (last_update_.has_value() && now > *last_update_) {
+        prediction_.smooth(std::chrono::duration<float>{now - *last_update_}.count());
+    }
+    last_update_ = now;
     if (closing_ && connection_ && connection_->stats().sent >= sent_) {
         connection_->close();
         closing_ = false;

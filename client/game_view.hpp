@@ -75,7 +75,7 @@ public:
     /// @param renderer Renderer, between begin_frame() and end_frame().
     /// @param world The world to draw.
     /// @param prediction The player's own ship, drawn where its inputs put it rather than in
-    /// the past with the others (client-side prediction).
+    /// the past with the others (client-side prediction), its corrections smoothed.
     /// @param preferences The player's settings: text size, color vision, auto-fire.
     /// @param now Time of the frame.
     void draw(aegis2d::render::IRenderer& renderer, ClientWorld& world,

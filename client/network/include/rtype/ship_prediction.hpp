@@ -31,6 +31,16 @@ public:
     /// of the prediction.
     static constexpr float correction_threshold = 0.25F;
 
+    /// @brief Speed at which the drawn ship catches up with a correction, in logical pixels
+    /// per second: 2 pixels a frame at 60 frames per second, so a correction of a few pixels
+    /// takes a few frames instead of a jump.
+    static constexpr float smoothing_speed = 120.0F;
+
+    /// @brief Corrections from this distance are not smoothed: the ship is far from where it
+    /// was predicted (a hit, a long stall), and gliding there would show it in the wrong place
+    /// for long.
+    static constexpr float snap_distance = 32.0F;
+
     /// @brief Starts predicting a ship from a position of the server.
     /// @details Forgets the inputs kept: the server's position already holds them.
     /// @param ship Network id of the ship.
@@ -72,6 +82,20 @@ public:
     /// @return The distance in logical pixels, 0 before the first.
     [[nodiscard]] float last_correction() const noexcept;
 
+    /// @brief Brings the drawn ship towards the predicted one, after a correction.
+    /// @details Call it once a frame: the gap a reconciliation left (see drawn()) shrinks by
+    /// smoothing_speed per second, so the ship never jumps by more than its own move plus
+    /// 2 pixels a frame.
+    /// @param seconds Time since the last call.
+    void smooth(float seconds) noexcept;
+
+    /// @brief Where to draw the ship: position(), plus what is left of the corrections.
+    /// @details A reconciliation moves position() at once, but the drawn ship stays where it
+    /// was and smooth() brings it there, unless the correction is snap_distance or more.
+    /// start() and stop() leave no gap.
+    /// @return The center to draw, or nothing before start() or after stop().
+    [[nodiscard]] std::optional<aegis2d::Vec2> drawn() const noexcept;
+
     /// @brief Network id of the ship predicted.
     /// @return The id, or nothing before start() or after stop().
     [[nodiscard]] std::optional<std::uint32_t> ship() const noexcept;
@@ -90,6 +114,8 @@ private:
     std::deque<InputRecord> pending_;
     std::uint64_t corrections_ = 0;
     float last_correction_ = 0.0F;
+    // drawn() minus position_: the part of the corrections not shown yet.
+    aegis2d::Vec2 gap_;
 };
 
 } // namespace rtype

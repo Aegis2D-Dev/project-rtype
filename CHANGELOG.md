@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#69](https://github.com/Aegis2D-Dev/project-rtype/pull/69) | Correction smoothing | `feat/client-smoothing` | Open | 2026-11-04 | [2026-11-04-client-smoothing](changelogs/2026-11-04-client-smoothing.md) |
 | [#68](https://github.com/Aegis2D-Dev/project-rtype/pull/68) | Server reconciliation | `feat/client-reconciliation` | Open | 2026-11-04 | [2026-11-04-client-reconciliation](changelogs/2026-11-04-client-reconciliation.md) |
 | [#67](https://github.com/Aegis2D-Dev/project-rtype/pull/67) | Client-side prediction | `feat/client-prediction` | Open | 2026-11-04 | [2026-11-04-client-prediction](changelogs/2026-11-04-client-prediction.md) |
 | [#66](https://github.com/Aegis2D-Dev/project-rtype/pull/66) | Shared ship movement step | `refactor/game-ship-movement-step` | Open | 2026-11-04 | [2026-11-04-game-ship-movement-step](changelogs/2026-11-04-game-ship-movement-step.md) |
