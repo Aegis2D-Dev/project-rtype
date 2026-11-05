@@ -56,6 +56,7 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - Removed: `typed_character`, the client's own table of the characters of the keys.
 - Documentation: the connect screen's keys in *Play*; `client/ui` in the architecture's
   tree.
+- `develop` merged in (#75, #81), its rows kept next to this one.
 
 ## Commits
 - `b70b57d` feat(client): gave the connect form accepts, max_length and set_text
@@ -69,7 +70,9 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - `87c4043` feat(tests): added accented name and UTF-8 cut tests
 - `b69c390` feat(client): refused typing past a name's 16 bytes instead of cutting its end
 - `e688385` feat(tests): added a full name refusing typing at its start
-- feat(docs): documented the connect screen's text fields and updated changelogs
+- `129e08e` feat(docs): documented the connect screen's text fields and updated changelogs
+- `f4a6b8f` Merge remote-tracking branch 'origin/develop' into feat/client-text-fields
+- feat(changelog): updated changelogs
 
 ## Notes
 - Closes Aegis2D-Dev/aegis2d#345, whose engine part (`ui::TextField`) is
@@ -91,8 +94,8 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - The server preset (no client) still builds `rtype_tests`, without
   `connect_fields_test.cpp`; its connect form tests pass.
 - Verified on macOS (AppleClang 21): build without warnings, the changed files also with
-  `-Wmissing-designated-field-initializers -Werror` as on Linux and Windows; 250 of 252
-  tests pass (the two flood tests bind a UDP socket to `127.0.0.2`, which macOS does not
+  `-Wmissing-designated-field-initializers -Werror` as on Linux and Windows; 253 of 255
+  tests pass, after `develop` was merged in (the two flood tests bind a UDP socket to `127.0.0.2`, which macOS does not
   route without an alias; they pass on Linux); `tools/format.sh`; `tools/lint.sh` clean on
   the changed files (the `bugprone-exception-escape` reports of macOS's libc++ elsewhere,
   `ConnectForm::erase()` included, are on `develop` too); `mkdocs build --strict`; Doxygen
