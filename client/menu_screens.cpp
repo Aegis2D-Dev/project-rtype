@@ -238,6 +238,53 @@ void draw_rooms(render::IRenderer& renderer, const render::BitmapFont& font,
               small);
 }
 
+void draw_room(render::IRenderer& renderer, const render::BitmapFont& font, std::string_view name,
+               const RoomPlayers& room, std::uint8_t self, const ScreenMessage& message,
+               const Preferences& preferences) {
+    const render::TextStyle title = style(5.0F, title_color, preferences);
+    const render::TextStyle body = style(2.5F, text_color, preferences);
+    const render::TextStyle small = style(2.0F, dim_color, preferences);
+    float y = gap;
+    const std::string heading = std::format("ROOM {}", upper(name));
+    font.draw(renderer, heading, {centered_x(font, heading, title.scale), y}, title);
+    y += font.line_height(title.scale) + gap;
+
+    // One row per player, the player's own highlighted, each ready or not.
+    const float left = 4.0F * gap;
+    const float row_height = font.line_height(body.scale) + 10.0F;
+    for (const RoomPlayer& player : room.players) {
+        renderer.draw({.position = {left - 8.0F, y - 4.0F},
+                       .size = {width - (2.0F * left) + 16.0F, row_height - 2.0F},
+                       .tint = color(player.player == self ? 0x3A3A6A : box_color, preferences),
+                       .layer = 0});
+        render::TextStyle text_style = body;
+        text_style.color = color(player.ready ? title_color : text_color, preferences);
+        font.draw(renderer,
+                  std::format("PLAYER {}  {:<16}  {}{}", player.player + 1, upper(player.name),
+                              player.ready ? "READY" : "NOT READY",
+                              player.player == self ? "  (YOU)" : ""),
+                  {left, y}, text_style);
+        y += row_height;
+    }
+    y += gap / 2.0F;
+    const auto ready = std::ranges::count_if(room.players, &RoomPlayer::ready);
+    const std::string waiting = std::format("{} OF {} READY: THE GAME STARTS ONCE EVERY PLAYER IS",
+                                            ready, room.players.size());
+    font.draw(renderer, waiting, {centered_x(font, waiting, small.scale), y}, small);
+    y += font.line_height(small.scale) + gap;
+
+    if (!message.text.empty()) {
+        const render::TextStyle said =
+            style(2.0F, message.error ? error_color : title_color, preferences);
+        const std::string text = font.wrap(message.text, width - (4.0F * gap), said.scale);
+        font.draw(renderer, text, {centered_x(font, text, said.scale), y}, said);
+    }
+    constexpr std::string_view keys = "ENTER READY / NOT READY   ESC LEAVE THE ROOM";
+    font.draw(renderer, keys,
+              {centered_x(font, keys, small.scale), height - font.line_height(small.scale) - gap},
+              small);
+}
+
 void draw_status(render::IRenderer& renderer, const render::BitmapFont& font,
                  std::string_view title, std::string_view text, std::string_view footer,
                  const Preferences& preferences) {
