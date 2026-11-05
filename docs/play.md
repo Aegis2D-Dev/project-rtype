@@ -34,7 +34,7 @@ taken, the server does not answer, or its UDP port is blocked.
 
 Once logged in, the client shows the **rooms** of the server, refreshed every second: each
 one with its name, its players and its size, waiting for players or playing. Each room is a
-game of its own, of up to 4 players. Choose one and press Enter to play in it, or create one
+game of its own, of up to 4 players. Choose one and press Enter to go in it, or create one
 on the last row: type its name, choose its size, and press Enter; it is listed at once,
 ready to be joined:
 
@@ -49,6 +49,11 @@ ready to be joined:
 
 A full room is told before joining, and what the server refuses is told too: a room gone
 meanwhile, or no room left on the server.
+
+In a room, the screen lists its players, the player's own highlighted, each **ready** or not.
+Press Enter when ready (again to take it back): the game starts for everyone once every player
+of the room is ready, and the room's players fly together. Escape goes back to the rooms. A
+room already playing takes a new player as soon as it is ready.
 
 To skip the connect screen, as for scripts or several clients on one machine, pass the
 server and `--join`:
