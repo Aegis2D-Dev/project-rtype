@@ -34,20 +34,36 @@ ui::TextField make_field(ui::WidgetTree& tree, const ConnectForm& form, ConnectF
 
 } // namespace
 
+// The settings as the fields hold them: the command line may give a name too long, or
+// characters a field does not take, which the form leaves out before the fields show them.
+ConnectForm ConnectFields::checked(const ClientSettings& settings) {
+    ConnectForm form{settings};
+    for (const ConnectField which : {ConnectField::Host, ConnectField::Port, ConnectField::Name}) {
+        const std::string raw = form.text(which);
+        form.set_text(which, raw);
+    }
+    return form;
+}
+
 ConnectFields::ConnectFields(const ClientSettings& settings)
-    : form_{settings}, fields_{make_field(tree_, form_, ConnectField::Host),
-                               make_field(tree_, form_, ConnectField::Port),
-                               make_field(tree_, form_, ConnectField::Name)} {}
+    : form_{checked(settings)}, fields_{make_field(tree_, form_, ConnectField::Host),
+                                        make_field(tree_, form_, ConnectField::Port),
+                                        make_field(tree_, form_, ConnectField::Name)} {}
 
 ui::TextField& ConnectFields::field(ConnectField which) {
     return fields_.at(index_of(which));
 }
 
 void ConnectFields::focus(std::optional<ConnectField> field) {
-    if (field.has_value()) {
-        tree_.focus(fields_.at(index_of(*field)).id());
-    } else {
+    if (!field.has_value()) {
         tree_.clear_focus();
+        return;
+    }
+    if (focused() != field) {
+        // Coming back to a field puts its cursor at the end, wherever it was left.
+        ui::TextField& entered = this->field(*field);
+        entered.set_text(form_.text(*field));
+        tree_.focus(entered.id());
     }
 }
 
@@ -92,7 +108,10 @@ bool ConnectFields::update(const platform::TextInput& typed, const platform::Key
     if (!edited.update(navigation, filtered, keyboard, tree_)) {
         return false;
     }
-    form_.set_text(*which, edited.text());
+    // The field shows what the form keeps, should the form leave anything out.
+    if (!form_.set_text(*which, edited.text())) {
+        edited.set_text(form_.text(*which));
+    }
     return true;
 }
 

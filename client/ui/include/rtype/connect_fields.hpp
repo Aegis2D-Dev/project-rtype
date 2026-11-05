@@ -28,10 +28,14 @@ namespace rtype {
 class ConnectFields {
 public:
     /// @brief Creates the fields, filled with settings, none focused.
+    /// @details The settings go through the form's rules first, as if typed: characters a
+    /// field does not take are left out and the rest cut to its length, so the fields show
+    /// exactly what joining would send.
     /// @param settings Server and player name shown at first.
     explicit ConnectFields(const ClientSettings& settings);
 
     /// @brief Focuses a field, or none, as when a control row of the screen is selected.
+    /// @details A field that gains the focus has its cursor put at the end of its text.
     /// @param field Field to edit, or nothing.
     void focus(std::optional<ConnectField> field);
 
@@ -66,6 +70,7 @@ public:
               const aegis2d::ui::TextFieldStyle& style);
 
 private:
+    [[nodiscard]] static ConnectForm checked(const ClientSettings& settings);
     [[nodiscard]] aegis2d::ui::TextField& field(ConnectField which);
 
     ConnectForm form_;
