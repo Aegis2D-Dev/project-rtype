@@ -42,11 +42,17 @@ ticket of the *Network: multi-instance server* epic (Aegis2D-Dev/aegis2d#298).
 ## Commits
 - `0f39824` feat(server): routed each session to a room and each room's traffic to its own
 - `c85a261` feat(tests): added two rooms that play side by side without leaking
-- feat(docs): documented sessions in rooms and updated changelogs
+- `ebed8ca` feat(docs): documented sessions in rooms and updated changelogs
+- `7d6fe8f` feat(tests): counted each ship once in the two rooms test
+- feat(changelog): updated changelogs
 
 ## Notes
 - The test of the two rooms fails without the room filter of the events (6 ships seen in a
-  room of 4), so it does catch a leak.
+  room of 4, and the names of the other room), so it does catch a leak. It counts each ship
+  once: a player bound while the events of a tick are on their way to the network thread gets
+  that tick's `Spawn` of a ship, then the same one in the world sent when it joins, which a
+  client applies again harmlessly (RFC section 4.6). It happened once under ASan in CI, on
+  #75, where a room's game starts with its first player.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors):
   clang-format, clang-tidy 22 (69 files), `mkdocs build --strict`.
 - `ctest`: 240 of 241 tests pass; under ASan and UBSan, 122 of 123 test cases. *a flooding

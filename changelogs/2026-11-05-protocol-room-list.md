@@ -44,10 +44,12 @@ lifecycle of #75.
 ## Commits
 - `6d4b611` feat(protocol): added the messages to list and create rooms
 - `dacb191` feat(tests): added rooms listed and created over tcp
-- feat(docs): documented the room messages and updated changelogs
+- `e43412d` feat(docs): documented the room messages and updated changelogs
+- Merge remote-tracking branch 'origin/feat/server-room-lifecycle' into feat/protocol-room-list
 
 ## Notes
 - Stacked on #75 (itself on #74): merge them first. The RFC part is Aegis2D-Dev/aegis2d#454.
+  #75 merged in once the two rooms test of #74 counted each ship once.
 - Joining and leaving a given room come with Aegis2D-Dev/aegis2d#303; until then, a created
   room is filled by the next logins.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors):
