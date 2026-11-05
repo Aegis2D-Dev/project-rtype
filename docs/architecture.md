@@ -79,7 +79,13 @@ events of a room only go between its game and its own players. Over TCP, a logge
 may list the rooms in use (`ListRooms`, answered by `RoomList`: number, name, players, size,
 waiting or playing) and create one, empty, for the next logins (`CreateRoom`, with a name and
 1 to 4 players, answered by `RoomCreated` or `RoomRejected`), as section 3.6 of the RFC says;
-`SessionTable` keeps the rooms in use, from their creation until their last session ends. A room opens when its first player joins, its game on a new thread,
+`SessionTable` keeps the rooms in use, from their creation until their last session leaves or
+ends. Out of game, a client also moves to another room (`JoinRoom`, answered by `RoomJoined`
+or `JoinRejected`) or to the lobby, out of every room (`LeaveRoom`), and says when it is ready
+(`SetReady`); the clients of a room that use these messages get its players and their ready
+states (`RoomPlayers`) whenever they change, then `GameStart` once every player out of game
+is ready, after which they bind and play (RFC section 3.7). A client that never sends them
+binds right after its login and plays in the room it was given. A room opens when its first player joins, its game on a new thread,
 and closes when its last player leaves: its thread is stopped and joined, and the next player
 of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
 default); once they are all full, a login is refused as `ServerFull`. A bound player joins the

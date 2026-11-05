@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#76](https://github.com/Aegis2D-Dev/project-rtype/pull/76) (opened 2026-11-05) |
 | Branch | `feat/protocol-room-list` → `develop` (stacked on `feat/server-room-lifecycle`, #75) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`ce6c1f3`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#302](https://github.com/Aegis2D-Dev/aegis2d/issues/302) feat(protocol): list and create rooms |
 

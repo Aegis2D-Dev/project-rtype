@@ -257,13 +257,18 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     case BindResult::Taken:
         drop(from, datagram, "session or endpoint bound already");
         return;
+    case BindResult::NoRoom:
+        drop(from, datagram, "session in the lobby");
+        return;
     case BindResult::Bound: {
         const Session& session = *sessions_.find(header.session);
         core::log_info("UDP: player {} of room {} plays from {}", session.player, session.room,
                        from.to_string());
+        const std::uint32_t room = session.room;
         if (joined_) {
             joined_(session);
         }
+        announce_room(room);
         break;
     }
     case BindResult::AlreadyBound:
@@ -464,12 +469,16 @@ void ServerNetwork::disconnect(std::uint32_t token, LeaveReason reason) {
 // Forgotten first, so a left handler that throws never leaves a session behind.
 void ServerNetwork::end_session(std::uint32_t token, LeaveReason reason) {
     std::optional<Session> left;
-    if (const Session* const session = sessions_.find(token);
-        session != nullptr && session->endpoint) {
-        left = *session;
+    std::uint32_t room = no_room;
+    if (const Session* const session = sessions_.find(token); session != nullptr) {
+        room = session->room;
+        if (session->endpoint) {
+            left = *session;
+        }
     }
     sessions_.end(token);
     peers_.erase(token);
+    announce_room(room);
     if (left && left_) {
         left_(*left, reason);
     }
@@ -495,7 +504,8 @@ void ServerNetwork::on_accept(net::TcpConnection connection) {
                                              .token = std::nullopt,
                                              .sent = 0,
                                              .close_when_sent = false,
-                                             .closed = false})
+                                             .closed = false,
+                                             .rooms = false})
                          .first->second;
     // The handlers find the client by id: it may be gone when a late handler runs.
     client.connection.start(
@@ -524,28 +534,13 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
         on_login(client, message);
         return;
     }
-    // Logged in: ListRooms and CreateRoom are answered, a Logout ends the session (RFC section
-    // 3.3).
+    // Logged in: the messages of the rooms are answered, a Logout ends the session (RFC
+    // section 3.3).
+    if (on_room_message(client, message)) {
+        return;
+    }
     const Session* const session = sessions_.find(*client.token);
     const unsigned player = session != nullptr ? session->player : 0U;
-    if (read_list_rooms(message)) {
-        send(client, write_room_list(sessions_.list_rooms()));
-        return;
-    }
-    if (const std::optional<CreateRoomRequest> request = read_create_room(message)) {
-        const std::variant<std::uint8_t, RoomRejection> created = sessions_.create_room(*request);
-        if (const auto* const room = std::get_if<std::uint8_t>(&created)) {
-            // The name passed valid_player_name(): no control character reaches the log.
-            core::log_info("TCP: player {} created room {} ({}, {} players)", player, *room,
-                           request->name, request->max_players);
-            send(client, write_room_created(*room));
-        } else if (const auto* const rejection = std::get_if<RoomRejection>(&created)) {
-            core::log_info("TCP: player {} could not create a room: {}", player,
-                           to_string(*rejection));
-            send(client, write_room_rejected(*rejection));
-        }
-        return;
-    }
     // Anything but a Logout is a protocol error: the player is kicked.
     const bool logged_out = read_logout(message).has_value();
     end_session(*client.token, logged_out ? LeaveReason::Left : LeaveReason::Kicked);
@@ -587,6 +582,109 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
                      .player = session.player,
                      .udp_port = socket_.local_endpoint().port(),
                  }));
+    announce_room(session.room);
+}
+
+// RFC sections 3.6 and 3.7: the messages of the rooms, after the login; false for any other.
+bool ServerNetwork::on_room_message(Client& client, std::span<const std::byte> message) {
+    const std::uint32_t token = client.token.value_or(0);
+    if (read_list_rooms(message)) {
+        client.rooms = true;
+        send(client, write_room_list(sessions_.list_rooms()));
+        return true;
+    }
+    if (const std::optional<CreateRoomRequest> request = read_create_room(message)) {
+        client.rooms = true;
+        const std::variant<std::uint8_t, RoomRejection> created = sessions_.create_room(*request);
+        if (const auto* const room = std::get_if<std::uint8_t>(&created)) {
+            // The name passed valid_player_name(): no control character reaches the log.
+            core::log_info("TCP: session {:08x} created room {} ({}, {} players)", token, *room,
+                           request->name, request->max_players);
+            send(client, write_room_created(*room));
+        } else if (const auto* const rejection = std::get_if<RoomRejection>(&created)) {
+            core::log_info("TCP: session {:08x} could not create a room: {}", token,
+                           to_string(*rejection));
+            send(client, write_room_rejected(*rejection));
+        }
+        return true;
+    }
+    if (const std::optional<std::uint8_t> room = read_join_room(message)) {
+        client.rooms = true;
+        on_join(client, *room);
+        return true;
+    }
+    if (read_leave_room(message)) {
+        client.rooms = true;
+        if (const std::optional<std::uint32_t> left = sessions_.leave(token)) {
+            core::log_info("TCP: session {:08x} left room {} for the lobby", token, *left);
+            announce_room(*left);
+        }
+        return true;
+    }
+    if (const std::optional<bool> ready = read_set_ready(message)) {
+        client.rooms = true;
+        const Session* const session = sessions_.find(token);
+        if (session != nullptr && sessions_.set_ready(token, *ready)) {
+            announce_room(session->room);
+        }
+        return true;
+    }
+    return false;
+}
+
+// RFC section 3.7: the session leaves its room, if it was in one, for the room it joins.
+void ServerNetwork::on_join(Client& client, std::uint8_t room) {
+    const std::uint32_t token = client.token.value_or(0);
+    const Session* const session = sessions_.find(token);
+    const std::uint32_t old = session != nullptr ? session->room : no_room;
+    const std::variant<std::uint8_t, JoinRejection> joined = sessions_.join(token, room);
+    if (const auto* const rejection = std::get_if<JoinRejection>(&joined)) {
+        core::log_info("TCP: session {:08x} could not join room {}: {}", token, room,
+                       to_string(*rejection));
+        send(client, write_join_rejected(*rejection));
+        return;
+    }
+    if (const auto* const player = std::get_if<std::uint8_t>(&joined)) {
+        core::log_info("TCP: session {:08x} joined room {} as player {}", token, room, *player);
+        send(client, write_room_joined(room, *player));
+    }
+    if (old != room) {
+        announce_room(old);
+    }
+    announce_room(room);
+}
+
+// RFC section 3.7: the players of a room and whether each is ready, to the clients of the
+// room that use the rooms and are not in game, then GameStart once all those are ready.
+void ServerNetwork::announce_room(std::uint32_t room) {
+    if (room == no_room) {
+        return;
+    }
+    RoomPlayers players{.room = static_cast<std::uint8_t>(room), .players = {}};
+    bool waiting = false;
+    bool ready = true;
+    for (const Session& member : sessions_.members(room)) {
+        players.players.push_back(
+            RoomPlayer{.player = member.player, .name = member.name, .ready = member.ready});
+        if (!member.endpoint) {
+            waiting = true;
+            ready = ready && member.ready;
+        }
+    }
+    const std::vector<std::byte> list = write_room_players(players);
+    for (auto& [id, client] : clients_) {
+        if (!client.rooms || !client.token || client.closed || client.close_when_sent) {
+            continue;
+        }
+        const Session* const session = sessions_.find(*client.token);
+        if (session == nullptr || session->room != room || session->endpoint) {
+            continue;
+        }
+        send(client, list);
+        if (waiting && ready) {
+            send(client, write_game_start());
+        }
+    }
 }
 
 void ServerNetwork::on_close(std::uint64_t id, net::TcpCloseReason reason) {

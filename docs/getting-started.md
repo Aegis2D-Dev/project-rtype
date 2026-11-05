@@ -119,7 +119,8 @@ For now the server loads its waves, lists the systems of a game, then listens on
 until stopped with Ctrl+C. Players log in over TCP (`LoginRequest`, then `LoginAccepted` with
 a session token, or `LoginRejected`), up to 4 per room, then bind their UDP endpoint with a
 `Connect` answered by `Accept`, as section 3 of the protocol RFC specifies; a logged-in
-client may also list the rooms and create one (section 3.6). A bound player joins the game of
+client may also list the rooms and create one (section 3.6), join or leave one and start its
+game once its players are ready (section 3.7). A bound player joins the game of
 its room with the ship of its player number, and leaves it when its session ends; when the
 last one leaves, the room closes, and its next players get a fresh game. Each game runs on
 its own thread at 60 ticks per second while it has players, and logs its measured rate

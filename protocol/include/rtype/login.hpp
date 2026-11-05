@@ -39,6 +39,20 @@ enum class TcpKind : std::uint8_t {
     RoomCreated = 8,
     /// @brief Server to client: why the room was not created, answering `CreateRoom`.
     RoomRejected = 9,
+    /// @brief Client to server: the room to join.
+    JoinRoom = 10,
+    /// @brief Server to client: the room joined and the player's number there.
+    RoomJoined = 11,
+    /// @brief Server to client: why the room was not joined, answering `JoinRoom`.
+    JoinRejected = 12,
+    /// @brief Client to server: leaves its room for the lobby.
+    LeaveRoom = 13,
+    /// @brief Client to server: ready to start, or not.
+    SetReady = 14,
+    /// @brief Server to client: the players of its room and whether each is ready.
+    RoomPlayers = 15,
+    /// @brief Server to client: every player of its room is ready, bind and play.
+    GameStart = 16,
 };
 
 /// @brief Why a login is refused, the `reason` of `LoginRejected`.
