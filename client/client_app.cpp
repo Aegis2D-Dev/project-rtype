@@ -216,6 +216,10 @@ void ClientApp::connect_screen() {
         }
         return;
     }
+    // The frame's typed text and editing keys first, in the field selected when they were
+    // pressed: a character typed just before Tab stays in its field, one typed just before
+    // Enter is joined with.
+    fields_.update(window_.text_input(), keyboard);
     for (const Key key : keyboard.pressed_keys()) {
         switch (key) {
         case Key::Escape:
@@ -249,8 +253,6 @@ void ClientApp::connect_screen() {
             break;
         }
     }
-    // Typed text, following the keyboard layout, and the editing keys of the field selected.
-    fields_.update(window_.text_input(), keyboard);
 }
 
 void ClientApp::joining_screen() {
