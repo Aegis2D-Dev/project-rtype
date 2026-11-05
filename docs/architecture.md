@@ -73,9 +73,13 @@ The server's network side lives in `server/`, around
 posted between them. A room owns its `GameInstance`, the `Simulation` thread that runs it, the
 `EventTracker` of what its clients learnt and the names of its players; the rooms of a server
 run side by side, each on its own thread. Each session belongs to a room (`Session::room`),
-and its player number is its number in that room: the logins fill the first room with a free
-number, then the next one, and the inputs, snapshots and events of a room only go between its
-game and its own players. A room opens when its first player joins, its game on a new thread,
+and its player number is its number in that room: a login goes to the first room in use with a
+free place, or else to a new room for 4 players (`Room 2`...), and the inputs, snapshots and
+events of a room only go between its game and its own players. Over TCP, a logged-in client
+may list the rooms in use (`ListRooms`, answered by `RoomList`: number, name, players, size,
+waiting or playing) and create one, empty, for the next logins (`CreateRoom`, with a name and
+1 to 4 players, answered by `RoomCreated` or `RoomRejected`), as section 3.6 of the RFC says;
+`SessionTable` keeps the rooms in use, from their creation until their last session ends. A room opens when its first player joins, its game on a new thread,
 and closes when its last player leaves: its thread is stopped and joined, and the next player
 of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
 default); once they are all full, a login is refused as `ServerFull`. A bound player joins the
