@@ -75,7 +75,10 @@ posted between them. A room owns its `GameInstance`, the `Simulation` thread tha
 run side by side, each on its own thread. Each session belongs to a room (`Session::room`),
 and its player number is its number in that room: the logins fill the first room with a free
 number, then the next one, and the inputs, snapshots and events of a room only go between its
-game and its own players. `r-type_server` runs a single room for now. A bound player joins the
+game and its own players. A room opens when its first player joins, its game on a new thread,
+and closes when its last player leaves: its thread is stopped and joined, and the next player
+of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
+default); once they are all full, a login is refused as `ServerFull`. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid

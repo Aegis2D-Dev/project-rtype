@@ -19,12 +19,14 @@ inline constexpr std::uint16_t default_udp_port = 4243;
 /// @brief Datagrams accepted per second from one address when `--max-packet-rate` is not
 /// given; see RateLimits.
 inline constexpr std::uint32_t default_packet_rate = 300;
+/// @brief Rooms played at once when `--max-rooms` is not given; see GameServer.
+inline constexpr std::uint32_t default_max_rooms = 4;
 
 /// @brief Usage line printed by `--help` and after a command line error.
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
     "                     [--max-packet-rate <datagrams per second>] [--compress <bytes>]\n"
-    "                     [--help] [--version]\n";
+    "                     [--max-rooms <count>] [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -51,6 +53,8 @@ struct ServerOptions {
     /// @brief Size from which snapshots and events are sent compressed with LZ4 when that
     /// makes them smaller, 1 to 1182 bytes, or `std::nullopt` (the default) to never compress.
     std::optional<std::size_t> compress_from;
+    /// @brief Rooms played at once, 1 to 64, tuning::max_players in each.
+    std::uint32_t max_rooms = default_max_rooms;
 };
 
 /// @brief Reads the command line of `r-type_server`.

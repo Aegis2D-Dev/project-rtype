@@ -1,3 +1,4 @@
+#include <aegis2d/core/log.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
@@ -15,10 +16,13 @@
 #include <rtype/tuning.hpp>
 #include <rtype/world_snapshot.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,15 +41,11 @@ SessionTable sessions_in(std::uint32_t rooms) {
 } // namespace
 
 GameServer::GameServer(aegis2d::net::NetworkContext& context, std::optional<std::uint64_t> seed,
-                       const aegis2d::ecs::WaveSchedule& waves, std::uint16_t tcp_port,
-                       std::uint16_t udp_port, std::uint32_t rate, std::uint32_t rooms)
-    : context_{context}, network_{context, tcp_port, udp_port, sessions_in(rooms)} {
-    for (std::uint32_t id = 0; id < network_.sessions().rooms(); ++id) {
-        rooms_.push_back(
-            std::make_unique<Room>(id, seed, waves, rate, [this](Room& room, GameInstance& game) {
-                after_tick(room, game);
-            }));
-    }
+                       aegis2d::ecs::WaveSchedule waves, std::uint16_t tcp_port,
+                       std::uint16_t udp_port, std::uint32_t rate, std::uint32_t max_rooms)
+    : context_{context}, network_{context, tcp_port, udp_port, sessions_in(max_rooms)}, seed_{seed},
+      waves_{std::move(waves)}, rate_{rate} {
+    rooms_.resize(network_.sessions().rooms());
     network_.on_players(
         [this](const Session& session) { on_joined(session); },
         [this](const Session& session, LeaveReason reason) { on_left(session, reason); });
@@ -108,7 +108,7 @@ void GameServer::update_rewinds(std::uint32_t id) {
 void GameServer::on_joined(const Session& session) {
     seats_.insert_or_assign(session.token,
                             Seat{.room = session.room, .player = session.player, .rewind = 0});
-    Room& joined_room = room(session.room);
+    Room& joined_room = open_room(session.room);
     joined_room.simulation().post([this, &joined_room, player = session.player,
                                    token = session.token, name = session.name](GameInstance& game) {
         game.join(player);
@@ -138,9 +138,14 @@ void GameServer::on_joined(const Session& session) {
 }
 
 // RFC section 4.6: the others of the room learn that the player left and why, before the
-// Destroy of its ship, which comes with the next tick's events.
+// Destroy of its ship, which comes with the next tick's events. The last one closes it.
 void GameServer::on_left(const Session& session, LeaveReason reason) {
     seats_.erase(session.token);
+    if (std::ranges::none_of(seats_,
+                             [&](const auto& seat) { return seat.second.room == session.room; })) {
+        close_room(session.room);
+        return;
+    }
     Room& left_room = room(session.room);
     left_room.simulation().post([this, &left_room, player = session.player,
                                  reason](GameInstance& game) {
@@ -157,16 +162,55 @@ void GameServer::on_left(const Session& session, LeaveReason reason) {
     });
 }
 
+// The room of a player who joins, opened with its game on a new thread if it was not.
+Room& GameServer::open_room(std::uint32_t id) {
+    std::unique_ptr<Room>& slot = rooms_.at(id);
+    if (!slot) {
+        slot = std::make_unique<Room>(
+            id, seed_, waves_, rate_,
+            [this](Room& room, GameInstance& game) { after_tick(room, game); });
+        aegis2d::core::log_info("server: room {} opened ({} of {} open)", id, open_rooms(),
+                                max_rooms());
+    }
+    return *slot;
+}
+
+// Stops the thread of the room and waits for it, then forgets its game. What the thread
+// posted for the network thread before it stopped only goes to the sessions of that room,
+// none now: a player who joins it next gets a new game.
+void GameServer::close_room(std::uint32_t id) {
+    const std::unique_ptr<Room> closed = std::move(rooms_.at(id));
+    if (!closed) {
+        return;
+    }
+    closed->simulation().stop();
+    aegis2d::core::log_info("server: room {} closed after {} ticks ({} of {} open)", id,
+                            closed->simulation().ticks(), open_rooms(), max_rooms());
+}
+
 ServerNetwork& GameServer::network() noexcept {
     return network_;
 }
 
 Room& GameServer::room(std::uint32_t id) {
-    return *rooms_.at(id);
+    const std::unique_ptr<Room>& found = rooms_.at(id);
+    if (!found) {
+        throw std::out_of_range{std::format("room {} is not open", id)};
+    }
+    return *found;
 }
 
-std::uint32_t GameServer::rooms() const noexcept {
+std::uint32_t GameServer::open_rooms() const noexcept {
+    return static_cast<std::uint32_t>(
+        std::ranges::count_if(rooms_, [](const auto& room) { return room != nullptr; }));
+}
+
+std::uint32_t GameServer::max_rooms() const noexcept {
     return static_cast<std::uint32_t>(rooms_.size());
+}
+
+std::uint32_t GameServer::rate() const noexcept {
+    return rate_;
 }
 
 Simulation& GameServer::simulation() {
