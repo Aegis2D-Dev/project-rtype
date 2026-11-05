@@ -17,6 +17,7 @@
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
@@ -41,6 +42,8 @@ enum class ClientState : std::uint8_t {
     Connecting,
     /// @brief `LoginRequest` sent, waiting for the answer.
     LoggingIn,
+    /// @brief Logged in with ClientSettings::choose_room: choosing a room (RFC 3.6, 3.7).
+    Lobby,
     /// @brief Logged in, sending `Connect` until `Accept` arrives.
     Binding,
     /// @brief UDP endpoint bound: the game may start.
@@ -67,12 +70,19 @@ struct ClientSettings {
     std::uint16_t tcp_port = 4242;
     /// @brief Player name, 1 to 16 bytes of UTF-8 without control characters.
     std::string name = "player";
+    /// @brief Stays in the lobby after the login, where the rooms are listed, created and
+    /// joined, and binds once a room is joined; `false` binds at once, in the room the server
+    /// gives at login.
+    bool choose_room = false;
 };
 
 /// @brief The client side of a session (RFC section 3).
 /// @details start() opens the TCP connection and sends `LoginRequest`. On `LoginAccepted`,
 /// the client opens a UDP socket and sends `Connect` to the server's `udp_port` every
-/// connect_interval until `Accept` arrives: the session is then InGame. It fails, with a
+/// connect_interval until `Accept` arrives: the session is then InGame. With
+/// ClientSettings::choose_room, it stays in the Lobby state instead, where rooms() is
+/// refreshed every room_refresh, create_room() and join_room() send their requests, and a
+/// `RoomJoined` starts the binding, with the player's number in that room. It fails, with a
 /// reason in error(), when the server cannot be reached, refuses the login, sends anything
 /// unexpected, closes the connection, or does not answer: no `LoginAccepted` within
 /// login_timeout, or no `Accept` within bind_timeout of `LoginAccepted` (then `Logout` is
@@ -97,6 +107,8 @@ public:
     static constexpr std::chrono::seconds login_timeout{5};
     /// @brief Longest silence of the server in game before the session is lost (RFC 5.5).
     static constexpr std::chrono::seconds server_timeout{5};
+    /// @brief Time between two `ListRooms` in the lobby.
+    static constexpr std::chrono::seconds room_refresh{1};
     /// @brief Time between two `Input` datagrams: one per server tick (RFC section 4.2).
     static constexpr aegis2d::core::Duration input_interval =
         aegis2d::core::step_from_rate(tuning::tick_rate);
@@ -130,6 +142,25 @@ public:
     /// replaced by the next one (RFC section 4.2). Bits 5 to 7 are cleared.
     /// @param input Held actions.
     void set_input(aegis2d::ecs::PlayerInput input) noexcept;
+
+    /// @brief Asks the server for a new room, in the lobby (`CreateRoom`, RFC section 3.6).
+    /// @details rooms() lists it once created; room_error() says why it was not.
+    /// @param request Name and size of the room.
+    void create_room(const CreateRoomRequest& request);
+
+    /// @brief Asks to join a room, in the lobby (`JoinRoom`, RFC section 3.7).
+    /// @details On `RoomJoined`, login() takes the player's number in the room and the binding
+    /// starts; room_error() says why the room was not joined.
+    /// @param room Number of the room.
+    void join_room(std::uint8_t room);
+
+    /// @brief The rooms of the server, from its last `RoomList`.
+    /// @return Them, by number; none before the first answer.
+    [[nodiscard]] const std::vector<RoomRecord>& rooms() const noexcept;
+
+    /// @brief Why the last room could not be created or joined.
+    /// @return A sentence for the player, empty after a success.
+    [[nodiscard]] const std::string& room_error() const noexcept;
 
     /// @brief Leaves the server: sends `Logout` and closes once it has left.
     /// @details The state becomes Closed at once; keep running the context a little for the
@@ -227,6 +258,9 @@ private:
     void on_connected();
     void on_message(std::span<const std::byte> message);
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
+    void start_binding();
+    void on_room_message(std::span<const std::byte> message);
+    void send_request(std::vector<std::byte> message);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
     void predict(const Snapshot& snapshot);
@@ -246,6 +280,9 @@ private:
     Clock::time_point started_;
     Clock::time_point accepted_;
     Clock::time_point last_connect_;
+    Clock::time_point last_room_list_;
+    std::vector<RoomRecord> rooms_;
+    std::string room_error_;
     std::uint64_t connects_sent_ = 0;
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
