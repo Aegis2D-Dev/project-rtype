@@ -5,8 +5,9 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#81](https://github.com/Aegis2D-Dev/project-rtype/pull/81) | No build for documentation-only pull requests | `ci/windows-runner-load` | Merged | 2026-11-05 | [2026-11-05-ci-windows-runner-load](changelogs/2026-11-05-ci-windows-runner-load.md) |
 | [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) | Room lifecycle | `feat/server-room-lifecycle` | Open | 2026-11-05 | [2026-11-05-server-room-lifecycle](changelogs/2026-11-05-server-room-lifecycle.md) |
-| [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) | Sessions routed to rooms | `feat/server-room-routing` | Open | 2026-11-05 | [2026-11-05-server-room-routing](changelogs/2026-11-05-server-room-routing.md) |
+| [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) | Sessions routed to rooms | `feat/server-room-routing` | Merged | 2026-11-05 | [2026-11-05-server-room-routing](changelogs/2026-11-05-server-room-routing.md) |
 | [#73](https://github.com/Aegis2D-Dev/project-rtype/pull/73) | Game room | `refactor/server-game-room` | Merged | 2026-11-04 | [2026-11-04-server-game-room](changelogs/2026-11-04-server-game-room.md) |
 | [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) | Lag compensation for hits | `feat/server-lag-compensation` | Merged | 2026-11-04 | [2026-11-04-server-lag-compensation](changelogs/2026-11-04-server-lag-compensation.md) |
 | [#71](https://github.com/Aegis2D-Dev/project-rtype/pull/71) | Entity position history | `feat/server-position-history` | Merged | 2026-11-04 | [2026-11-04-server-position-history](changelogs/2026-11-04-server-position-history.md) |

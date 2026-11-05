@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) (opened 2026-11-05) |
 | Branch | `feat/server-room-routing` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`693e0f7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#300](https://github.com/Aegis2D-Dev/aegis2d/issues/300) feat(server): sessions routed to rooms |
 
