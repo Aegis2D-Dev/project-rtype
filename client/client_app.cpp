@@ -20,9 +20,9 @@
 #include "lagometer_view.hpp"
 #include "menu_screens.hpp"
 #include "preferences.hpp"
-#include "typed_character.hpp"
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
@@ -80,8 +80,8 @@ ClientApp::ClientApp(const ClientOptions& options)
                .height = static_cast<int>(tuning::area_height),
                .resizable = true}},
       renderer_{window_}, textures_{renderer_}, font_{render::BitmapFont::builtin(textures_)},
-      art_{textures_}, sounds_{events_}, view_{art_, font_, events_}, form_{options.settings},
-      started_{Clock::now()}, last_frame_{started_} {
+      art_{textures_}, sounds_{events_}, view_{art_, font_, events_}, fields_{options.settings},
+      last_frame_{Clock::now()} {
     // The game is laid out on a 1280 x 720 screen, scaled to the window with black bars.
     renderer_.set_logical_screen(
         render::LogicalScreen{.size = {tuning::area_width, tuning::area_height}});
@@ -139,6 +139,10 @@ bool ClientApp::frame() {
         lost_screen();
         break;
     }
+    // The fields take typed text while one is selected on the connect screen; the game's
+    // keys are actions then, never text.
+    window_.set_text_input(screen_ == ClientScreen::Connect && !capture_.waiting().has_value() &&
+                           fields_.focused().has_value());
     update_session();
     sounds_.update();
     draw();
@@ -226,11 +230,6 @@ void ClientApp::connect_screen() {
         case Key::Down:
             select(row_ + 1);
             break;
-        case Key::Backspace:
-            if (row_ < connect_field_count) {
-                form_.erase();
-            }
-            break;
         case Key::Enter:
         case Key::KeypadEnter:
             if (row_ >= connect_field_count) {
@@ -239,7 +238,7 @@ void ClientApp::connect_screen() {
                     keyboard);
                 return;
             }
-            if (const auto settings = form_.submit();
+            if (const auto settings = fields_.form().submit();
                 std::holds_alternative<ClientSettings>(settings)) {
                 join(std::get<ClientSettings>(settings));
             } else {
@@ -247,14 +246,11 @@ void ClientApp::connect_screen() {
             }
             return;
         default:
-            if (row_ < connect_field_count) {
-                if (const std::optional<char> character = typed_character(key, shift(keyboard))) {
-                    form_.type(*character);
-                }
-            }
             break;
         }
     }
+    // Typed text, following the keyboard layout, and the editing keys of the field selected.
+    fields_.update(window_.text_input(), keyboard);
 }
 
 void ClientApp::joining_screen() {
@@ -407,12 +403,9 @@ void ClientApp::draw() {
             break;
         case ClientScreen::Connect:
         case ClientScreen::Game:
-            draw_connect(
-                renderer_, font_, form_, message_,
-                ConnectView{.row = row_,
-                            .capturing = capture_.waiting().has_value(),
-                            .seconds = std::chrono::duration<double>{now - started_}.count()},
-                preferences_);
+            draw_connect(renderer_, font_, fields_, message_,
+                         ConnectView{.row = row_, .capturing = capture_.waiting().has_value()},
+                         preferences_);
             break;
         }
     }
@@ -425,9 +418,8 @@ void ClientApp::draw() {
 
 void ClientApp::select(std::size_t row) {
     row_ = row % connect_rows;
-    if (row_ < connect_field_count) {
-        form_.focus(static_cast<ConnectField>(row_));
-    }
+    fields_.focus(row_ < connect_field_count ? std::optional{static_cast<ConnectField>(row_)}
+                                             : std::nullopt);
 }
 
 } // namespace rtype

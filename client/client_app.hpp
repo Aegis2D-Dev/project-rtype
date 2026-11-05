@@ -17,6 +17,7 @@
 #include "preferences.hpp"
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/lagometer.hpp>
 
@@ -108,14 +109,13 @@ private:
     Lagometer lagometer_;
     bool show_lagometer_ = false;
     ClientSettings joined_;
-    ConnectForm form_;
+    ConnectFields fields_;
     ScreenMessage message_;
     std::string lost_reason_;
     ClientScreen screen_ = ClientScreen::Connect;
     std::size_t row_ = 0;
     bool quit_ = false;
     std::uint64_t frames_ = 0;
-    std::chrono::steady_clock::time_point started_;
     std::chrono::steady_clock::time_point last_frame_;
     float frame_seconds_ = 0.0F;
 };
