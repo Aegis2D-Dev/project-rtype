@@ -42,6 +42,11 @@ target_link_libraries(rtype_tests PRIVATE rtype_game rtype_server rtype_client_n
 target_compile_definitions(rtype_tests PRIVATE RTYPE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
 target_compile_features(rtype_tests PRIVATE cxx_std_26)
 set_target_properties(rtype_tests PROPERTIES CXX_EXTENSIONS OFF)
+# With the client: the connect screen's text fields, which need the engine's ui module.
+if(TARGET rtype_client_ui)
+    target_sources(rtype_tests PRIVATE connect_fields_test.cpp)
+    target_link_libraries(rtype_tests PRIVATE rtype_client_ui)
+endif()
 aegis2d_stage_runtime(rtype_tests)
 
 catch_discover_tests(rtype_tests DISCOVERY_MODE PRE_TEST)
