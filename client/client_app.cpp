@@ -96,8 +96,14 @@ ClientApp::ClientApp(const ClientOptions& options)
     };
     core::log_info("settings: {}", preferences_.file.string());
     select(static_cast<std::size_t>(ConnectField::Name));
+    // --join joins with the fields as shown, so a rejoin from this screen is the same.
     if (options.join) {
-        join(options.settings);
+        if (const auto settings = fields_.form().submit();
+            std::holds_alternative<ClientSettings>(settings)) {
+            join(std::get<ClientSettings>(settings));
+        } else {
+            message_ = {.text = std::get<std::string>(settings), .error = true};
+        }
     }
 }
 
