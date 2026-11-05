@@ -69,12 +69,15 @@ The server's network side lives in `server/`, around
 [`ServerGame`](gameplay.md#the-server-game), which exposes what it needs: `add_player()`,
 `set_input()`, `tick()` and the reports of the last tick. `GameServer`
 (`rtype/game_server.hpp`) puts the pieces together, for `r-type_server` and for the tests:
-`ServerNetwork` on the network thread, the game in its `Room` (`rtype/room.hpp`), and tasks
+`ServerNetwork` on the network thread, each game in its `Room` (`rtype/room.hpp`), and tasks
 posted between them. A room owns its `GameInstance`, the `Simulation` thread that runs it, the
-`EventTracker` of what its clients learnt and the names of its players; the server keeps a
-single room for now, and more will run side by side, each on its own thread. A bound player joins the game: the others get its `PlayerJoined`
-(number and name), and it gets a `PlayerJoined` of every player already there before the
-world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
+`EventTracker` of what its clients learnt and the names of its players; the rooms of a server
+run side by side, each on its own thread. Each session belongs to a room (`Session::room`),
+and its player number is its number in that room: the logins fill the first room with a free
+number, then the next one, and the inputs, snapshots and events of a room only go between its
+game and its own players. `r-type_server` runs a single room for now. A bound player joins the
+game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
+`PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid
 datagram for 5 seconds, as when its UDP is blocked): the others get its `PlayerLeft`, with
 the reason `Left`, `TimedOut` or `Kicked`, and its ship is removed at the next tick.

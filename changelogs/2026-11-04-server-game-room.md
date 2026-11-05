@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#73](https://github.com/Aegis2D-Dev/project-rtype/pull/73) (opened 2026-11-04) |
 | Branch | `refactor/server-game-room` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-04 (`e19a22d`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#299](https://github.com/Aegis2D-Dev/aegis2d/issues/299) refactor(server): game room |
 
