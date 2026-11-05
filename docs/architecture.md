@@ -77,8 +77,10 @@ and its player number is its number in that room: a login goes to the first room
 free place, or else to a new room for 4 players (`Room 2`...), and the inputs, snapshots and
 events of a room only go between its game and its own players. Over TCP, a logged-in client
 may list the rooms in use (`ListRooms`, answered by `RoomList`: number, name, players, size,
-waiting or playing) and create one, empty, for the next logins (`CreateRoom`, with a name and
-1 to 4 players, answered by `RoomCreated` or `RoomRejected`), as section 3.6 of the RFC says;
+waiting or playing) and create one, empty, for the next logins (`CreateRoom`, with a name, 1 to
+4 players and the rules of its game: lives, difficulty, waves file and friendly fire, answered
+by `RoomCreated` or `RoomRejected` with the first bad value), as section 3.6 of the RFC says;
+the waves files a room may name are those next to the server's own (`waves_names()`);
 `SessionTable` keeps the rooms in use, from their creation until their last session leaves or
 ends. Out of game, a client also moves to another room (`JoinRoom`, answered by `RoomJoined`
 or `JoinRejected`) or to the lobby, out of every room (`LeaveRoom`), and says when it is ready
