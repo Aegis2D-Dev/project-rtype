@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#77](https://github.com/Aegis2D-Dev/project-rtype/pull/77) | Join, leave and start a room | `feat/protocol-room-join` | Open | 2026-11-05 | [2026-11-05-protocol-room-join](changelogs/2026-11-05-protocol-room-join.md) |
 | [#76](https://github.com/Aegis2D-Dev/project-rtype/pull/76) | List and create rooms | `feat/protocol-room-list` | Open | 2026-11-05 | [2026-11-05-protocol-room-list](changelogs/2026-11-05-protocol-room-list.md) |
 | [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) | Room lifecycle | `feat/server-room-lifecycle` | Open | 2026-11-05 | [2026-11-05-server-room-lifecycle](changelogs/2026-11-05-server-room-lifecycle.md) |
 | [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) | Sessions routed to rooms | `feat/server-room-routing` | Open | 2026-11-05 | [2026-11-05-server-room-routing](changelogs/2026-11-05-server-room-routing.md) |
