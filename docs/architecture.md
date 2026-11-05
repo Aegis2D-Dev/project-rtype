@@ -177,6 +177,8 @@ client/
     network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
     snapshot_decoder  the snapshots rebuilt from their baseline and delta
+  ui/                 rtype_client_ui, built and tested with the client
+    connect_fields    the connect screen's fields as the engine's text fields
   client_app          r-type_client: window, screens, settings keys
   game_view           the game screen: entities, explosions, HUD, notices
   lagometer_view      the lagometer overlay, toggled with F6

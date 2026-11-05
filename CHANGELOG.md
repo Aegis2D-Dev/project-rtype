@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#82](https://github.com/Aegis2D-Dev/project-rtype/pull/82) | Connect screen typed in the engine's text fields | `feat/client-text-fields` | Open | 2026-11-05 | [2026-11-05-client-text-fields](changelogs/2026-11-05-client-text-fields.md) |
 | [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) | Sessions routed to rooms | `feat/server-room-routing` | Open | 2026-11-05 | [2026-11-05-server-room-routing](changelogs/2026-11-05-server-room-routing.md) |
 | [#73](https://github.com/Aegis2D-Dev/project-rtype/pull/73) | Game room | `refactor/server-game-room` | Merged | 2026-11-04 | [2026-11-04-server-game-room](changelogs/2026-11-04-server-game-room.md) |
 | [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) | Lag compensation for hits | `feat/server-lag-compensation` | Merged | 2026-11-04 | [2026-11-04-server-lag-compensation](changelogs/2026-11-04-server-lag-compensation.md) |
