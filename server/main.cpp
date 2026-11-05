@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
         rtype::ServerNetwork& network = server.network();
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
+        network.set_waves(rtype::waves_names(rtype::default_waves_file().parent_path()));
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << ", up to " << server.max_rooms()

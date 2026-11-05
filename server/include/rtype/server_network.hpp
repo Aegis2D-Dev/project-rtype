@@ -26,6 +26,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -138,6 +139,10 @@ public:
     /// setting, compressed datagrams received are decompressed.
     /// @param threshold Size in bytes, or `std::nullopt` (the default) to never compress.
     void set_compression(std::optional<std::size_t> threshold) noexcept;
+
+    /// @brief Sets the waves files a room may be created with (SessionTable::set_waves()).
+    /// @param names Their names, without `.json`.
+    void set_waves(std::vector<std::string> names);
 
     /// @brief From which size payloads are compressed.
     /// @return The threshold set by set_compression(), or `std::nullopt`.

@@ -71,6 +71,14 @@ std::string_view to_string(RoomRejection reason) noexcept {
         return "bad name";
     case RoomRejection::BadSize:
         return "bad size";
+    case RoomRejection::BadLives:
+        return "bad lives";
+    case RoomRejection::BadDifficulty:
+        return "bad difficulty";
+    case RoomRejection::UnknownWaves:
+        return "unknown waves";
+    case RoomRejection::BadFriendlyFire:
+        return "bad friendly fire";
     }
     return "unknown";
 }
@@ -114,11 +122,20 @@ std::optional<CreateRoomRequest> read_create_room(std::span<const std::byte> mes
     const std::optional<std::uint8_t> kind = reader.read_u8();
     std::optional<std::string> name = reader.read_string();
     const std::optional<std::uint8_t> max_players = reader.read_u8();
-    if (kind != static_cast<std::uint8_t>(TcpKind::CreateRoom) || !name || !max_players ||
-        !reader.at_end()) {
+    const std::optional<std::uint8_t> lives = reader.read_u8();
+    const std::optional<std::uint8_t> difficulty = reader.read_u8();
+    std::optional<std::string> waves = reader.read_string();
+    const std::optional<std::uint8_t> friendly_fire = reader.read_u8();
+    if (kind != static_cast<std::uint8_t>(TcpKind::CreateRoom) || !name || !max_players || !lives ||
+        !difficulty || !waves || !friendly_fire || !reader.at_end()) {
         return std::nullopt;
     }
-    return CreateRoomRequest{.name = std::move(*name), .max_players = *max_players};
+    return CreateRoomRequest{.name = std::move(*name),
+                             .max_players = *max_players,
+                             .rules = RoomRules{.lives = *lives,
+                                                .difficulty = *difficulty,
+                                                .waves = std::move(*waves),
+                                                .friendly_fire = *friendly_fire}};
 }
 
 std::optional<std::uint8_t> read_room_created(std::span<const std::byte> message) noexcept {
@@ -155,6 +172,10 @@ std::vector<std::byte> write_create_room(const CreateRoomRequest& request) {
     writer.write_u8(static_cast<std::uint8_t>(TcpKind::CreateRoom));
     writer.write_string(request.name);
     writer.write_u8(request.max_players);
+    writer.write_u8(request.rules.lives);
+    writer.write_u8(request.rules.difficulty);
+    writer.write_string(request.rules.waves);
+    writer.write_u8(request.rules.friendly_fire);
     return bytes_of(writer);
 }
 

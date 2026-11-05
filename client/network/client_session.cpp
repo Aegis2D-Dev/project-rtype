@@ -81,6 +81,14 @@ std::string room_rejection_text(std::uint8_t reason) {
         return "the room's name is not valid: 1 to 16 characters, no control character";
     case RoomRejection::BadSize:
         return "a room takes 1 to 4 players";
+    case RoomRejection::BadLives:
+        return "a room gives 1 to 9 lives";
+    case RoomRejection::BadDifficulty:
+        return "the server does not know this difficulty";
+    case RoomRejection::UnknownWaves:
+        return "the server has no such waves";
+    case RoomRejection::BadFriendlyFire:
+        return "friendly fire is on or off";
     }
     return "the server refused the room";
 }

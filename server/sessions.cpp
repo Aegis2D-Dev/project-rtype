@@ -61,8 +61,9 @@ std::variant<Session, LoginRejection> SessionTable::login(const LoginRequest& re
         return LoginRejection::NameTaken;
     }
     if (new_room) {
-        listings_.at(room) =
-            Listing{.name = std::format("Room {}", room + 1), .max_players = tuning::max_players};
+        listings_.at(room) = Listing{.name = std::format("Room {}", room + 1),
+                                     .max_players = tuning::max_players,
+                                     .rules = RoomRules{}};
     }
     return sessions_.emplace_back(Session{.token = new_token(),
                                           .room = room,
@@ -190,12 +191,36 @@ SessionTable::create_room(const CreateRoomRequest& request) {
     if (request.max_players < 1 || request.max_players > tuning::max_players) {
         return RoomRejection::BadSize;
     }
+    const RoomRules& rules = request.rules;
+    if (rules.lives < 1 || rules.lives > max_room_lives) {
+        return RoomRejection::BadLives;
+    }
+    if (rules.difficulty > static_cast<std::uint8_t>(Difficulty::Hard)) {
+        return RoomRejection::BadDifficulty;
+    }
+    if (!rules.waves.empty() && std::ranges::find(waves_, rules.waves) == waves_.end()) {
+        return RoomRejection::UnknownWaves;
+    }
+    if (rules.friendly_fire > 1) {
+        return RoomRejection::BadFriendlyFire;
+    }
     const auto unused = std::ranges::find_if(listings_, unused_room);
     if (unused == listings_.end()) {
         return RoomRejection::NoRoomLeft;
     }
-    *unused = Listing{.name = request.name, .max_players = request.max_players};
+    *unused = Listing{.name = request.name, .max_players = request.max_players, .rules = rules};
     return static_cast<std::uint8_t>(unused - listings_.begin());
+}
+
+void SessionTable::set_waves(std::vector<std::string> names) {
+    waves_ = std::move(names);
+}
+
+std::optional<RoomRules> SessionTable::rules(std::uint32_t room) const {
+    if (room >= listings_.size() || !listings_.at(room)) {
+        return std::nullopt;
+    }
+    return listings_.at(room).value_or(Listing{}).rules;
 }
 
 std::vector<RoomRecord> SessionTable::list_rooms() const {

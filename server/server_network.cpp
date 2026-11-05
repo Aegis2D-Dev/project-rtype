@@ -380,6 +380,10 @@ void ServerNetwork::set_compression(std::optional<std::size_t> threshold) noexce
     compression_ = threshold;
 }
 
+void ServerNetwork::set_waves(std::vector<std::string> names) {
+    sessions_.set_waves(std::move(names));
+}
+
 std::optional<std::size_t> ServerNetwork::compression() const noexcept {
     return compression_;
 }
