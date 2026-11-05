@@ -31,15 +31,19 @@ multi-instance server* epic (Aegis2D-Dev/aegis2d#298).
 - `ClientSession`: a sentence for each new reason of `RoomRejected`.
 - Tests: the `CreateRoom` messages carry the rules.
 - *Architecture*: the rules of a room.
+- Changelog, with `develop` merged in: #79 (`4a020aa`) marked as merged.
 
 ## Commits
 - `3950e98` feat(protocol): added the rules of a room, checked by the server
 - `65e2be9` feat(tests): added room rules refused with their reason
-- feat(docs): documented the room rules and updated changelogs
+- `902fd29` feat(docs): documented the room rules and updated changelogs
+- Merge remote-tracking branch 'origin/develop' into feat/protocol-room-rules
 
 ## Notes
 - Stacked on #79 (itself on #78 to #74), as it changes the files of the room messages they
-  changed: merge them first. The RFC part is Aegis2D-Dev/aegis2d#456.
+  changed; all merged on 2026-11-05, then retargeted to `develop`, which was merged in: the
+  only conflict was the index of `CHANGELOG.md`. The RFC part is Aegis2D-Dev/aegis2d#456,
+  merged.
 - The rooms screen creates rooms with the default rules: choosing them on the screen is not
   part of the ticket.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
