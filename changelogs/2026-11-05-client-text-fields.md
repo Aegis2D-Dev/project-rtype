@@ -53,10 +53,13 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - `draw_connect()`: the fields drawn by their text fields in the rows' boxes, the one
   being edited outlined with its cursor (the blinking `_` and `ConnectView::seconds` are
   gone); the control rows are drawn as before.
-- Removed: `typed_character`, the client's own table of the characters of the keys.
+- `typed_character`, the client's own table of the characters of the keys, no longer types
+  the connect screen; the room list's name (#78) still types with it.
 - Documentation: the connect screen's keys in *Play*; `client/ui` in the architecture's
   tree.
-- `develop` merged in (#75, #81), its rows kept next to this one.
+- `develop` merged in twice (#75, #81, then the rooms: #77 to #80), their rows kept next to
+  this one: the connect screen joins through the rooms' lobby (`choose_room`) with the
+  fields' settings, and `ClientApp` keeps the room list next to the fields.
 
 ## Commits
 - `b70b57d` feat(client): gave the connect form accepts, max_length and set_text
@@ -72,6 +75,8 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - `e688385` feat(tests): added a full name refusing typing at its start
 - `129e08e` feat(docs): documented the connect screen's text fields and updated changelogs
 - `f4a6b8f` Merge remote-tracking branch 'origin/develop' into feat/client-text-fields
+- `2f949c9` feat(changelog): updated changelogs
+- `21c2941` Merge remote-tracking branch 'origin/develop' into feat/client-text-fields
 - feat(changelog): updated changelogs
 
 ## Notes
@@ -94,7 +99,7 @@ bar is the R-Type connect screen using the text fields; the engine part is merge
 - The server preset (no client) still builds `rtype_tests`, without
   `connect_fields_test.cpp`; its connect form tests pass.
 - Verified on macOS (AppleClang 21): build without warnings, the changed files also with
-  `-Wmissing-designated-field-initializers -Werror` as on Linux and Windows; 253 of 255
+  `-Wmissing-designated-field-initializers -Werror` as on Linux and Windows; 266 of 268
   tests pass, after `develop` was merged in (the two flood tests bind a UDP socket to `127.0.0.2`, which macOS does not
   route without an alias; they pass on Linux); `tools/format.sh`; `tools/lint.sh` clean on
   the changed files (the `bugprone-exception-escape` reports of macOS's libc++ elsewhere,
