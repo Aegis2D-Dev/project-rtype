@@ -37,9 +37,10 @@ namespace rtype {
 /// at start. Each TCP connection must log in (RFC section 3.3): a valid `LoginRequest`
 /// opens a session and gets `LoginAccepted`; a refused one gets `LoginRejected` and is
 /// closed once it is sent; a connection that sends anything else first, or nothing within
-/// login_timeout, is closed without a reply (section 6.5). Once logged in, a `Logout` or
-/// the closing of the connection ends the session; any other message is a protocol error
-/// that ends it too.
+/// login_timeout, is closed without a reply (section 6.5). Once logged in, a `ListRooms` gets
+/// the `RoomList` of the rooms in use and a `CreateRoom` its `RoomCreated` or `RoomRejected`
+/// (section 3.6); a `Logout` or the closing of the connection ends the session; any other
+/// message is a protocol error that ends it too.
 ///
 /// Each datagram is checked as RFC section 6.3 says (header, direction, source). A
 /// `Connect` with an empty payload and the token of a session binds its source endpoint

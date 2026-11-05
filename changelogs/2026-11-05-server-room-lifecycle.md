@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) (opened 2026-11-05) |
 | Branch | `feat/server-room-lifecycle` → `develop` (stacked on `feat/server-room-routing`, #74) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`e1488e7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#301](https://github.com/Aegis2D-Dev/aegis2d/issues/301) feat(server): room lifecycle |
 

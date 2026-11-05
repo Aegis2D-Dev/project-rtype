@@ -19,6 +19,7 @@
 #include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
@@ -440,6 +441,53 @@ std::uint32_t log_in(NetworkContext& context, ServerNetwork& server, Player& pla
 }
 
 } // namespace
+
+TEST_CASE("a client lists and creates rooms with these messages only", "[server][rooms]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{21};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    Player player{context, server};
+    static_cast<void>(log_in(context, server, player, "R9"));
+    // Sends a message and waits for its answer.
+    const auto ask = [&](const std::vector<std::byte>& message) {
+        const std::size_t before = player.received.size();
+        player.send(message);
+        REQUIRE(pump(context, server, [&] { return player.received.size() > before; }));
+        return player.received.back();
+    };
+
+    // The room of the login only, its player not in game yet.
+    using rtype::RoomRecord;
+    const auto waiting = static_cast<std::uint8_t>(rtype::RoomState::Waiting);
+    CHECK(rtype::read_room_list(ask(rtype::write_list_rooms())) ==
+          std::vector<RoomRecord>{
+              {.room = 0, .name = "Room 1", .players = 1, .max_players = 4, .state = waiting}});
+
+    // A room is created, a bad one refused, then none is left.
+    CHECK(rtype::read_room_created(ask(
+              rtype::write_create_room({.name = "Aces", .max_players = 2}))) == std::uint8_t{1});
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 5}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::BadSize));
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 4}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::NoRoomLeft));
+    const std::vector<RoomRecord> rooms =
+        rtype::read_room_list(ask(rtype::write_list_rooms())).value_or(std::vector<RoomRecord>{});
+    REQUIRE(rooms.size() == 2);
+    CHECK(rooms.at(1) ==
+          RoomRecord{.room = 1, .name = "Aces", .players = 0, .max_players = 2, .state = waiting});
+    CHECK(!player.closed);
+    CHECK(server.sessions().size() == 1);
+
+    // A malformed one ends the session without an answer (RFC section 6.5).
+    const std::size_t answers = player.received.size();
+    player.send({std::byte{0x05}, std::byte{0x00}});
+    REQUIRE(pump(context, server, [&] { return player.closed; }));
+    CHECK(player.received.size() == answers);
+    CHECK(server.sessions().size() == 0);
+}
 
 TEST_CASE("a Connect binds the endpoint and gets an Accept", "[server][udp]") {
     NetworkContext context;

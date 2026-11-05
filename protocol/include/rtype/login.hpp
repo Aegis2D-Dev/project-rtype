@@ -1,5 +1,6 @@
 /// @file
-/// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules.
+/// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules;
+/// those of the rooms are in rooms.hpp.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -28,17 +29,27 @@ enum class TcpKind : std::uint8_t {
     LoginRejected = 3,
     /// @brief Both ways: the sender ends the session and closes.
     Logout = 4,
+    /// @brief Client to server, after the login: asks for the rooms.
+    ListRooms = 5,
+    /// @brief Server to client: the rooms, answering `ListRooms`.
+    RoomList = 6,
+    /// @brief Client to server, after the login: name and size of a room to create.
+    CreateRoom = 7,
+    /// @brief Server to client: the number of the room created, answering `CreateRoom`.
+    RoomCreated = 8,
+    /// @brief Server to client: why the room was not created, answering `CreateRoom`.
+    RoomRejected = 9,
 };
 
 /// @brief Why a login is refused, the `reason` of `LoginRejected`.
 enum class LoginRejection : std::uint8_t {
-    /// @brief The game already has 4 players.
+    /// @brief Every room of the server is full.
     ServerFull = 1,
     /// @brief The server does not speak the requested version.
     BadVersion = 2,
     /// @brief The name is empty, too long, not UTF-8 or has control characters.
     BadName = 3,
-    /// @brief Another player of the game has this name.
+    /// @brief Another player of the server has this name.
     NameTaken = 4,
     /// @brief The game is running and does not take new players.
     GameStarted = 5,
@@ -72,7 +83,7 @@ struct LoginRequest {
 struct LoginAccepted {
     /// @brief Session token, never 0.
     std::uint32_t session = 0;
-    /// @brief Player number, 0 to 3.
+    /// @brief Player number in its room, 0 to 3.
     std::uint8_t player = 0;
     /// @brief UDP port of the server.
     std::uint16_t udp_port = 0;

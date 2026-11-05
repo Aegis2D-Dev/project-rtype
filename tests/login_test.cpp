@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/tuning.hpp>
 
@@ -10,6 +11,7 @@
 #include <initializer_list>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -21,6 +23,9 @@ using rtype::LoginAccepted;
 using rtype::LoginRejection;
 using rtype::LoginRequest;
 using rtype::LogoutReason;
+using rtype::RoomRecord;
+using rtype::RoomRejection;
+using rtype::RoomState;
 using rtype::Session;
 using rtype::SessionTable;
 using rtype::TcpKind;
@@ -81,7 +86,9 @@ TEST_CASE("kinds and logouts are checked", "[server][login]") {
     CHECK(rtype::kind_of(bytes({0x04, 0x00})) == TcpKind::Logout);
     CHECK(!rtype::kind_of({}).has_value());
     CHECK(!rtype::kind_of(bytes({0x00})).has_value());
-    CHECK(!rtype::kind_of(bytes({0x05})).has_value());
+    CHECK(rtype::kind_of(bytes({0x05})) == TcpKind::ListRooms);
+    CHECK(rtype::kind_of(bytes({0x09, 0x01})) == TcpKind::RoomRejected);
+    CHECK(!rtype::kind_of(bytes({0x0A})).has_value());
 
     CHECK(rtype::read_logout(bytes({0x04, 0x00})) == std::uint8_t{0});
     CHECK(rtype::read_logout(bytes({0x04, 0x09})) == std::uint8_t{9});
@@ -184,6 +191,103 @@ TEST_CASE("logins fill the first room, then the next one", "[server][sessions]")
     SessionTable single{12};
     single.set_rooms(0);
     CHECK(single.rooms() == 1);
+}
+
+TEST_CASE("room messages follow the RFC example", "[server][rooms]") {
+    // RFC section 3.6, without the length prefixes.
+    CHECK(rtype::write_list_rooms() == bytes({0x05}));
+    const std::vector<RoomRecord> rooms{
+        {.room = 0, .name = "Room 1", .players = 1, .max_players = 4, .state = 1},
+        {.room = 1, .name = "Aces", .players = 0, .max_players = 2, .state = 0}};
+    const std::vector<std::byte> list =
+        bytes({0x06, 0x02, 0x00, 0x06, 0x00, 0x52, 0x6F, 0x6F, 0x6D, 0x20, 0x31, 0x01,
+               0x04, 0x01, 0x01, 0x04, 0x00, 0x41, 0x63, 0x65, 0x73, 0x00, 0x02, 0x00});
+    CHECK(rtype::write_room_list(rooms) == list);
+    CHECK(rtype::read_room_list(list) == rooms);
+    CHECK(rtype::write_create_room({.name = "Aces", .max_players = 2}) ==
+          bytes({0x07, 0x04, 0x00, 0x41, 0x63, 0x65, 0x73, 0x02}));
+    CHECK(rtype::write_room_created(1) == bytes({0x08, 0x01}));
+    CHECK(rtype::write_room_rejected(RoomRejection::BadSize) == bytes({0x09, 0x03}));
+}
+
+TEST_CASE("room messages are read whole or not at all", "[server][rooms]") {
+    CHECK(rtype::read_list_rooms(bytes({0x05})));
+    CHECK(!rtype::read_list_rooms(bytes({0x05, 0x00})));
+    CHECK(!rtype::read_list_rooms(bytes({0x04})));
+
+    CHECK(rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x03})) ==
+          rtype::CreateRoomRequest{.name = "A", .max_players = 3});
+    CHECK(!rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41})).has_value());
+    CHECK(!rtype::read_create_room(bytes({0x07, 0x05, 0x00, 0x41, 0x03})).has_value());
+    CHECK(!rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x03, 0x00})).has_value());
+
+    CHECK(rtype::read_room_list(bytes({0x06, 0x00})) == std::vector<RoomRecord>{});
+    CHECK(!rtype::read_room_list(bytes({0x06})).has_value());
+    CHECK(!rtype::read_room_list(bytes({0x06, 0x01, 0x00})).has_value());
+    CHECK(!rtype::read_room_list(bytes({0x06, 0x00, 0x00})).has_value());
+    CHECK(!rtype::read_room_list(bytes({0x06, 65})).has_value());
+    CHECK_THROWS_AS(rtype::write_room_list(std::vector<RoomRecord>(65)), std::invalid_argument);
+
+    CHECK(rtype::read_room_created(bytes({0x08, 0x03})) == std::uint8_t{3});
+    CHECK(!rtype::read_room_created(bytes({0x08})).has_value());
+    CHECK(rtype::read_room_rejected(bytes({0x09, 0x07})) == std::uint8_t{7});
+    CHECK(!rtype::read_room_rejected(bytes({0x08, 0x01})).has_value());
+}
+
+TEST_CASE("rooms are created, listed, filled by the logins and end with their last player",
+          "[server][sessions][rooms]") {
+    SessionTable table{13};
+    table.set_rooms(3);
+    CHECK(table.list_rooms().empty());
+    const auto create = [&](std::string name, std::uint8_t size) {
+        return table.create_room({.name = std::move(name), .max_players = size});
+    };
+    const auto room_of = [](const std::variant<std::uint8_t, RoomRejection>& result) {
+        REQUIRE(std::holds_alternative<std::uint8_t>(result));
+        return std::get<std::uint8_t>(result);
+    };
+    const auto rejection_of = [](const std::variant<std::uint8_t, RoomRejection>& result) {
+        REQUIRE(std::holds_alternative<RoomRejection>(result));
+        return std::get<RoomRejection>(result);
+    };
+    CHECK(rejection_of(create("", 2)) == RoomRejection::BadName);
+    CHECK(rejection_of(create("a\nb", 2)) == RoomRejection::BadName);
+    CHECK(rejection_of(create("Aces", 0)) == RoomRejection::BadSize);
+    CHECK(rejection_of(create("Aces", 5)) == RoomRejection::BadSize);
+    CHECK(room_of(create("Aces", 2)) == 0);
+
+    // The logins fill the rooms in use, each up to its size, then open a new one.
+    const Session first = accepted(table, "p0");
+    const Session second = accepted(table, "p1");
+    const Session third = accepted(table, "p2");
+    CHECK(first.room == 0);
+    CHECK(second.room == 0);
+    CHECK(second.player == 1);
+    CHECK(third.room == 1);
+    CHECK(third.player == 0);
+    CHECK(room_of(create("Bees", 1)) == 2);
+    CHECK(rejection_of(create("Cees", 4)) == RoomRejection::NoRoomLeft);
+    CHECK(accepted(table, "p3").room == 1);
+
+    const auto waiting = static_cast<std::uint8_t>(RoomState::Waiting);
+    CHECK(table.list_rooms() ==
+          std::vector<RoomRecord>{
+              {.room = 0, .name = "Aces", .players = 2, .max_players = 2, .state = waiting},
+              {.room = 1, .name = "Room 2", .players = 2, .max_players = 4, .state = waiting},
+              {.room = 2, .name = "Bees", .players = 0, .max_players = 1, .state = waiting}});
+
+    // A bound player: its room plays. The last player of a room ends it.
+    CHECK(table.bind(third.token, Endpoint::v4({192, 168, 1, 10}, 50000)) == BindResult::Bound);
+    CHECK(table.list_rooms().at(1).state == static_cast<std::uint8_t>(RoomState::Playing));
+    CHECK(table.end(first.token));
+    CHECK(table.list_rooms().size() == 3);
+    CHECK(table.end(second.token));
+    CHECK(table.list_rooms().size() == 2);
+    CHECK(room_of(create("Cees", 3)) == 0);
+
+    SessionTable large{14};
+    large.set_rooms(100);
+    CHECK(large.rooms() == rtype::max_listed_rooms);
 }
 
 TEST_CASE("the same seed gives the same tokens", "[server][sessions]") {
