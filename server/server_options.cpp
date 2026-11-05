@@ -34,6 +34,7 @@ std::optional<std::uint32_t> parse_number(std::string_view text, std::uint32_t m
 constexpr std::uint32_t max_port = 65535;
 constexpr std::uint32_t max_packet_rate = 100000;
 constexpr std::uint32_t max_payload = 1182;
+constexpr std::uint32_t max_rooms = 64;
 
 } // namespace
 
@@ -51,7 +52,7 @@ parse_server_options(std::span<const std::string_view> args) {
             return options;
         }
         if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves" &&
-            arg != "--max-packet-rate" && arg != "--compress") {
+            arg != "--max-packet-rate" && arg != "--compress" && arg != "--max-rooms") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -78,6 +79,15 @@ parse_server_options(std::span<const std::string_view> args) {
                                    max_payload);
             }
             options.compress_from = *size;
+            continue;
+        }
+        if (arg == "--max-rooms") {
+            const std::optional<std::uint32_t> rooms = parse_number(value, 1, max_rooms);
+            if (!rooms) {
+                return std::format("{}: \"{}\" is not a room count (1 to {})", arg, value,
+                                   max_rooms);
+            }
+            options.max_rooms = *rooms;
             continue;
         }
         const std::optional<std::uint32_t> port = parse_number(value, 0, max_port);

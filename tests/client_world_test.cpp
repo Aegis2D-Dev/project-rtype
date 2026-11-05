@@ -190,7 +190,6 @@ TEST_CASE("the input a player's record acknowledges only moves forward", "[clien
 TEST_CASE("the client's entities mirror the server's", "[client][world]") {
     aegis2d::net::NetworkContext context;
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
-    rtype::GameInstance& instance = game_server.room().instance();
     rtype::ServerNetwork& server = game_server.network();
     rtype::ClientSession client{
         context, rtype::ClientSettings{
@@ -220,6 +219,7 @@ TEST_CASE("the client's entities mirror the server's", "[client][world]") {
     run(std::chrono::milliseconds{1500});
     // The game stops; what it already posted reaches the client.
     game_server.simulation().stop();
+    rtype::GameInstance& instance = game_server.room().instance();
     run(std::chrono::milliseconds{300});
 
     const Snapshot truth = rtype::take_snapshot(instance);

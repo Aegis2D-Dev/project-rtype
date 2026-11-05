@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#81](https://github.com/Aegis2D-Dev/project-rtype/pull/81) (opened 2026-11-05) |
 | Branch | `ci/windows-runner-load` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`d348f01`) |
 | Author | @vmbr068 |
 | Ticket | None: *Code quality* waiting up to 2 hours for a Windows runner on 2026-11-05 |
 

@@ -1,4 +1,5 @@
 #include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/traffic.hpp>
 
@@ -9,12 +10,15 @@
 #include <rtype/bot_stats.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/events.hpp>
+#include <rtype/game_server.hpp>
 #include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -358,6 +362,72 @@ TEST_CASE("four bots fill a game and play their script", "[bot][script]") {
         bot->leave();
     }
     REQUIRE(pump([&] { return server.sessions().size() == 0; }));
+    CHECK(server.errors() == 0);
+}
+
+TEST_CASE("two games of four bots run side by side at 60 ticks per second each", "[bot][room]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    BotSettings base;
+    base.server.tcp_port = server.tcp_endpoint().port();
+    std::vector<std::unique_ptr<Bot>> bots;
+    for (const BotSettings& settings : rtype::bot_team(base, 8)) {
+        bots.push_back(std::make_unique<Bot>(context, settings));
+        bots.back()->start();
+    }
+    const auto pump = [&](auto condition) {
+        const auto deadline = Clock::now() + std::chrono::seconds{10};
+        while (!condition()) {
+            if (Clock::now() > deadline) {
+                return false;
+            }
+            context.run_for(milliseconds{5});
+            server.update(Clock::now());
+            for (const std::unique_ptr<Bot>& bot : bots) {
+                bot->update(Clock::now());
+            }
+        }
+        return true;
+    };
+    REQUIRE(pump([&] {
+        return std::ranges::all_of(
+            bots, [](const auto& bot) { return bot->session().state() == ClientState::InGame; });
+    }));
+
+    // The first four bots fill the first room, the next four open the second.
+    CHECK(game_server.open_rooms() == 2);
+    std::array<std::size_t, 2> players{};
+    for (const std::unique_ptr<Bot>& bot : bots) {
+        const rtype::Session* const session =
+            server.sessions().find(bot->session().login().value_or(rtype::LoginAccepted{}).session);
+        REQUIRE(session != nullptr);
+        ++players.at(session->room);
+    }
+    CHECK(players == std::array<std::size_t, 2>{4, 4});
+
+    // Both games tick at their rate at the same time, each on its own thread.
+    const std::array<std::uint64_t, 2> first{game_server.room(0).simulation().ticks(),
+                                             game_server.room(1).simulation().ticks()};
+    const auto start = Clock::now();
+    REQUIRE(pump([&] { return Clock::now() - start >= std::chrono::seconds{1}; }));
+    const std::chrono::duration<double> elapsed = Clock::now() - start;
+    for (std::uint32_t room = 0; room < 2; ++room) {
+        const double rate =
+            static_cast<double>(game_server.room(room).simulation().ticks() - first.at(room)) /
+            elapsed.count();
+        CAPTURE(room, rate);
+        CHECK(rate > 50.0);
+    }
+    CHECK(server.timeouts() == 0);
+
+    // Everyone leaves: both rooms close, their threads stopped and joined.
+    for (const std::unique_ptr<Bot>& bot : bots) {
+        bot->leave();
+    }
+    REQUIRE(pump([&] { return game_server.open_rooms() == 0; }));
+    CHECK(server.sessions().size() == 0);
     CHECK(server.errors() == 0);
 }
 
