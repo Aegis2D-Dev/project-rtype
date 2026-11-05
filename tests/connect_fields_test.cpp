@@ -111,10 +111,11 @@ TEST_CASE("each field keeps to its own characters and length", "[client][connect
     clear(fields, ConnectField::Name);
     CHECK(frame(fields, "Ace Pilot 2"));
     CHECK(fields.text(ConnectField::Name) == "Ace Pilot 2");
-    // Printable ASCII only, as the login allows, and 16 characters at most.
-    frame(fields, "éèà, and more than enough");
-    CHECK(fields.text(ConnectField::Name).size() == ConnectForm::max_name);
-    CHECK(fields.text(ConnectField::Name).starts_with("Ace Pilot 2, and"));
+    // Accented letters too, as the login takes UTF-8, up to 16 bytes: never half a letter.
+    frame(fields, "éèà, and more");
+    CHECK(fields.text(ConnectField::Name) == "Ace Pilot 2éè");
+    // No control character.
+    CHECK_FALSE(frame(fields, "\t"));
 }
 
 TEST_CASE("a field is edited at its cursor", "[client][connect]") {
@@ -134,6 +135,16 @@ TEST_CASE("a field is edited at its cursor", "[client][connect]") {
     frame(fields, "", {Key::End});
     frame(fields, "0");
     CHECK(fields.text(ConnectField::Host) == "27.0.0.10");
+}
+
+TEST_CASE("an accented name typed is joined with", "[client][connect]") {
+    ConnectFields fields{defaults()};
+    fields.focus(ConnectField::Name);
+    clear(fields, ConnectField::Name);
+    CHECK(frame(fields, "Zoé"));
+    const auto settings = fields.form().submit();
+    REQUIRE(std::holds_alternative<ClientSettings>(settings));
+    CHECK(std::get<ClientSettings>(settings).name == "Zoé");
 }
 
 TEST_CASE("the typed fields are what the client joins with", "[client][connect]") {
@@ -213,17 +224,21 @@ TEST_CASE("command line settings are shown as joining would send them", "[client
     ConnectFields fields{
         ClientSettings{.host = "my host", .tcp_port = 4242, .name = "Zoé the ace pilot X9"}};
     CHECK(fields.text(ConnectField::Host) == "myhost");
-    CHECK(fields.text(ConnectField::Name) == "Zo the ace pilot");
+    // 16 bytes: the 'é' takes two.
+    CHECK(fields.text(ConnectField::Name) == "Zoé the ace pil");
     CHECK(fields.text(ConnectField::Name).size() == ConnectForm::max_name);
 
     // Edited, the field and the form stay the same text, which is what joining sends.
     fields.focus(ConnectField::Name);
     frame(fields, "", {Key::Backspace});
     frame(fields, "s");
-    CHECK(fields.text(ConnectField::Name) == "Zo the ace pilos");
+    CHECK(fields.text(ConnectField::Name) == "Zoé the ace pis");
+    // Typed past 16 bytes, the field keeps to what the form keeps.
+    frame(fields, "é");
+    CHECK(fields.text(ConnectField::Name) == "Zoé the ace pis");
     const auto settings = fields.form().submit();
     REQUIRE(std::holds_alternative<ClientSettings>(settings));
-    CHECK(std::get<ClientSettings>(settings).name == "Zo the ace pilos");
+    CHECK(std::get<ClientSettings>(settings).name == "Zoé the ace pis");
     CHECK(std::get<ClientSettings>(settings).host == "myhost");
 
     // What is drawn is that text too: as many glyphs as it has characters.

@@ -104,8 +104,10 @@ TEST_CASE("the rules of each field are told and kept by set_text", "[client][con
     CHECK(ConnectForm::accepts(ConnectField::Port, '7'));
     CHECK_FALSE(ConnectForm::accepts(ConnectField::Port, '.'));
     CHECK(ConnectForm::accepts(ConnectField::Name, ' '));
-    // A byte of a longer UTF-8 character, such as the first of 'é', is no field's.
-    CHECK_FALSE(ConnectForm::accepts(ConnectField::Name, static_cast<char>(0xC3)));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Name, '\t'));
+    // The bytes of a longer UTF-8 character, such as the first of 'é', are a name's only.
+    CHECK(ConnectForm::accepts(ConnectField::Name, static_cast<char>(0xC3)));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Host, static_cast<char>(0xC3)));
     CHECK(ConnectForm::max_length(ConnectField::Host) == ConnectForm::max_host);
     CHECK(ConnectForm::max_length(ConnectField::Port) == ConnectForm::max_port);
     CHECK(ConnectForm::max_length(ConnectField::Name) == ConnectForm::max_name);
@@ -120,4 +122,15 @@ TEST_CASE("the rules of each field are told and kept by set_text", "[client][con
     CHECK(form.text(ConnectField::Port) == "12345");
     CHECK(form.set_text(ConnectField::Name, ""));
     CHECK(form.text(ConnectField::Name).empty());
+
+    // Names are UTF-8, as the login takes them, and cut to 16 bytes between characters.
+    CHECK(form.set_text(ConnectField::Name, "Zoé"));
+    CHECK(form.text(ConnectField::Name) == "Zoé");
+    CHECK_FALSE(form.set_text(ConnectField::Name, "ééééééééé"));
+    CHECK(form.text(ConnectField::Name) == "éééééééé");
+    CHECK_FALSE(form.set_text(ConnectField::Name, "abcdefghijklmnoé"));
+    CHECK(form.text(ConnectField::Name) == "abcdefghijklmno");
+    // One byte of a longer character cannot be typed alone.
+    form.focus(ConnectField::Name);
+    CHECK_FALSE(form.type(static_cast<char>(0xC3)));
 }
