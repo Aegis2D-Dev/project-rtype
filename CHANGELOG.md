@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#83](https://github.com/Aegis2D-Dev/project-rtype/pull/83) | Frame metrics in the client, with F12 | `feat/client-frame-metrics` | Open | 2026-11-05 | [2026-11-05-client-frame-metrics](changelogs/2026-11-05-client-frame-metrics.md) |
 | [#81](https://github.com/Aegis2D-Dev/project-rtype/pull/81) | No build for documentation-only pull requests | `ci/windows-runner-load` | Merged | 2026-11-05 | [2026-11-05-ci-windows-runner-load](changelogs/2026-11-05-ci-windows-runner-load.md) |
 | [#80](https://github.com/Aegis2D-Dev/project-rtype/pull/80) | Room rules | `feat/protocol-room-rules` | Open | 2026-11-05 | [2026-11-05-protocol-room-rules](changelogs/2026-11-05-protocol-room-rules.md) |
 | [#79](https://github.com/Aegis2D-Dev/project-rtype/pull/79) | Room screen | `feat/client-room-screen` | Merged | 2026-11-05 | [2026-11-05-client-room-screen](changelogs/2026-11-05-client-room-screen.md) |

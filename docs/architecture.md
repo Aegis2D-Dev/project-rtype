@@ -196,7 +196,7 @@ client/
     network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
     snapshot_decoder  the snapshots rebuilt from their baseline and delta
-  client_app          r-type_client: window, screens, settings keys
+  client_app          r-type_client: window, screens, settings keys, frame metrics (F12)
   game_view           the game screen: entities, explosions, HUD, notices
   lagometer_view      the lagometer overlay, toggled with F6
   menu_screens        connect, joining and connection lost screens

@@ -71,6 +71,7 @@ server and `--join`:
 | `--settings <file>` | Settings file to use instead of the player's own (below) |
 | `--frames <count>` | Quit after this many frames (tests, captures) |
 | `--screenshot <png>` | Save the frame before the last one (after 300 frames by default) |
+| `--metrics` | Show the frame metrics from the start, as F12 does |
 
 ## Controls
 
@@ -84,6 +85,7 @@ server and `--join`:
 | Color vision preview | F3 | |
 | Smaller / larger text | F4 / F5 | |
 | Lagometer on / off | F6 | |
+| Frame metrics on / off | F12 | |
 | Music on / off | M (in game) | |
 
 The movement and fire keys can be changed on the connect screen: select a control with
@@ -169,6 +171,18 @@ page) delays each direction of `lo` by 150 ms, so the RTT climbs above 300 ms an
 red within a second, the loss turns yellow, and the bandwidth graphs flatten at 5 KB/s;
 after `sudo tools/netem.sh stop`, the loss is back to 0 within 2 seconds and the RTT to
 normal within a few.
+
+### Frame metrics
+
+F12 shows the **frame metrics** at the top center of every screen (the engine's
+`render::MetricsOverlay`): the frames per second over the last second, the mean and longest
+frame times of the last 120 frames, the entities of the game (in game only), and the
+sprites and draw calls of the frame before, the overlay's own left out. Under them, a bar
+per frame, newest on the right: blue within 16.7 ms (60 frames per second, the line half
+way up), orange above, a frame of 33 ms or more filling the graph. `--metrics` shows them
+from the start, for a capture.
+
+![R-Type with the frame metrics: 119 frames per second, 8.4 ms a frame, 11 entities, 410 sprites in 12 draw calls, and an orange bar for a slower frame.](images/frame-metrics.png)
 
 ## Accessibility
 
