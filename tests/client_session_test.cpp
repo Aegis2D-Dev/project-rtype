@@ -24,6 +24,8 @@
 #include <rtype/input.hpp>
 #include <rtype/lag_compensation.hpp>
 #include <rtype/login.hpp>
+#include <rtype/room_list_form.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/ship_movement.hpp>
@@ -803,4 +805,57 @@ TEST_CASE("a client holding right moves its ship in the server's game", "[client
         ship.value_or(aegis2d::ecs::Entity{}));
     CHECK(transform.position.x > rtype::player_spawn(0).x + 100.0F);
     CHECK(transform.position.y == rtype::player_spawn(0).y);
+}
+
+TEST_CASE("a client creates and joins rooms from the room list screen", "[client][rooms]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    ClientSettings settings = settings_for(server, "R9");
+    settings.choose_room = true;
+    ClientSession client{context, settings};
+    client.start();
+
+    // Logged in, the client stays in the lobby with the rooms: the one of its login.
+    REQUIRE(pump(context, &server, {&client}, [&] { return !client.rooms().empty(); }));
+    CHECK(client.state() == ClientState::Lobby);
+    CHECK(client.connects_sent() == 0);
+    rtype::RoomListForm screen;
+    screen.update(client.rooms());
+    REQUIRE(screen.rooms().size() == 1);
+    CHECK(screen.rooms().front().name == "Room 1");
+
+    // A refused room says why; the screen creates one of 2 players, listed at once.
+    client.create_room({.name = "", .max_players = 2});
+    REQUIRE(pump(context, &server, {&client}, [&] { return !client.room_error().empty(); }));
+    CHECK(client.room_error() ==
+          "the room's name is not valid: 1 to 16 characters, no control character");
+    REQUIRE(screen.creating());
+    for (const char character : std::string{"Aces"}) {
+        static_cast<void>(screen.type(character));
+    }
+    screen.smaller();
+    screen.smaller();
+    client.create_room(std::get<rtype::CreateRoomRequest>(screen.submit()));
+    REQUIRE(pump(context, &server, {&client}, [&] { return client.rooms().size() == 2; }));
+    CHECK(client.room_error().empty());
+    screen.update(client.rooms());
+    CHECK(screen.rooms().at(1).name == "Aces");
+    CHECK(screen.rooms().at(1).max_players == 2);
+
+    // Joined from the screen, the client plays in that room as its first player.
+    screen.down();
+    screen.down();
+    client.join_room(std::get<std::uint8_t>(screen.submit()));
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
+    const rtype::LoginAccepted login = client.login().value_or(rtype::LoginAccepted{});
+    CHECK(login.player == 0);
+    const rtype::Session* const session = server.sessions().find(login.session);
+    REQUIRE(session != nullptr);
+    CHECK(session->room == 1);
+    CHECK(game_server.open_rooms() == 1);
+    CHECK_NOTHROW(game_server.room(1));
+    CHECK(server.sessions().list_rooms().size() == 1);
 }
