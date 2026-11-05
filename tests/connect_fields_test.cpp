@@ -191,3 +191,52 @@ TEST_CASE("a long address is drawn inside its box", "[client][connect]") {
     // Only the field being edited has a cursor.
     CHECK(cursors == 1);
 }
+
+TEST_CASE("a field gained again is edited from its end", "[client][connect]") {
+    ConnectFields fields{defaults()};
+    fields.focus(ConnectField::Host);
+    frame(fields, "", {Key::Home});
+    // Away to the port and back: typing goes at the end, not where the cursor was left.
+    fields.focus(ConnectField::Port);
+    fields.focus(ConnectField::Host);
+    frame(fields, "9");
+    CHECK(fields.text(ConnectField::Host) == "127.0.0.19");
+    // Focusing the field it already edits keeps its cursor.
+    frame(fields, "", {Key::Left});
+    fields.focus(ConnectField::Host);
+    frame(fields, "8");
+    CHECK(fields.text(ConnectField::Host) == "127.0.0.189");
+}
+
+TEST_CASE("command line settings are shown as joining would send them", "[client][connect]") {
+    // What --host and --name may hold that the fields do not take.
+    ConnectFields fields{
+        ClientSettings{.host = "my host", .tcp_port = 4242, .name = "Zoé the ace pilot X9"}};
+    CHECK(fields.text(ConnectField::Host) == "myhost");
+    CHECK(fields.text(ConnectField::Name) == "Zo the ace pilot");
+    CHECK(fields.text(ConnectField::Name).size() == ConnectForm::max_name);
+
+    // Edited, the field and the form stay the same text, which is what joining sends.
+    fields.focus(ConnectField::Name);
+    frame(fields, "", {Key::Backspace});
+    frame(fields, "s");
+    CHECK(fields.text(ConnectField::Name) == "Zo the ace pilos");
+    const auto settings = fields.form().submit();
+    REQUIRE(std::holds_alternative<ClientSettings>(settings));
+    CHECK(std::get<ClientSettings>(settings).name == "Zo the ace pilos");
+    CHECK(std::get<ClientSettings>(settings).host == "myhost");
+
+    // What is drawn is that text too: as many glyphs as it has characters.
+    HeadlessRenderer renderer;
+    TextureManager textures{renderer};
+    const auto font = BitmapFont::builtin(textures);
+    renderer.begin_frame(aegis2d::render::rgb(0x000000));
+    fields.draw(renderer, font, ConnectField::Host,
+                {.x = 0.0F, .y = 0.0F, .width = 600.0F, .height = 40.0F}, {});
+    renderer.end_frame();
+    std::size_t glyphs = 0;
+    for (const Sprite& sprite : renderer.sprites()) {
+        glyphs += sprite.texture != no_texture ? 1 : 0;
+    }
+    CHECK(glyphs == std::string{"myhost"}.size());
+}
