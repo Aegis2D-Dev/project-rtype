@@ -481,6 +481,14 @@ TEST_CASE("a client lists and creates rooms with these messages only", "[server]
     CHECK(!player.closed);
     CHECK(server.sessions().size() == 1);
 
+    // Rules out of range are refused with their reason, the connection going on.
+    CHECK(rtype::read_room_rejected(ask(rtype::write_create_room(
+              {.name = "Bees",
+               .max_players = 4,
+               .rules = {.lives = 3, .difficulty = 1, .waves = "stage9", .friendly_fire = 0}}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::UnknownWaves));
+    CHECK(!player.closed);
+
     // A malformed one ends the session without an answer (RFC section 6.5).
     const std::size_t answers = player.received.size();
     player.send({std::byte{0x05}, std::byte{0x00}});
