@@ -13,6 +13,7 @@
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/stop_signal.hpp>
+#include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -80,14 +81,18 @@ int main(int argc, char** argv) {
 
     aegis2d::net::NetworkContext context;
     try {
-        rtype::GameServer server{context, std::nullopt, waves, options.tcp_port, options.udp_port};
+        rtype::GameServer server{context,          std::nullopt,     waves,
+                                 options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
+                                 options.max_rooms};
         rtype::ServerNetwork& network = server.network();
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
-                  << network.udp_endpoint().port() << ", simulation at "
-                  << server.simulation().rate() << " Hz\n"
+                  << network.udp_endpoint().port() << ", up to " << server.max_rooms()
+                  << (server.max_rooms() == 1 ? " room" : " rooms") << " of "
+                  << rtype::tuning::max_players << " players, each simulated at " << server.rate()
+                  << " Hz\n"
                   << std::flush;
         if (!rtype::install_stop_handlers()) {
             aegis2d::core::log_warn(
@@ -116,7 +121,7 @@ int main(int argc, char** argv) {
         while (!network.idle() && rtype::ServerNetwork::Clock::now() < deadline) {
             run_network();
         }
-        // Leaving the scope stops the simulation thread, then closes the sockets.
+        // Leaving the scope stops the simulation threads, then closes the sockets.
     } catch (const aegis2d::net::SocketError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
