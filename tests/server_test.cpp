@@ -19,6 +19,7 @@
 #include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
@@ -440,6 +441,162 @@ std::uint32_t log_in(NetworkContext& context, ServerNetwork& server, Player& pla
 }
 
 } // namespace
+
+TEST_CASE("a client lists and creates rooms with these messages only", "[server][rooms]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{21};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    Player player{context, server};
+    static_cast<void>(log_in(context, server, player, "R9"));
+    // Sends a message and waits for its answer.
+    const auto ask = [&](const std::vector<std::byte>& message) {
+        const std::size_t before = player.received.size();
+        player.send(message);
+        REQUIRE(pump(context, server, [&] { return player.received.size() > before; }));
+        return player.received.back();
+    };
+
+    // The room of the login only, its player not in game yet.
+    using rtype::RoomRecord;
+    const auto waiting = static_cast<std::uint8_t>(rtype::RoomState::Waiting);
+    CHECK(rtype::read_room_list(ask(rtype::write_list_rooms())) ==
+          std::vector<RoomRecord>{
+              {.room = 0, .name = "Room 1", .players = 1, .max_players = 4, .state = waiting}});
+
+    // A room is created, a bad one refused, then none is left.
+    CHECK(rtype::read_room_created(ask(
+              rtype::write_create_room({.name = "Aces", .max_players = 2}))) == std::uint8_t{1});
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 5}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::BadSize));
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 4}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::NoRoomLeft));
+    const std::vector<RoomRecord> rooms =
+        rtype::read_room_list(ask(rtype::write_list_rooms())).value_or(std::vector<RoomRecord>{});
+    REQUIRE(rooms.size() == 2);
+    CHECK(rooms.at(1) ==
+          RoomRecord{.room = 1, .name = "Aces", .players = 0, .max_players = 2, .state = waiting});
+    CHECK(!player.closed);
+    CHECK(server.sessions().size() == 1);
+
+    // Rules out of range are refused with their reason, the connection going on.
+    CHECK(rtype::read_room_rejected(ask(rtype::write_create_room(
+              {.name = "Bees",
+               .max_players = 4,
+               .rules = {.lives = 3, .difficulty = 1, .waves = "stage9", .friendly_fire = 0}}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::UnknownWaves));
+    CHECK(!player.closed);
+
+    // A malformed one ends the session without an answer (RFC section 6.5).
+    const std::size_t answers = player.received.size();
+    player.send({std::byte{0x05}, std::byte{0x00}});
+    REQUIRE(pump(context, server, [&] { return player.closed; }));
+    CHECK(player.received.size() == answers);
+    CHECK(server.sessions().size() == 0);
+}
+
+TEST_CASE("four clients join one room and start it with these messages", "[server][rooms]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::uint32_t> tokens;
+    players.reserve(5);
+    tokens.reserve(5);
+    for (std::size_t index = 0; index < 5; ++index) {
+        players.push_back(std::make_unique<Player>(context, server));
+    }
+    for (std::size_t index = 0; index < 4; ++index) {
+        tokens.push_back(log_in(context, server, *players.at(index), "p" + std::to_string(index)));
+    }
+    // The messages of a kind a player received.
+    const auto received = [&](std::size_t index, rtype::TcpKind kind) {
+        std::vector<std::vector<std::byte>> messages;
+        for (const std::vector<std::byte>& message : players.at(index)->received) {
+            if (rtype::kind_of(message) == kind) {
+                messages.push_back(message);
+            }
+        }
+        return messages;
+    };
+    const auto wait_for = [&](std::size_t index, rtype::TcpKind kind, std::size_t count) {
+        REQUIRE(pump(context, server, [&] { return received(index, kind).size() >= count; }));
+        return received(index, kind).back();
+    };
+
+    // The first player creates room 1; the four join it, one after the other.
+    players.at(0)->send(rtype::write_create_room({.name = "Aces", .max_players = 4}));
+    CHECK(rtype::read_room_created(wait_for(0, rtype::TcpKind::RoomCreated, 1)) == std::uint8_t{1});
+    for (std::size_t index = 0; index < 4; ++index) {
+        players.at(index)->send(rtype::write_join_room(1));
+        CHECK(rtype::read_room_joined(wait_for(index, rtype::TcpKind::RoomJoined, 1)) ==
+              std::pair<std::uint8_t, std::uint8_t>{1, static_cast<std::uint8_t>(index)});
+    }
+    const auto everyone = [&] {
+        const std::optional<rtype::RoomPlayers> room =
+            rtype::read_room_players(wait_for(0, rtype::TcpKind::RoomPlayers, 1));
+        return room.value_or(rtype::RoomPlayers{});
+    };
+    REQUIRE(pump(context, server, [&] { return everyone().players.size() == 4; }));
+    CHECK(everyone().room == 1);
+    CHECK(everyone().players.at(3).name == "p3");
+    CHECK(server.sessions().list_rooms().size() == 1);
+
+    // A fifth player cannot join the full room, nor a room not in use.
+    tokens.push_back(log_in(context, server, *players.at(4), "p4"));
+    players.at(4)->send(rtype::write_join_room(1));
+    CHECK(rtype::read_join_rejected(wait_for(4, rtype::TcpKind::JoinRejected, 1)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::RoomFull));
+    players.at(4)->send(rtype::write_join_room(9));
+    CHECK(rtype::read_join_rejected(wait_for(4, rtype::TcpKind::JoinRejected, 2)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::NoSuchRoom));
+
+    // Three ready: everyone sees it, nothing starts; the fourth too: the game starts for all.
+    for (std::size_t index = 0; index < 3; ++index) {
+        players.at(index)->send(rtype::write_set_ready(true));
+    }
+    REQUIRE(pump(context, server, [&] {
+        return std::ranges::count_if(everyone().players, [](const rtype::RoomPlayer& player) {
+                   return player.ready;
+               }) == 3;
+    }));
+    CHECK(received(0, rtype::TcpKind::GameStart).empty());
+    players.at(3)->send(rtype::write_set_ready(true));
+    for (std::size_t index = 0; index < 4; ++index) {
+        CHECK(rtype::read_game_start(wait_for(index, rtype::TcpKind::GameStart, 1)));
+    }
+    CHECK(received(4, rtype::TcpKind::GameStart).empty());
+
+    // They bind and play in room 1; in game, a player stays there.
+    std::vector<std::unique_ptr<Socket>> sockets;
+    sockets.reserve(4);
+    for (std::size_t index = 0; index < 4; ++index) {
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.at(index)));
+    }
+    REQUIRE(pump(context, server, [&] {
+        return std::ranges::all_of(sockets,
+                                   [](const auto& socket) { return !socket->received.empty(); });
+    }));
+    CHECK(game_server.open_rooms() == 1);
+    CHECK_NOTHROW(game_server.room(1));
+    players.at(0)->send(rtype::write_join_room(0));
+    CHECK(rtype::read_join_rejected(wait_for(0, rtype::TcpKind::JoinRejected, 1)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::InGame));
+
+    // The fifth leaves for the lobby: its room ends, and its Connect finds no game.
+    players.at(4)->send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] { return server.sessions().list_rooms().size() == 1; }));
+    const std::uint64_t dropped = server.dropped_datagrams();
+    Socket lobby_udp{context};
+    lobby_udp.send(server, datagram(PacketType::Connect, tokens.at(4)));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+    CHECK(lobby_udp.received.empty());
+    CHECK(game_server.open_rooms() == 1);
+}
 
 TEST_CASE("a Connect binds the endpoint and gets an Accept", "[server][udp]") {
     NetworkContext context;

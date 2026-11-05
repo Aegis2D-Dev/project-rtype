@@ -15,6 +15,7 @@
 #include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -125,6 +126,22 @@ TEST_CASE("every enemy type a waves file can name can be spawned", "[rtype][wave
         CHECK(registry.has<aegis2d::ecs::NetworkId>(enemy));
         CHECK(registry.get<aegis2d::ecs::Collider>(enemy).layer == rtype::layer::enemy);
     }
+}
+
+TEST_CASE("the waves a room may play are the json files of the waves folder", "[rtype][waves]") {
+    const std::vector<std::string> offered =
+        rtype::waves_names(std::filesystem::path{RTYPE_ASSET_DIR} / "waves");
+    CHECK(std::ranges::find(offered, "stage1") != offered.end());
+
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_waves_names_test";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder);
+    for (const std::string_view name : {"b.json", "a.json", "notes.txt"}) {
+        std::ofstream{folder / name} << "{}";
+    }
+    CHECK(rtype::waves_names(folder) == std::vector<std::string>{"a", "b"});
+    std::filesystem::remove_all(folder);
+    CHECK(rtype::waves_names(folder).empty());
 }
 
 TEST_CASE("a typo in a waves file is reported with its place", "[rtype][waves][146]") {

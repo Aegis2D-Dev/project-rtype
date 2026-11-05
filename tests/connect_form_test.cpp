@@ -1,10 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/room_list_form.hpp>
+#include <rtype/rooms.hpp>
 
 #include <cstdint>
 #include <string>
 #include <variant>
+#include <vector>
 
 using rtype::ClientSettings;
 using rtype::ConnectField;
@@ -133,4 +136,51 @@ TEST_CASE("the rules of each field are told and kept by set_text", "[client][con
     // One byte of a longer character cannot be typed alone.
     form.focus(ConnectField::Name);
     CHECK_FALSE(form.type(static_cast<char>(0xC3)));
+}
+
+TEST_CASE("the room list form keeps its selection and makes the request of a new room",
+          "[client][rooms]") {
+    using rtype::RoomRecord;
+    rtype::RoomListForm form;
+    CHECK(form.creating());
+    CHECK(std::get<std::string>(form.submit()) == "Type a name for the new room.");
+    form.update(std::vector<RoomRecord>{
+        {.room = 0, .name = "Room 1", .players = 4, .max_players = 4, .state = 1},
+        {.room = 2, .name = "Aces", .players = 1, .max_players = 2, .state = 0}});
+    // The row of a new room stays the last one; up and down wrap around.
+    CHECK(form.row() == 2);
+    form.down();
+    CHECK(form.row() == 0);
+    CHECK(std::get<std::string>(form.submit()) == "This room is full.");
+    form.down();
+    CHECK(std::get<std::uint8_t>(form.submit()) == 2);
+    CHECK(!form.type('x'));
+
+    // The selected room stays selected when the list changes, as long as it is listed.
+    form.update(std::vector<RoomRecord>{
+        {.room = 1, .name = "Bees", .players = 0, .max_players = 4, .state = 0},
+        {.room = 2, .name = "Aces", .players = 1, .max_players = 2, .state = 0}});
+    CHECK(form.row() == 1);
+    form.update(std::vector<RoomRecord>{});
+    CHECK(form.creating());
+
+    // A new room: a name of printable characters, up to 16, and 1 to 4 players.
+    form.up();
+    CHECK(form.creating());
+    for (const char character : std::string{"Aces of the Bydo!"}) {
+        static_cast<void>(form.type(character));
+    }
+    CHECK(form.name() == "Aces of the Bydo");
+    CHECK(!form.type('\n'));
+    form.erase();
+    CHECK(form.size() == 4);
+    form.bigger();
+    CHECK(form.size() == 4);
+    for (int press = 0; press < 5; ++press) {
+        form.smaller();
+    }
+    CHECK(form.size() == 1);
+    form.bigger();
+    CHECK(std::get<rtype::CreateRoomRequest>(form.submit()) ==
+          rtype::CreateRoomRequest{.name = "Aces of the Byd", .max_players = 2});
 }

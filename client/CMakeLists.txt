@@ -10,7 +10,8 @@ add_executable(r-type_client
     lagometer_view.cpp
     main.cpp
     menu_screens.cpp
-    preferences.cpp)
+    preferences.cpp
+    typed_character.cpp)
 target_link_libraries(r-type_client
     PRIVATE rtype_client_ui rtype_client_net aegis2d::engine aegis2d::warnings)
 rtype_executable(r-type_client)

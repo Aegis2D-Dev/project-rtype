@@ -1,5 +1,5 @@
 /// @file
-/// @brief The screens around a game: connect, joining, connection lost.
+/// @brief The screens around a game: connect, rooms, a room, joining, connection lost.
 #pragma once
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/renderer.hpp>
@@ -8,6 +8,7 @@
 #include "preferences.hpp"
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/room_list_form.hpp>
 
 #include <array>
 #include <cstddef>
@@ -55,6 +56,34 @@ struct ConnectView {
 void draw_connect(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
                   ConnectFields& fields, const ScreenMessage& message, const ConnectView& view,
                   const Preferences& preferences);
+
+/// @brief Most rooms the room list screen shows at once, around the selected one.
+inline constexpr std::size_t visible_rooms = 9;
+
+/// @brief Draws the room list screen (#304): the rooms of the server with their players and
+/// state, the row of a new room (name and size), and the keys of the screen.
+/// @param renderer Renderer, between begin_frame() and end_frame().
+/// @param font Font of the texts.
+/// @param form The rooms, the selected row and the new room.
+/// @param message Last message, under the rooms.
+/// @param seconds Seconds since the start, for the blinking cursor.
+/// @param preferences The player's settings: text size, color vision.
+void draw_rooms(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
+                const RoomListForm& form, const ScreenMessage& message, double seconds,
+                const Preferences& preferences);
+
+/// @brief Draws the screen of the room joined (#305): its players, whether each is ready, and
+/// the keys of the screen.
+/// @param renderer Renderer, between begin_frame() and end_frame().
+/// @param font Font of the texts.
+/// @param name Name of the room.
+/// @param room Its players, from the server's last `RoomPlayers`.
+/// @param self Number of the player in the room.
+/// @param message Last message, under the players.
+/// @param preferences The player's settings: text size, color vision.
+void draw_room(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
+               std::string_view name, const RoomPlayers& room, std::uint8_t self,
+               const ScreenMessage& message, const Preferences& preferences);
 
 /// @brief Draws a screen of one message: joining, or the connection lost (#128).
 /// @param renderer Renderer, between begin_frame() and end_frame().

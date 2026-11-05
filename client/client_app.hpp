@@ -20,6 +20,7 @@
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/lagometer.hpp>
+#include <rtype/room_list_form.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -35,6 +36,10 @@ enum class ClientScreen : std::uint8_t {
     Connect,
     /// @brief Joining the server: login, then UDP binding.
     Joining,
+    /// @brief The rooms of the server, one to join or create (#304).
+    Rooms,
+    /// @brief The room joined: its players, ready or not, until the game starts (#305).
+    Room,
     /// @brief In game.
     Game,
     /// @brief The server stopped or went silent (#128).
@@ -62,6 +67,9 @@ struct OptionKeys {
 /// @brief The graphical client: one window, the screens of the game, and the session.
 /// @details Each frame reads the keyboard and the gamepad, runs the network handlers that
 /// are ready (NetworkContext::poll()) and the session's timers, then draws the screen.
+/// Joining from the connect screen shows the rooms of the server once logged in: the player
+/// joins one or creates one, says it is ready in the room, and plays once every player of the
+/// room is; `--join` plays at once in the room the server gives.
 /// In game, the held actions go to ClientSession::set_input(), sent 60 times a second,
 /// which also tells the server the client is alive; the server's snapshots and events
 /// update ClientWorld, drawn by GameView; F6 shows the lagometer over it. When the server stops,
@@ -83,6 +91,8 @@ private:
     void read_options_keys();
     void connect_screen();
     void joining_screen();
+    void rooms_screen();
+    void room_screen();
     void game_screen();
     void lost_screen();
     void join(const ClientSettings& settings);
@@ -110,12 +120,15 @@ private:
     bool show_lagometer_ = false;
     ClientSettings joined_;
     ConnectFields fields_;
+    RoomListForm room_list_;
+    std::string room_error_;
     ScreenMessage message_;
     std::string lost_reason_;
     ClientScreen screen_ = ClientScreen::Connect;
     std::size_t row_ = 0;
     bool quit_ = false;
     std::uint64_t frames_ = 0;
+    std::chrono::steady_clock::time_point started_;
     std::chrono::steady_clock::time_point last_frame_;
     float frame_seconds_ = 0.0F;
 };

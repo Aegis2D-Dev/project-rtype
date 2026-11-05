@@ -5,6 +5,7 @@ add_library(rtype_protocol STATIC
     events.cpp
     input.cpp
     login.cpp
+    rooms.cpp
     snapshot.cpp)
 target_include_directories(rtype_protocol PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_protocol

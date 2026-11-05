@@ -19,6 +19,7 @@
 #include <rtype/events.hpp>
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_decoder.hpp>
@@ -72,6 +73,38 @@ std::string rejection_text(std::uint8_t reason) {
     return "the server refused the login";
 }
 
+std::string room_rejection_text(std::uint8_t reason) {
+    switch (static_cast<RoomRejection>(reason)) {
+    case RoomRejection::NoRoomLeft:
+        return "the server has no room left";
+    case RoomRejection::BadName:
+        return "the room's name is not valid: 1 to 16 characters, no control character";
+    case RoomRejection::BadSize:
+        return "a room takes 1 to 4 players";
+    case RoomRejection::BadLives:
+        return "a room gives 1 to 9 lives";
+    case RoomRejection::BadDifficulty:
+        return "the server does not know this difficulty";
+    case RoomRejection::UnknownWaves:
+        return "the server has no such waves";
+    case RoomRejection::BadFriendlyFire:
+        return "friendly fire is on or off";
+    }
+    return "the server refused the room";
+}
+
+std::string join_rejection_text(std::uint8_t reason) {
+    switch (static_cast<JoinRejection>(reason)) {
+    case JoinRejection::NoSuchRoom:
+        return "the room is gone";
+    case JoinRejection::RoomFull:
+        return "the room is full";
+    case JoinRejection::InGame:
+        return "you are in game already";
+    }
+    return "the server refused to let you in the room";
+}
+
 std::string logout_text(std::uint8_t reason) {
     switch (static_cast<LogoutReason>(reason)) {
     case LogoutReason::Shutdown:
@@ -109,6 +142,10 @@ std::string_view to_string(ClientState state) noexcept {
         return "connecting";
     case ClientState::LoggingIn:
         return "logging in";
+    case ClientState::Lobby:
+        return "in the lobby";
+    case ClientState::InRoom:
+        return "in a room";
     case ClientState::Binding:
         return "binding";
     case ClientState::InGame:
@@ -183,43 +220,152 @@ void ClientSession::on_message(std::span<const std::byte> message) {
             fail("the server sent an unexpected answer to the login");
             return;
         }
-        const LoginAccepted granted = accepted.value_or(LoginAccepted{});
-        const std::optional<net::Endpoint> udp =
-            resolve(server_tcp_.value_or(net::Endpoint{}).address(), granted.udp_port);
-        if (!udp.has_value()) {
-            fail("the server's address cannot be used for UDP");
+        login_ = accepted.value_or(LoginAccepted{});
+        if (settings_.choose_room) {
+            // RFC sections 3.6 and 3.7: the rooms first, refreshed by update().
+            state_ = ClientState::Lobby;
+            core::log_info("client: logged in, choosing a room");
+            last_room_list_ = Clock::now();
+            send_request(write_list_rooms());
             return;
         }
-        const net::Endpoint server = udp.value_or(net::Endpoint{});
-        login_ = granted;
-        server_udp_ = server;
-        // RFC section 3.4: from an endpoint of the same family as the server's.
-        try {
-            socket_ = server.is_v6()
-                          ? std::make_unique<net::UdpSocket>(
-                                context_, net::Endpoint::v6(std::array<std::uint8_t, 16>{}, 0))
-                          : std::make_unique<net::UdpSocket>(context_, std::uint16_t{0});
-        } catch (const net::SocketError& error) {
-            fail(std::format("cannot open a UDP socket: {}", error.what()));
-            return;
-        }
-        socket_->start_receiving(
-            [this](const net::Endpoint& from, std::span<const std::byte> datagram) {
-                on_datagram(from, datagram);
-            });
-        state_ = ClientState::Binding;
-        accepted_ = Clock::now();
-        core::log_info("client: logged in as player {}, binding UDP port {}", granted.player,
-                       granted.udp_port);
-        send_connect(accepted_);
+        start_binding();
         return;
     }
-    // Once logged in, the server only sends Logout (RFC section 3.3).
+    if (state_ == ClientState::Lobby || state_ == ClientState::InRoom) {
+        on_room_message(message);
+        return;
+    }
+    // Once logged in, the server only sends Logout (RFC section 3.3), and, to a client that
+    // used the rooms, RoomPlayers and GameStart, which a client in game ignores.
+    if (read_room_players(message).has_value() || read_game_start(message)) {
+        return;
+    }
     if (const std::optional<std::uint8_t> reason = read_logout(message)) {
         fail(logout_text(*reason));
         return;
     }
     fail("the server sent an unexpected message");
+}
+
+// RFC sections 3.6 and 3.7: the answers of the lobby, then the players of the room joined
+// and its start; those of the room given at login are ignored.
+void ClientSession::on_room_message(std::span<const std::byte> message) {
+    if (std::optional<std::vector<RoomRecord>> rooms = read_room_list(message)) {
+        rooms_ = std::move(*rooms);
+    } else if (read_room_created(message).has_value()) {
+        room_error_.clear();
+        send_request(write_list_rooms());
+    } else if (const std::optional<std::uint8_t> reason = read_room_rejected(message)) {
+        room_error_ = room_rejection_text(*reason);
+    } else if (const auto joined = read_room_joined(message)) {
+        room_error_.clear();
+        login_ = LoginAccepted{.session = login_.value_or(LoginAccepted{}).session,
+                               .player = joined->second,
+                               .udp_port = login_.value_or(LoginAccepted{}).udp_port};
+        state_ = ClientState::InRoom;
+        room_players_ = RoomPlayers{.room = joined->first, .players = {}};
+        ready_ = false;
+        core::log_info("client: in room {} as player {}", joined->first, joined->second);
+    } else if (const std::optional<std::uint8_t> refused = read_join_rejected(message)) {
+        room_error_ = join_rejection_text(*refused);
+    } else if (std::optional<RoomPlayers> players = read_room_players(message)) {
+        if (state_ == ClientState::InRoom && players->room == room_players_.room) {
+            room_players_ = std::move(*players);
+        }
+    } else if (read_game_start(message)) {
+        if (state_ == ClientState::InRoom) {
+            start_binding();
+        }
+    } else if (const std::optional<std::uint8_t> reason = read_logout(message)) {
+        fail(logout_text(*reason));
+    } else {
+        fail("the server sent an unexpected message");
+    }
+}
+
+void ClientSession::set_ready(bool ready) {
+    if (state_ == ClientState::InRoom && ready != ready_) {
+        ready_ = ready;
+        send_request(write_set_ready(ready));
+    }
+}
+
+void ClientSession::leave_room() {
+    if (state_ != ClientState::InRoom) {
+        return;
+    }
+    send_request(write_leave_room());
+    state_ = ClientState::Lobby;
+    room_players_ = RoomPlayers{};
+    ready_ = false;
+    last_room_list_ = Clock::now();
+    send_request(write_list_rooms());
+}
+
+bool ClientSession::ready() const noexcept {
+    return ready_;
+}
+
+const RoomPlayers& ClientSession::room_players() const noexcept {
+    return room_players_;
+}
+
+void ClientSession::send_request(std::vector<std::byte> message) {
+    connection_->send(message);
+    ++sent_;
+}
+
+void ClientSession::create_room(const CreateRoomRequest& request) {
+    if (state_ == ClientState::Lobby) {
+        send_request(write_create_room(request));
+    }
+}
+
+void ClientSession::join_room(std::uint8_t room) {
+    if (state_ == ClientState::Lobby) {
+        send_request(write_join_room(room));
+    }
+}
+
+const std::vector<RoomRecord>& ClientSession::rooms() const noexcept {
+    return rooms_;
+}
+
+const std::string& ClientSession::room_error() const noexcept {
+    return room_error_;
+}
+
+// RFC section 3.4: a UDP socket of the server's family, and Connect until Accept.
+void ClientSession::start_binding() {
+    const LoginAccepted granted = login_.value_or(LoginAccepted{});
+    const std::optional<net::Endpoint> udp =
+        resolve(server_tcp_.value_or(net::Endpoint{}).address(), granted.udp_port);
+    if (!udp.has_value()) {
+        fail("the server's address cannot be used for UDP");
+        return;
+    }
+    const net::Endpoint server = udp.value_or(net::Endpoint{});
+    server_udp_ = server;
+    // RFC section 3.4: from an endpoint of the same family as the server's.
+    try {
+        socket_ = server.is_v6()
+                      ? std::make_unique<net::UdpSocket>(
+                            context_, net::Endpoint::v6(std::array<std::uint8_t, 16>{}, 0))
+                      : std::make_unique<net::UdpSocket>(context_, std::uint16_t{0});
+    } catch (const net::SocketError& error) {
+        fail(std::format("cannot open a UDP socket: {}", error.what()));
+        return;
+    }
+    socket_->start_receiving(
+        [this](const net::Endpoint& from, std::span<const std::byte> datagram) {
+            on_datagram(from, datagram);
+        });
+    state_ = ClientState::Binding;
+    accepted_ = Clock::now();
+    core::log_info("client: logged in as player {}, binding UDP port {}", granted.player,
+                   granted.udp_port);
+    send_connect(accepted_);
 }
 
 void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::byte> datagram) {
@@ -356,6 +502,14 @@ void ClientSession::update(Clock::time_point now) {
             fail("the server does not answer");
         }
         break;
+    case ClientState::Lobby:
+        if (now - last_room_list_ >= room_refresh) {
+            last_room_list_ = now;
+            send_request(write_list_rooms());
+        }
+        break;
+    case ClientState::InRoom:
+        break;
     case ClientState::Binding:
         if (now - accepted_ >= bind_timeout) {
             // RFC section 3.4: give up, say so over TCP, and blame the UDP port.
@@ -442,7 +596,8 @@ void ClientSession::leave() {
         }
     }
     if (connection_ && connection_->is_open() &&
-        (state_ == ClientState::Binding || state_ == ClientState::InGame)) {
+        (state_ == ClientState::Lobby || state_ == ClientState::InRoom ||
+         state_ == ClientState::Binding || state_ == ClientState::InGame)) {
         connection_->send(write_logout(LogoutReason::Left));
         ++sent_;
         closing_ = true;

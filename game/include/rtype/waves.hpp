@@ -6,7 +6,9 @@
 #include <array>
 #include <filesystem>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -19,6 +21,12 @@ inline constexpr std::array enemy_types{std::string_view{"bydos_slave"}};
 /// @return `core::asset_path("waves/stage1.json")`: `assets/waves/stage1.json` of the
 /// repository, copied next to `r-type_server` by the build.
 [[nodiscard]] std::filesystem::path default_waves_file();
+
+/// @brief The waves files of a directory, as a room names them (RFC section 3.6).
+/// @param directory Directory to look in, such as the parent of default_waves_file().
+/// @return The names of its `.json` files without their extension, sorted; none if the
+/// directory cannot be read.
+[[nodiscard]] std::vector<std::string> waves_names(const std::filesystem::path& directory);
 
 /// @brief Reads a waves file, accepting only the types of enemy_types.
 /// @param path JSON file in the format of `ecs::WaveSchedule`.

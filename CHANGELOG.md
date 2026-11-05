@@ -7,7 +7,12 @@ All notable changes to the R-Type game. Each pull request has its own file in
 |---|---|---|---|---|---|
 | [#82](https://github.com/Aegis2D-Dev/project-rtype/pull/82) | Connect screen typed in the engine's text fields | `feat/client-text-fields` | Open | 2026-11-05 | [2026-11-05-client-text-fields](changelogs/2026-11-05-client-text-fields.md) |
 | [#81](https://github.com/Aegis2D-Dev/project-rtype/pull/81) | No build for documentation-only pull requests | `ci/windows-runner-load` | Merged | 2026-11-05 | [2026-11-05-ci-windows-runner-load](changelogs/2026-11-05-ci-windows-runner-load.md) |
-| [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) | Room lifecycle | `feat/server-room-lifecycle` | Open | 2026-11-05 | [2026-11-05-server-room-lifecycle](changelogs/2026-11-05-server-room-lifecycle.md) |
+| [#80](https://github.com/Aegis2D-Dev/project-rtype/pull/80) | Room rules | `feat/protocol-room-rules` | Open | 2026-11-05 | [2026-11-05-protocol-room-rules](changelogs/2026-11-05-protocol-room-rules.md) |
+| [#79](https://github.com/Aegis2D-Dev/project-rtype/pull/79) | Room screen | `feat/client-room-screen` | Merged | 2026-11-05 | [2026-11-05-client-room-screen](changelogs/2026-11-05-client-room-screen.md) |
+| [#78](https://github.com/Aegis2D-Dev/project-rtype/pull/78) | Room list screen | `feat/client-room-list` | Merged | 2026-11-05 | [2026-11-05-client-room-list](changelogs/2026-11-05-client-room-list.md) |
+| [#77](https://github.com/Aegis2D-Dev/project-rtype/pull/77) | Join, leave and start a room | `feat/protocol-room-join` | Merged | 2026-11-05 | [2026-11-05-protocol-room-join](changelogs/2026-11-05-protocol-room-join.md) |
+| [#76](https://github.com/Aegis2D-Dev/project-rtype/pull/76) | List and create rooms | `feat/protocol-room-list` | Merged | 2026-11-05 | [2026-11-05-protocol-room-list](changelogs/2026-11-05-protocol-room-list.md) |
+| [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) | Room lifecycle | `feat/server-room-lifecycle` | Merged | 2026-11-05 | [2026-11-05-server-room-lifecycle](changelogs/2026-11-05-server-room-lifecycle.md) |
 | [#74](https://github.com/Aegis2D-Dev/project-rtype/pull/74) | Sessions routed to rooms | `feat/server-room-routing` | Merged | 2026-11-05 | [2026-11-05-server-room-routing](changelogs/2026-11-05-server-room-routing.md) |
 | [#73](https://github.com/Aegis2D-Dev/project-rtype/pull/73) | Game room | `refactor/server-game-room` | Merged | 2026-11-04 | [2026-11-04-server-game-room](changelogs/2026-11-04-server-game-room.md) |
 | [#72](https://github.com/Aegis2D-Dev/project-rtype/pull/72) | Lag compensation for hits | `feat/server-lag-compensation` | Merged | 2026-11-04 | [2026-11-04-server-lag-compensation](changelogs/2026-11-04-server-lag-compensation.md) |
