@@ -94,8 +94,10 @@ ClientApp::ClientApp(const ClientOptions& options)
         .smaller = menu_.add("text-smaller", {Key::F4}),
         .larger = menu_.add("text-larger", {Key::F5}),
         .lagometer = menu_.add("toggle-lagometer", {Key::F6}),
+        .metrics = menu_.add("toggle-metrics", {Key::F12}),
         .music = menu_.add("toggle-music", {Key::M}),
     };
+    metrics_overlay_.set_visible(options.metrics);
     core::log_info("settings: {}", preferences_.file.string());
     select(static_cast<std::size_t>(ConnectField::Name));
     if (options.join) {
@@ -120,6 +122,7 @@ bool ClientApp::frame() {
         return false;
     }
     const Clock::time_point now = Clock::now();
+    metrics_.tick(now);
     frame_seconds_ =
         std::min(std::chrono::duration<float>{now - last_frame_}.count(), longest_frame);
     last_frame_ = now;
@@ -186,6 +189,10 @@ void ClientApp::read_options_keys() {
     if (menu_.pressed(keys_.lagometer, keyboard)) {
         show_lagometer_ = !show_lagometer_;
         core::log_info("lagometer {}", show_lagometer_ ? "on" : "off");
+    }
+    if (menu_.pressed(keys_.metrics, keyboard)) {
+        metrics_overlay_.toggle();
+        core::log_info("frame metrics {}", metrics_overlay_.visible() ? "on" : "off");
     }
     if (changed) {
         save_preferences(preferences_);
@@ -532,6 +539,12 @@ void ClientApp::draw() {
             break;
         }
     }
+    // Entities only in game; the menus have none.
+    const std::optional<std::size_t> entities =
+        screen_ == ClientScreen::Game && session_.has_value()
+            ? std::optional{session_->world().registry().size()}
+            : std::nullopt;
+    metrics_overlay_.draw(renderer_, font_, metrics_, entities);
     renderer_.end_frame();
     if (capture && renderer_.captured().has_value()) {
         renderer_.captured()->save_png(*options_.screenshot);

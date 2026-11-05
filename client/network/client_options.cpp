@@ -72,6 +72,10 @@ parse_client_options(std::span<const std::string_view> args) {
             options.join = true;
             continue;
         }
+        if (arg == "--metrics") {
+            options.metrics = true;
+            continue;
+        }
         if (arg != "--host" && arg != "--port" && arg != "--name" && arg != "--settings" &&
             arg != "--frames" && arg != "--screenshot") {
             return std::format("unknown argument \"{}\"", arg);

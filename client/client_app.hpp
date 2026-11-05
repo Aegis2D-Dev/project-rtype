@@ -7,6 +7,7 @@
 #include <aegis2d/platform/key_capture.hpp>
 #include <aegis2d/platform/window.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
+#include <aegis2d/render/metrics_overlay.hpp>
 #include <aegis2d/render/opengl/renderer.hpp>
 #include <aegis2d/render/texture_manager.hpp>
 
@@ -59,6 +60,8 @@ struct OptionKeys {
     aegis2d::platform::ActionId larger = 0;
     /// @brief F6: lagometer on or off.
     aegis2d::platform::ActionId lagometer = 0;
+    /// @brief F12: frame metrics on or off.
+    aegis2d::platform::ActionId metrics = 0;
     /// @brief M, in game: music on or off.
     aegis2d::platform::ActionId music = 0;
 };
@@ -71,9 +74,10 @@ struct OptionKeys {
 /// room is; `--join` plays at once in the room the server gives.
 /// In game, the held actions go to ClientSession::set_input(), sent 60 times a second,
 /// which also tells the server the client is alive; the server's snapshots and events
-/// update ClientWorld, drawn by GameView; F6 shows the lagometer over it. When the server stops,
-/// closes the connection or sends nothing for ClientSession::server_timeout, the Lost screen says
-/// so; Enter goes back to the connect screen, filled as before, to join again.
+/// update ClientWorld, drawn by GameView; F6 shows the lagometer over it, and F12 the frame
+/// metrics (frames per second, frame times, entities, draw calls) over every screen. When the
+/// server stops, closes the connection or sends nothing for ClientSession::server_timeout, the Lost
+/// screen says so; Enter goes back to the connect screen, filled as before, to join again.
 class ClientApp {
 public:
     /// @brief Opens the window and loads the art, sounds and the player's settings.
@@ -117,6 +121,10 @@ private:
     std::optional<ClientSession> session_;
     Lagometer lagometer_;
     bool show_lagometer_ = false;
+    aegis2d::render::FrameMetrics metrics_;
+    // Top center, under the keys: clear of the ships at their start on the left and of the
+    // lagometer on the right.
+    aegis2d::render::MetricsOverlay metrics_overlay_{{.position = {465.0F, 40.0F}}};
     ClientSettings joined_;
     ConnectForm form_;
     RoomListForm room_list_;
