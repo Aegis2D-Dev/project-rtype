@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#75](https://github.com/Aegis2D-Dev/project-rtype/pull/75) (opened 2026-11-05) |
 | Branch | `feat/server-room-lifecycle` → `develop` (stacked on `feat/server-room-routing`, #74) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`e1488e7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#301](https://github.com/Aegis2D-Dev/aegis2d/issues/301) feat(server): room lifecycle |
 
@@ -37,16 +37,20 @@ multi-instance server* epic (Aegis2D-Dev/aegis2d#298), on the rooms of #74.
   in game, as the room opens then; the test of the tick rate under a flood puts a player in
   game first, so that a room ticks.
 - *Architecture*: rooms opened and closed on demand. *Getting started*: `--max-rooms`.
+- Changelog, with `develop` merged in: #74 (`693e0f7`), marked by #81, and #81 (`d348f01`)
+  marked as merged.
 
 ## Commits
 - `1766006` feat(server): opened rooms with their first player and closed them with the last
 - `d9d7466` feat(tests): added two games of four bots in rooms opened on demand
 - `9e969df` feat(docs): documented rooms opened on demand and updated changelogs
-- Merge remote-tracking branch 'origin/feat/server-room-routing' into feat/server-room-lifecycle
+- `ad1e760` Merge remote-tracking branch 'origin/feat/server-room-routing' into feat/server-room-lifecycle
+- Merge remote-tracking branch 'origin/develop' into feat/server-room-lifecycle
 
 ## Notes
-- Stacked on #74: merge it first. #74 merged in once its two rooms test counted each ship
-  once: under ASan in CI, a player of that test bound while the events of a tick were on their
+- Stacked on #74, merged on 2026-11-05; retargeted to `develop`, which was merged in once
+  #81 was there too: the only conflict was the index of `CHANGELOG.md`. #74 had been merged in
+  once its two rooms test counted each ship once: under ASan in CI, a player of that test bound while the events of a tick were on their
   way got a ship's `Spawn` twice, more often now that a room's game starts with its first
   player.
 - A closed room's thread may have posted events and a snapshot for the network thread before
