@@ -54,6 +54,10 @@ namespace rtype {
 /// datagram for udp_timeout has lost its session (RFC section 5.5): it gets `Logout` with
 /// the reason `TimedOut`, its connection is closed once it is sent, and it leaves the game.
 ///
+/// Each session belongs to a room (Session::room): snapshots and events go to the players
+/// of one room only, so the games of several rooms run side by side without seeing each
+/// other.
+///
 /// The handling of each datagram and TCP message is contained: an exception is logged, the
 /// client that sent the packet is kicked (`Logout` with the reason `ProtocolError`, then
 /// `Kicked` for the game, RFC section 6.6), and the sockets go on serving the others.
@@ -94,7 +98,8 @@ public:
     /// @param context Context that runs the sockets; it must outlive this object.
     /// @param tcp_port TCP port of the logins, or 0 for any free port.
     /// @param udp_port UDP port of the game, or 0 for any free port.
-    /// @param sessions Sessions to fill, empty; tests give one with a seed.
+    /// @param sessions Sessions to fill, empty, with their rooms (SessionTable::set_rooms());
+    /// tests give one with a seed.
     /// @throws aegis2d::net::SocketError If a port is already in use or cannot be bound.
     ServerNetwork(aegis2d::net::NetworkContext& context, std::uint16_t tcp_port,
                   std::uint16_t udp_port, SessionTable sessions = SessionTable{});
@@ -133,46 +138,53 @@ public:
     /// @return The threshold set by set_compression(), or `std::nullopt`.
     [[nodiscard]] std::optional<std::size_t> compression() const noexcept;
 
-    /// @brief Sends a snapshot to every player whose endpoint is bound.
+    /// @brief Sends a snapshot to every player of a room whose endpoint is bound.
     /// @details Each payload goes in its own `Snapshot` datagram, whose header takes the
     /// next sequence of the player's channel and acknowledges its datagrams (RFC 5.1).
     /// @param payloads Payloads from write_snapshot(), header excluded.
+    /// @param room Room of the game the snapshot comes from (Session::room).
     /// @param snapshot The snapshot they encode, to keep in each player's snapshots() with
     /// the sequences of its datagrams; none by default.
-    void send_snapshot(std::span<const std::vector<std::byte>> payloads,
+    void send_snapshot(std::span<const std::vector<std::byte>> payloads, std::uint32_t room,
                        const std::shared_ptr<const Snapshot>& snapshot = nullptr);
 
-    /// @brief Sends a snapshot to every player whose endpoint is bound, encoded against the
-    /// latest snapshot that player acknowledged.
+    /// @brief Sends a snapshot to every player of a room whose endpoint is bound, encoded
+    /// against the latest snapshot that player acknowledged.
     /// @details write_delta_snapshot() encodes it against snapshots()'s latest
     /// acknowledged one, or whole if there is none; the payloads go as with the other
     /// overload, and the snapshot is kept in the player's snapshots().
     /// @param snapshot The snapshot to send; nothing is sent if it is `nullptr`.
+    /// @param room Room of the game the snapshot comes from (Session::room).
     /// @throws std::invalid_argument if a field does not fit, as write_delta_snapshot().
-    void send_snapshot(const std::shared_ptr<const Snapshot>& snapshot);
+    void send_snapshot(const std::shared_ptr<const Snapshot>& snapshot, std::uint32_t room);
 
     /// @brief Number of `Snapshot` datagrams sent, all players together.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t snapshots_sent() const noexcept;
 
-    /// @brief Sends gameplay events, reliably, to the players whose endpoint is bound.
+    /// @brief Sends gameplay events, reliably, to the players of a room whose endpoint is
+    /// bound.
     /// @details Each event is queued on the player's channel, which numbers it and resends
     /// it until it is acknowledged (RFC section 5.3): the events leave at once in `Event`
     /// datagrams, the resends in update(). A player who leaves
     /// `net::max_events_in_flight` events unacknowledged is lost (RFC section 6.2): its
     /// session ends.
     /// @param events Events from write_event(), in order.
-    /// @param token Only to this session, for a player who joins (RFC section 4.6); to
-    /// every bound player by default.
-    void send_events(std::span<const std::vector<std::byte>> events,
+    /// @param room Room of the game the events come from (Session::room).
+    /// @param token Only to this session of the room, for a player who joins (RFC section
+    /// 4.6); to every bound player of the room by default.
+    void send_events(std::span<const std::vector<std::byte>> events, std::uint32_t room,
                      std::optional<std::uint32_t> token = std::nullopt);
 
-    /// @brief Sends gameplay events, reliably, to every bound player but one, as send_events().
+    /// @brief Sends gameplay events, reliably, to every bound player of a room but one, as
+    /// send_events().
     /// @details For the `PlayerJoined` of a player who joins, which the others get (RFC
     /// section 4.6).
     /// @param events Events from write_event(), in order.
+    /// @param room Room of the game the events come from (Session::room).
     /// @param token Session that does not get them.
-    void send_events_to_others(std::span<const std::vector<std::byte>> events, std::uint32_t token);
+    void send_events_to_others(std::span<const std::vector<std::byte>> events, std::uint32_t room,
+                               std::uint32_t token);
 
     /// @brief Number of `Event` datagrams sent, first sends and resends, all players together.
     /// @return The count since the construction.
@@ -302,7 +314,7 @@ private:
     void disconnect(std::uint32_t token, LeaveReason reason);
     void end_session(std::uint32_t token, LeaveReason reason);
     void queue_events(std::span<const std::vector<std::byte>> events,
-                      const std::function<bool(std::uint32_t token)>& receives);
+                      const std::function<bool(const Session& session)>& receives);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
     void flush_events(Clock::time_point now);
@@ -311,10 +323,10 @@ private:
     void kick_client(std::uint64_t id);
     void end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave);
     void report_traffic(Clock::time_point now);
-    // Sends the payloads encode() gives for each bound player's history.
+    // Sends the payloads encode() gives for the history of each bound player of the room.
     void send_snapshot(
         const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
-        const std::shared_ptr<const Snapshot>& snapshot);
+        std::uint32_t room, const std::shared_ptr<const Snapshot>& snapshot);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;

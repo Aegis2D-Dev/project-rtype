@@ -3,6 +3,7 @@
 
 #include <rtype/login.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -11,6 +12,7 @@
 #include <random>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace rtype {
 
@@ -45,8 +47,10 @@ std::variant<Session, LoginRejection> SessionTable::login(const LoginRequest& re
         })) {
         return LoginRejection::NameTaken;
     }
+    const auto index = static_cast<std::size_t>(free - slots_.begin());
     *free = Session{.token = new_token(),
-                    .player = static_cast<std::uint8_t>(free - slots_.begin()),
+                    .room = static_cast<std::uint32_t>(index / tuning::max_players),
+                    .player = static_cast<std::uint8_t>(index % tuning::max_players),
                     .name = request.name,
                     .endpoint = std::nullopt};
     return **free;
@@ -107,6 +111,15 @@ Session* SessionTable::find_mutable(std::uint32_t token) noexcept {
 std::size_t SessionTable::size() const noexcept {
     return static_cast<std::size_t>(std::ranges::count_if(
         slots_, [](const std::optional<Session>& slot) { return slot.has_value(); }));
+}
+
+void SessionTable::set_rooms(std::uint32_t rooms) {
+    slots_.resize(static_cast<std::size_t>(std::max<std::uint32_t>(rooms, 1)) *
+                  tuning::max_players);
+}
+
+std::uint32_t SessionTable::rooms() const noexcept {
+    return static_cast<std::uint32_t>(slots_.size() / tuning::max_players);
 }
 
 std::uint32_t SessionTable::new_token() noexcept {

@@ -14,14 +14,18 @@
 
 namespace rtype {
 
-Room::Room(std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves, std::uint32_t rate,
-           TickHandler after_tick)
-    : instance_{seed, std::move(waves)},
+Room::Room(std::uint32_t id, std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves,
+           std::uint32_t rate, TickHandler after_tick)
+    : id_{id}, instance_{seed, std::move(waves)},
       simulation_{instance_, rate, [this, after_tick = std::move(after_tick)](GameInstance& game) {
                       if (after_tick) {
                           after_tick(*this, game);
                       }
                   }} {}
+
+std::uint32_t Room::id() const noexcept {
+    return id_;
+}
 
 GameInstance& Room::instance() noexcept {
     return instance_;
