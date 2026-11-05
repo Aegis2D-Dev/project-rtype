@@ -17,6 +17,7 @@
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
@@ -523,9 +524,28 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
         on_login(client, message);
         return;
     }
-    // Logged in: a Logout is the only message the client may send (RFC section 3.3).
+    // Logged in: ListRooms and CreateRoom are answered, a Logout ends the session (RFC section
+    // 3.3).
     const Session* const session = sessions_.find(*client.token);
     const unsigned player = session != nullptr ? session->player : 0U;
+    if (read_list_rooms(message)) {
+        send(client, write_room_list(sessions_.list_rooms()));
+        return;
+    }
+    if (const std::optional<CreateRoomRequest> request = read_create_room(message)) {
+        const std::variant<std::uint8_t, RoomRejection> created = sessions_.create_room(*request);
+        if (const auto* const room = std::get_if<std::uint8_t>(&created)) {
+            // The name passed valid_player_name(): no control character reaches the log.
+            core::log_info("TCP: player {} created room {} ({}, {} players)", player, *room,
+                           request->name, request->max_players);
+            send(client, write_room_created(*room));
+        } else if (const auto* const rejection = std::get_if<RoomRejection>(&created)) {
+            core::log_info("TCP: player {} could not create a room: {}", player,
+                           to_string(*rejection));
+            send(client, write_room_rejected(*rejection));
+        }
+        return;
+    }
     // Anything but a Logout is a protocol error: the player is kicked.
     const bool logged_out = read_logout(message).has_value();
     end_session(*client.token, logged_out ? LeaveReason::Left : LeaveReason::Kicked);

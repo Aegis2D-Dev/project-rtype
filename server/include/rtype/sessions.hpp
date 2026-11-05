@@ -5,6 +5,7 @@
 #include <aegis2d/net/endpoint.hpp>
 
 #include <rtype/login.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/tuning.hpp>
 
 #include <cstddef>
@@ -48,8 +49,10 @@ enum class BindResult : std::uint8_t {
 /// @brief The sessions of the server, one per player slot of its rooms.
 /// @details Decides each login (version, name, free slot), puts it in a room, draws the
 /// tokens, binds each session to the UDP endpoint of its `Connect`, and frees the slot when a
-/// session ends. It does not touch sockets, so it is tested alone. Not thread-safe: use it
-/// from the network thread only.
+/// session ends. It also keeps the rooms in use, with their name and size (RFC section 3.6):
+/// a room is in use from its creation, by create_room() or for a login that found no free
+/// place, until its last session ends. It does not touch sockets, so it is tested alone. Not
+/// thread-safe: use it from the network thread only.
 class SessionTable {
 public:
     /// @brief Creates an empty table drawing tokens from the system's random source.
@@ -61,9 +64,10 @@ public:
 
     /// @brief Decides a login and opens its session if it is accepted.
     /// @details Checked in this order: the version, the name, a free slot, the name not
-    /// used by another player of any room. The session takes the lowest free player number
-    /// of the first room with one, so a room fills before the next gets players, and a new
-    /// random token, never 0 and never the token of another session.
+    /// used by another player of any room. The session goes to the first room in use with a
+    /// free place, so a room fills before the next gets players, or else to a new room for
+    /// tuning::max_players named `Room <number + 1>`. It takes the lowest free player number
+    /// of its room, and a new random token, never 0 and never the token of another session.
     /// @param request Version and name received.
     /// @return The new session, or why the login is refused.
     [[nodiscard]] std::variant<Session, LoginRejection> login(const LoginRequest& request);
@@ -74,7 +78,8 @@ public:
     /// @return What was done, and so whether to answer with `Accept`.
     BindResult bind(std::uint32_t token, const aegis2d::net::Endpoint& endpoint);
 
-    /// @brief Ends a session and frees its slot, name and endpoint.
+    /// @brief Ends a session and frees its slot, name and endpoint; the last one of its room
+    /// ends the room.
     /// @param token Token of the session.
     /// @return `true` if the session existed.
     bool end(std::uint32_t token) noexcept;
@@ -93,16 +98,39 @@ public:
     /// @return 0 to rooms() times tuning::max_players.
     [[nodiscard]] std::size_t size() const noexcept;
 
-    /// @brief Sets how many rooms the sessions are spread over, tuning::max_players in each.
+    /// @brief Sets how many rooms the sessions are spread over, tuning::max_players in each
+    /// at most.
     /// @details Call it before the first login: the server is full once every room is.
-    /// @param rooms Number of rooms, at least 1; 1 by default.
+    /// @param rooms Number of rooms, 1 to max_listed_rooms; 1 by default.
     void set_rooms(std::uint32_t rooms);
 
     /// @brief Number of rooms the sessions are spread over.
     /// @return 1 unless set_rooms() said otherwise.
     [[nodiscard]] std::uint32_t rooms() const noexcept;
 
+    /// @brief Creates a room, empty, for the next logins (`CreateRoom`, RFC section 3.6).
+    /// @details Checked in this order: the name, by the rules of player names
+    /// (valid_player_name()), the size, a room not in use. The room takes the lowest number
+    /// of those.
+    /// @param request Name and most players of the room.
+    /// @return Its number, or why it is not created.
+    [[nodiscard]] std::variant<std::uint8_t, RoomRejection>
+    create_room(const CreateRoomRequest& request);
+
+    /// @brief The rooms in use, by number, as a `RoomList` describes them.
+    /// @details A room is RoomState::Playing once one of its sessions is bound.
+    /// @return One record per room in use.
+    [[nodiscard]] std::vector<RoomRecord> list_rooms() const;
+
 private:
+    // A room in use.
+    struct Listing {
+        std::string name;
+        std::uint8_t max_players = tuning::max_players;
+    };
+
+    [[nodiscard]] bool has_place(std::size_t room) const;
+    [[nodiscard]] std::size_t players_in(std::size_t room) const noexcept;
     [[nodiscard]] std::uint32_t new_token() noexcept;
     [[nodiscard]] Session* find_mutable(std::uint32_t token) noexcept;
 
@@ -110,6 +138,8 @@ private:
     // tuning::max_players slots per room, room after room.
     std::vector<std::optional<Session>> slots_ =
         std::vector<std::optional<Session>>(tuning::max_players);
+    // The rooms in use, by number.
+    std::vector<std::optional<Listing>> listings_ = std::vector<std::optional<Listing>>(1);
 };
 
 } // namespace rtype
