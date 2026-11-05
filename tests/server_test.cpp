@@ -1374,13 +1374,20 @@ std::vector<rtype::DeltaSnapshot> snapshots_of(const Socket& socket) {
     return snapshots;
 }
 
-// Ships whose Spawn a player got.
+// Ships whose Spawn a player got, each counted once: a player bound while the events of a
+// tick are on their way to the network thread gets them, and the same Spawn again in the
+// world it is sent when it joins (RFC section 4.6), which a client applies again harmlessly.
 std::size_t ships_in(const EventLog& log) {
-    return static_cast<std::size_t>(std::ranges::count_if(log.events, [](const auto& event) {
+    std::vector<std::uint32_t> ships;
+    for (const rtype::GameEvent& event : log.events) {
         const auto* const spawn = std::get_if<rtype::SpawnEvent>(&event);
-        return spawn != nullptr &&
-               spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip);
-    }));
+        if (spawn != nullptr &&
+            spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip) &&
+            std::ranges::find(ships, spawn->id) == ships.end()) {
+            ships.push_back(spawn->id);
+        }
+    }
+    return ships.size();
 }
 
 } // namespace
