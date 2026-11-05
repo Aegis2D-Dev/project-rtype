@@ -336,13 +336,16 @@ TEST_CASE("the client reads its window options from the command line", "[client]
     CHECK_FALSE(defaults.settings_file.has_value());
     CHECK(defaults.frames == 0);
     CHECK_FALSE(defaults.screenshot.has_value());
+    CHECK_FALSE(defaults.metrics);
 
-    const auto given = std::get<rtype::ClientOptions>(parse_client(
-        {"--join", "--settings", "me.json", "--frames", "90", "--screenshot", "shot.png"}));
+    const auto given = std::get<rtype::ClientOptions>(
+        parse_client({"--join", "--settings", "me.json", "--frames", "90", "--screenshot",
+                      "shot.png", "--metrics"}));
     CHECK(given.join);
     CHECK(given.settings_file == std::filesystem::path{"me.json"});
     CHECK(given.frames == 90);
     CHECK(given.screenshot == std::filesystem::path{"shot.png"});
+    CHECK(given.metrics);
 
     // A screenshot without --frames is taken after 300 frames.
     CHECK(std::get<rtype::ClientOptions>(parse_client({"--screenshot", "a.png"})).frames == 300);
