@@ -137,6 +137,20 @@ TEST_CASE("a field is edited at its cursor", "[client][connect]") {
     CHECK(fields.text(ConnectField::Host) == "27.0.0.10");
 }
 
+TEST_CASE("a full name refuses what is typed, wherever the cursor is", "[client][connect]") {
+    // Eight accented letters: 8 characters, but the 16 bytes a name holds.
+    ConnectFields fields{ClientSettings{.host = "::1", .tcp_port = 4242, .name = "éééééééé"}};
+    fields.focus(ConnectField::Name);
+    frame(fields, "", {Key::Home});
+    CHECK_FALSE(frame(fields, "a"));
+    CHECK(fields.text(ConnectField::Name) == "éééééééé");
+    // The cursor stayed at the start: Delete takes the first letter, and there is room again.
+    frame(fields, "", {Key::Delete});
+    // Two bytes free: "ab" fits, typed at the start; a third letter would not.
+    CHECK(frame(fields, "abc"));
+    CHECK(fields.text(ConnectField::Name) == "abééééééé");
+}
+
 TEST_CASE("an accented name typed is joined with", "[client][connect]") {
     ConnectFields fields{defaults()};
     fields.focus(ConnectField::Name);
