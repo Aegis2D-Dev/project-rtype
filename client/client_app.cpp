@@ -137,6 +137,9 @@ bool ClientApp::frame() {
     case ClientScreen::Rooms:
         rooms_screen();
         break;
+    case ClientScreen::Room:
+        room_screen();
+        break;
     case ClientScreen::Game:
         game_screen();
         break;
@@ -322,6 +325,20 @@ void ClientApp::rooms_screen() {
     }
 }
 
+void ClientApp::room_screen() {
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (!session_.has_value()) {
+        return;
+    }
+    if (keyboard.pressed(Key::Escape)) {
+        session_->leave_room();
+        message_ = {.text = "You left the room.", .error = false};
+        screen_ = ClientScreen::Rooms;
+    } else if (keyboard.pressed(Key::Enter) || keyboard.pressed(Key::KeypadEnter)) {
+        session_->set_ready(!session_->ready());
+    }
+}
+
 void ClientApp::game_screen() {
     const platform::Keyboard& keyboard = window_.keyboard();
     const platform::Gamepad& gamepad = window_.gamepad();
@@ -373,9 +390,9 @@ void ClientApp::leave() {
     if (!session_.has_value()) {
         return;
     }
-    const bool said_goodbye = session_->state() == ClientState::InGame ||
-                              session_->state() == ClientState::Binding ||
-                              session_->state() == ClientState::Lobby;
+    const bool said_goodbye =
+        session_->state() == ClientState::InGame || session_->state() == ClientState::Binding ||
+        session_->state() == ClientState::Lobby || session_->state() == ClientState::InRoom;
     session_->leave();
     if (said_goodbye) {
         // Keeps the network running a moment, for the Logout to leave.
@@ -444,8 +461,14 @@ void ClientApp::update_session() {
             }
         }
         break;
-    case ClientState::Binding:
+    case ClientState::InRoom:
         if (screen_ == ClientScreen::Rooms) {
+            message_ = {};
+            screen_ = ClientScreen::Room;
+        }
+        break;
+    case ClientState::Binding:
+        if (screen_ == ClientScreen::Rooms || screen_ == ClientScreen::Room) {
             screen_ = ClientScreen::Joining;
         }
         break;
@@ -485,6 +508,18 @@ void ClientApp::draw() {
         case ClientScreen::Rooms:
             draw_rooms(renderer_, font_, room_list_, message_,
                        std::chrono::duration<double>{now - started_}.count(), preferences_);
+            break;
+        case ClientScreen::Room:
+            if (session_.has_value()) {
+                const RoomPlayers& room = session_->room_players();
+                const auto listed =
+                    std::ranges::find(room_list_.rooms(), room.room, &RoomRecord::room);
+                draw_room(renderer_, font_,
+                          listed != room_list_.rooms().end() ? std::string_view{listed->name}
+                                                             : std::string_view{},
+                          room, session_->login().value_or(LoginAccepted{}).player, message_,
+                          preferences_);
+            }
             break;
         case ClientScreen::Connect:
         case ClientScreen::Game:

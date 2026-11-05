@@ -136,6 +136,8 @@ std::string_view to_string(ClientState state) noexcept {
         return "logging in";
     case ClientState::Lobby:
         return "in the lobby";
+    case ClientState::InRoom:
+        return "in a room";
     case ClientState::Binding:
         return "binding";
     case ClientState::InGame:
@@ -222,7 +224,7 @@ void ClientSession::on_message(std::span<const std::byte> message) {
         start_binding();
         return;
     }
-    if (state_ == ClientState::Lobby) {
+    if (state_ == ClientState::Lobby || state_ == ClientState::InRoom) {
         on_room_message(message);
         return;
     }
@@ -238,7 +240,8 @@ void ClientSession::on_message(std::span<const std::byte> message) {
     fail("the server sent an unexpected message");
 }
 
-// RFC sections 3.6 and 3.7: the answers of the lobby, and the room's players, ignored here.
+// RFC sections 3.6 and 3.7: the answers of the lobby, then the players of the room joined
+// and its start; those of the room given at login are ignored.
 void ClientSession::on_room_message(std::span<const std::byte> message) {
     if (std::optional<std::vector<RoomRecord>> rooms = read_room_list(message)) {
         rooms_ = std::move(*rooms);
@@ -252,14 +255,52 @@ void ClientSession::on_room_message(std::span<const std::byte> message) {
         login_ = LoginAccepted{.session = login_.value_or(LoginAccepted{}).session,
                                .player = joined->second,
                                .udp_port = login_.value_or(LoginAccepted{}).udp_port};
-        start_binding();
+        state_ = ClientState::InRoom;
+        room_players_ = RoomPlayers{.room = joined->first, .players = {}};
+        ready_ = false;
+        core::log_info("client: in room {} as player {}", joined->first, joined->second);
     } else if (const std::optional<std::uint8_t> refused = read_join_rejected(message)) {
         room_error_ = join_rejection_text(*refused);
+    } else if (std::optional<RoomPlayers> players = read_room_players(message)) {
+        if (state_ == ClientState::InRoom && players->room == room_players_.room) {
+            room_players_ = std::move(*players);
+        }
+    } else if (read_game_start(message)) {
+        if (state_ == ClientState::InRoom) {
+            start_binding();
+        }
     } else if (const std::optional<std::uint8_t> reason = read_logout(message)) {
         fail(logout_text(*reason));
-    } else if (!read_room_players(message).has_value() && !read_game_start(message)) {
+    } else {
         fail("the server sent an unexpected message");
     }
+}
+
+void ClientSession::set_ready(bool ready) {
+    if (state_ == ClientState::InRoom && ready != ready_) {
+        ready_ = ready;
+        send_request(write_set_ready(ready));
+    }
+}
+
+void ClientSession::leave_room() {
+    if (state_ != ClientState::InRoom) {
+        return;
+    }
+    send_request(write_leave_room());
+    state_ = ClientState::Lobby;
+    room_players_ = RoomPlayers{};
+    ready_ = false;
+    last_room_list_ = Clock::now();
+    send_request(write_list_rooms());
+}
+
+bool ClientSession::ready() const noexcept {
+    return ready_;
+}
+
+const RoomPlayers& ClientSession::room_players() const noexcept {
+    return room_players_;
 }
 
 void ClientSession::send_request(std::vector<std::byte> message) {
@@ -459,6 +500,8 @@ void ClientSession::update(Clock::time_point now) {
             send_request(write_list_rooms());
         }
         break;
+    case ClientState::InRoom:
+        break;
     case ClientState::Binding:
         if (now - accepted_ >= bind_timeout) {
             // RFC section 3.4: give up, say so over TCP, and blame the UDP port.
@@ -545,8 +588,8 @@ void ClientSession::leave() {
         }
     }
     if (connection_ && connection_->is_open() &&
-        (state_ == ClientState::Lobby || state_ == ClientState::Binding ||
-         state_ == ClientState::InGame)) {
+        (state_ == ClientState::Lobby || state_ == ClientState::InRoom ||
+         state_ == ClientState::Binding || state_ == ClientState::InGame)) {
         connection_->send(write_logout(LogoutReason::Left));
         ++sent_;
         closing_ = true;

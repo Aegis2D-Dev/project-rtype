@@ -44,6 +44,8 @@ enum class ClientState : std::uint8_t {
     LoggingIn,
     /// @brief Logged in with ClientSettings::choose_room: choosing a room (RFC 3.6, 3.7).
     Lobby,
+    /// @brief In the room joined from the lobby, until all its players are ready (RFC 3.7).
+    InRoom,
     /// @brief Logged in, sending `Connect` until `Accept` arrives.
     Binding,
     /// @brief UDP endpoint bound: the game may start.
@@ -81,8 +83,10 @@ struct ClientSettings {
 /// the client opens a UDP socket and sends `Connect` to the server's `udp_port` every
 /// connect_interval until `Accept` arrives: the session is then InGame. With
 /// ClientSettings::choose_room, it stays in the Lobby state instead, where rooms() is
-/// refreshed every room_refresh, create_room() and join_room() send their requests, and a
-/// `RoomJoined` starts the binding, with the player's number in that room. It fails, with a
+/// refreshed every room_refresh, and create_room() and join_room() send their requests. A
+/// `RoomJoined` puts it InRoom, with the player's number in that room: room_players() follows
+/// the room, set_ready() and leave_room() send their requests, and `GameStart`, once every
+/// player of the room is ready, starts the binding. It fails, with a
 /// reason in error(), when the server cannot be reached, refuses the login, sends anything
 /// unexpected, closes the connection, or does not answer: no `LoginAccepted` within
 /// login_timeout, or no `Accept` within bind_timeout of `LoginAccepted` (then `Logout` is
@@ -149,10 +153,25 @@ public:
     void create_room(const CreateRoomRequest& request);
 
     /// @brief Asks to join a room, in the lobby (`JoinRoom`, RFC section 3.7).
-    /// @details On `RoomJoined`, login() takes the player's number in the room and the binding
-    /// starts; room_error() says why the room was not joined.
+    /// @details On `RoomJoined`, login() takes the player's number in the room and the session
+    /// is InRoom; room_error() says why the room was not joined.
     /// @param room Number of the room.
     void join_room(std::uint8_t room);
+
+    /// @brief Says whether the player is ready to start, in a room (`SetReady`, RFC 3.7).
+    /// @param ready Ready, or not any more.
+    void set_ready(bool ready);
+
+    /// @brief Leaves the room for the lobby, where the rooms are listed again (`LeaveRoom`).
+    void leave_room();
+
+    /// @brief Whether the player said it is ready, in its room.
+    /// @return The last value given to set_ready() since the room was joined.
+    [[nodiscard]] bool ready() const noexcept;
+
+    /// @brief The players of the room joined, from the server's last `RoomPlayers`.
+    /// @return The room and its players, by number; no player before the first one.
+    [[nodiscard]] const RoomPlayers& room_players() const noexcept;
 
     /// @brief The rooms of the server, from its last `RoomList`.
     /// @return Them, by number; none before the first answer.
@@ -283,6 +302,7 @@ private:
     Clock::time_point last_room_list_;
     std::vector<RoomRecord> rooms_;
     std::string room_error_;
+    RoomPlayers room_players_;
     std::uint64_t connects_sent_ = 0;
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
@@ -305,6 +325,8 @@ private:
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;
+    // Whether the player said it is ready, in its room.
+    bool ready_ = false;
 };
 
 } // namespace rtype

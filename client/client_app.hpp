@@ -37,6 +37,8 @@ enum class ClientScreen : std::uint8_t {
     Joining,
     /// @brief The rooms of the server, one to join or create (#304).
     Rooms,
+    /// @brief The room joined: its players, ready or not, until the game starts (#305).
+    Room,
     /// @brief In game.
     Game,
     /// @brief The server stopped or went silent (#128).
@@ -65,8 +67,8 @@ struct OptionKeys {
 /// @details Each frame reads the keyboard and the gamepad, runs the network handlers that
 /// are ready (NetworkContext::poll()) and the session's timers, then draws the screen.
 /// Joining from the connect screen shows the rooms of the server once logged in: the player
-/// joins one or creates one, then plays in it; `--join` plays at once in the room the server
-/// gives.
+/// joins one or creates one, says it is ready in the room, and plays once every player of the
+/// room is; `--join` plays at once in the room the server gives.
 /// In game, the held actions go to ClientSession::set_input(), sent 60 times a second,
 /// which also tells the server the client is alive; the server's snapshots and events
 /// update ClientWorld, drawn by GameView; F6 shows the lagometer over it. When the server stops,
@@ -89,6 +91,7 @@ private:
     void connect_screen();
     void joining_screen();
     void rooms_screen();
+    void room_screen();
     void game_screen();
     void lost_screen();
     void join(const ClientSettings& settings);

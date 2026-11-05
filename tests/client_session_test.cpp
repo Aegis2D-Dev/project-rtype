@@ -844,10 +844,14 @@ TEST_CASE("a client creates and joins rooms from the room list screen", "[client
     CHECK(screen.rooms().at(1).name == "Aces");
     CHECK(screen.rooms().at(1).max_players == 2);
 
-    // Joined from the screen, the client plays in that room as its first player.
+    // Joined from the screen, the client is the first player of that room, alone there: ready,
+    // it plays in it.
     screen.down();
     screen.down();
     client.join_room(std::get<std::uint8_t>(screen.submit()));
+    REQUIRE(
+        pump(context, &server, {&client}, [&] { return client.state() == ClientState::InRoom; }));
+    client.set_ready(true);
     REQUIRE(
         pump(context, &server, {&client}, [&] { return client.state() == ClientState::InGame; }));
     const rtype::LoginAccepted login = client.login().value_or(rtype::LoginAccepted{});
@@ -858,4 +862,91 @@ TEST_CASE("a client creates and joins rooms from the room list screen", "[client
     CHECK(game_server.open_rooms() == 1);
     CHECK_NOTHROW(game_server.room(1));
     CHECK(server.sessions().list_rooms().size() == 1);
+}
+
+TEST_CASE("four clients fill and start a room, while a second room plays", "[client][rooms]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 3};
+    ServerNetwork& server = game_server.network();
+    // A player who did not choose its room plays in the first one.
+    ClientSession playing{context, settings_for(server, "R0")};
+    playing.start();
+    std::vector<std::unique_ptr<ClientSession>> clients;
+    clients.reserve(4);
+    for (int index = 1; index <= 4; ++index) {
+        ClientSettings settings = settings_for(server, "p" + std::to_string(index));
+        settings.choose_room = true;
+        clients.push_back(std::make_unique<ClientSession>(context, settings));
+        clients.back()->start();
+    }
+    const auto run_until = [&](auto condition) {
+        return pump(context, &server,
+                    {&playing, clients.at(0).get(), clients.at(1).get(), clients.at(2).get(),
+                     clients.at(3).get()},
+                    condition);
+    };
+    const auto all_in = [&](ClientState state) {
+        return std::ranges::all_of(clients,
+                                   [&](const auto& client) { return client->state() == state; });
+    };
+    REQUIRE(run_until(
+        [&] { return playing.state() == ClientState::InGame && all_in(ClientState::Lobby); }));
+
+    // The first one creates a room; the four join it and see each other there.
+    clients.at(0)->create_room({.name = "Aces", .max_players = 4});
+    const auto aces = [&]() -> std::optional<std::uint8_t> {
+        for (const rtype::RoomRecord& room : clients.at(0)->rooms()) {
+            if (room.name == "Aces") {
+                return room.room;
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(run_until([&] { return aces().has_value(); }));
+    const std::uint8_t room = aces().value_or(0);
+    for (const auto& client : clients) {
+        client->join_room(room);
+    }
+    REQUIRE(run_until([&] {
+        return all_in(ClientState::InRoom) && std::ranges::all_of(clients, [](const auto& client) {
+                   return client->room_players().players.size() == 4;
+               });
+    }));
+
+    // One leaves and comes back; three get ready: they all see it, nothing starts.
+    clients.at(3)->leave_room();
+    CHECK(clients.at(3)->state() == ClientState::Lobby);
+    REQUIRE(run_until([&] { return clients.at(0)->room_players().players.size() == 3; }));
+    clients.at(3)->join_room(room);
+    REQUIRE(run_until([&] { return clients.at(0)->room_players().players.size() == 4; }));
+    for (std::size_t index = 0; index < 3; ++index) {
+        clients.at(index)->set_ready(true);
+    }
+    REQUIRE(run_until([&] {
+        return std::ranges::count_if(
+                   clients.at(3)->room_players().players,
+                   [](const rtype::RoomPlayer& player) { return player.ready; }) == 3;
+    }));
+    CHECK(all_in(ClientState::InRoom));
+
+    // The fourth gets ready: the game of the room starts for the four, beside the first room's.
+    clients.at(3)->set_ready(true);
+    REQUIRE(run_until([&] { return all_in(ClientState::InGame); }));
+    std::vector<std::uint8_t> numbers;
+    for (const auto& client : clients) {
+        const rtype::LoginAccepted login = client->login().value_or(rtype::LoginAccepted{});
+        const rtype::Session* const session = server.sessions().find(login.session);
+        REQUIRE(session != nullptr);
+        CHECK(session->room == room);
+        numbers.push_back(login.player);
+    }
+    std::ranges::sort(numbers);
+    CHECK(numbers == std::vector<std::uint8_t>{0, 1, 2, 3});
+    CHECK(game_server.open_rooms() == 2);
+    CHECK(playing.state() == ClientState::InGame);
+    const rtype::Session* const first =
+        server.sessions().find(playing.login().value_or(rtype::LoginAccepted{}).session);
+    REQUIRE(first != nullptr);
+    CHECK(first->room != room);
 }
