@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 
 namespace rtype {
@@ -56,29 +58,49 @@ void ConnectForm::previous() noexcept {
                                          connect_field_count);
 }
 
+bool ConnectForm::accepts(ConnectField field, char character) noexcept {
+    switch (field) {
+    case ConnectField::Host:
+        return host_character(character);
+    case ConnectField::Port:
+        return digit(character);
+    case ConnectField::Name:
+        return name_character(character);
+    }
+    return false;
+}
+
+std::size_t ConnectForm::max_length(ConnectField field) noexcept {
+    switch (field) {
+    case ConnectField::Host:
+        return max_host;
+    case ConnectField::Port:
+        return max_port;
+    case ConnectField::Name:
+        return max_name;
+    }
+    return 0;
+}
+
 bool ConnectForm::type(char character) {
     std::string& field = fields_.at(index_of(focused_));
-    bool allowed = false;
-    std::size_t longest = 0;
-    switch (focused_) {
-    case ConnectField::Host:
-        allowed = host_character(character);
-        longest = max_host;
-        break;
-    case ConnectField::Port:
-        allowed = digit(character);
-        longest = max_port;
-        break;
-    case ConnectField::Name:
-        allowed = name_character(character);
-        longest = max_name;
-        break;
-    }
-    if (!allowed || field.size() >= longest) {
+    if (!accepts(focused_, character) || field.size() >= max_length(focused_)) {
         return false;
     }
     field.push_back(character);
     return true;
+}
+
+bool ConnectForm::set_text(ConnectField field, std::string_view text) {
+    std::string kept;
+    for (const char character : text) {
+        if (accepts(field, character) && kept.size() < max_length(field)) {
+            kept.push_back(character);
+        }
+    }
+    const bool whole = kept.size() == text.size();
+    fields_.at(index_of(field)) = std::move(kept);
+    return whole;
 }
 
 void ConnectForm::erase() noexcept {
