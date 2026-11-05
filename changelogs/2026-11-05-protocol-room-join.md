@@ -41,15 +41,18 @@ server* epic (Aegis2D-Dev/aegis2d#298), on the room messages of #76.
   included; `login()` and the other functions behave as before.
 - Tests: kind `16` is `GameStart`, the first reserved kind is `17`.
 - *Architecture* and *Getting started*: joining, leaving and starting a room.
+- Changelog, with `develop` merged in: #76 (`ce6c1f3`) marked as merged.
 
 ## Commits
 - `b240be7` feat(protocol): added joining, leaving and starting a room
 - `52f4e7f` feat(tests): added four clients joining a room and starting its game
-- feat(docs): documented joining and starting a room and updated changelogs
+- `ccaeac1` feat(docs): documented joining and starting a room and updated changelogs
+- Merge remote-tracking branch 'origin/develop' into feat/protocol-room-join
 
 ## Notes
-- Stacked on #76 (itself on #75 and #74): merge them first. The RFC part is
-  Aegis2D-Dev/aegis2d#455.
+- Stacked on #76 (itself on #75 and #74), all merged on 2026-11-05; retargeted to `develop`,
+  which was merged in: the only conflict was the index of `CHANGELOG.md`. The RFC part is
+  Aegis2D-Dev/aegis2d#455, merged.
 - 582 lines added and 110 removed in `protocol/` and `server/`, documentation comments
   included, past the 400 of the ticket: the session table moved to one list of sessions, which
   rewrites most of it, and each of the 7 messages has its reader, writer and documentation.

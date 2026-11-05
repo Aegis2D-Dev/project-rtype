@@ -1,7 +1,15 @@
 name: Code quality
 
 on:
+  # A pull request that only changes the documentation or the changelogs builds nothing here:
+  # the Documentation workflow checks it.
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!changelogs/**'
+      - '!**.md'
+      - '!mkdocs.yml'
   push:
     branches: [develop, master]
   workflow_dispatch:
