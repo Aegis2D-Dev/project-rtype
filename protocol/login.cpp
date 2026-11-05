@@ -19,7 +19,7 @@ namespace {
 // Kinds are contiguous: checked as a range before the cast, like net::PacketType.
 std::optional<TcpKind> tcp_kind(std::uint8_t value) noexcept {
     if (value < static_cast<std::uint8_t>(TcpKind::LoginRequest) ||
-        value > static_cast<std::uint8_t>(TcpKind::RoomRejected)) {
+        value > static_cast<std::uint8_t>(TcpKind::GameStart)) {
         return std::nullopt;
     }
     return static_cast<TcpKind>(value);

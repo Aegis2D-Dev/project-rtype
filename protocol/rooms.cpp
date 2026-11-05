@@ -2,6 +2,7 @@
 
 #include <rtype/login.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/tuning.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,24 @@ std::optional<std::uint8_t> read_u8_message(std::span<const std::byte> message,
     return value;
 }
 
+// A message that is its kind alone: ListRooms, LeaveRoom and GameStart.
+bool is_kind_alone(std::span<const std::byte> message, TcpKind expected) noexcept {
+    return message.size() == 1 && kind_of(message) == expected;
+}
+
+std::vector<std::byte> kind_alone(TcpKind kind) {
+    return {std::byte{static_cast<std::uint8_t>(kind)}};
+}
+
+// A 0 or a 1, as the ready fields.
+std::optional<bool> read_flag(net::BinaryReader& reader) noexcept {
+    const std::optional<std::uint8_t> value = reader.read_u8();
+    if (!value || *value > 1) {
+        return std::nullopt;
+    }
+    return *value == 1;
+}
+
 std::vector<std::byte> write_u8_message(TcpKind kind, std::uint8_t value) {
     net::BinaryWriter writer;
     writer.write_u8(static_cast<std::uint8_t>(kind));
@@ -57,7 +76,7 @@ std::string_view to_string(RoomRejection reason) noexcept {
 }
 
 bool read_list_rooms(std::span<const std::byte> message) noexcept {
-    return message.size() == 1 && kind_of(message) == TcpKind::ListRooms;
+    return is_kind_alone(message, TcpKind::ListRooms);
 }
 
 std::optional<std::vector<RoomRecord>> read_room_list(std::span<const std::byte> message) {
@@ -111,7 +130,7 @@ std::optional<std::uint8_t> read_room_rejected(std::span<const std::byte> messag
 }
 
 std::vector<std::byte> write_list_rooms() {
-    return {std::byte{static_cast<std::uint8_t>(TcpKind::ListRooms)}};
+    return kind_alone(TcpKind::ListRooms);
 }
 
 std::vector<std::byte> write_room_list(std::span<const RoomRecord> rooms) {
@@ -145,6 +164,127 @@ std::vector<std::byte> write_room_created(std::uint8_t room) {
 
 std::vector<std::byte> write_room_rejected(RoomRejection reason) {
     return write_u8_message(TcpKind::RoomRejected, static_cast<std::uint8_t>(reason));
+}
+
+std::string_view to_string(JoinRejection reason) noexcept {
+    switch (reason) {
+    case JoinRejection::NoSuchRoom:
+        return "no such room";
+    case JoinRejection::RoomFull:
+        return "room full";
+    case JoinRejection::InGame:
+        return "in game";
+    }
+    return "unknown";
+}
+
+std::optional<std::uint8_t> read_join_room(std::span<const std::byte> message) noexcept {
+    return read_u8_message(message, TcpKind::JoinRoom);
+}
+
+std::optional<std::pair<std::uint8_t, std::uint8_t>>
+read_room_joined(std::span<const std::byte> message) noexcept {
+    net::BinaryReader reader{message};
+    const std::optional<std::uint8_t> kind = reader.read_u8();
+    const std::optional<std::uint8_t> room = reader.read_u8();
+    const std::optional<std::uint8_t> player = reader.read_u8();
+    if (kind != static_cast<std::uint8_t>(TcpKind::RoomJoined) || !room || !player ||
+        !reader.at_end()) {
+        return std::nullopt;
+    }
+    return std::pair{*room, *player};
+}
+
+std::optional<std::uint8_t> read_join_rejected(std::span<const std::byte> message) noexcept {
+    return read_u8_message(message, TcpKind::JoinRejected);
+}
+
+bool read_leave_room(std::span<const std::byte> message) noexcept {
+    return is_kind_alone(message, TcpKind::LeaveRoom);
+}
+
+std::optional<bool> read_set_ready(std::span<const std::byte> message) noexcept {
+    net::BinaryReader reader{message};
+    const std::optional<std::uint8_t> kind = reader.read_u8();
+    const std::optional<bool> ready = read_flag(reader);
+    if (kind != static_cast<std::uint8_t>(TcpKind::SetReady) || !ready || !reader.at_end()) {
+        return std::nullopt;
+    }
+    return ready;
+}
+
+std::optional<RoomPlayers> read_room_players(std::span<const std::byte> message) {
+    net::BinaryReader reader{message};
+    const std::optional<std::uint8_t> kind = reader.read_u8();
+    const std::optional<std::uint8_t> room = reader.read_u8();
+    const std::optional<std::uint8_t> count = reader.read_u8();
+    if (kind != static_cast<std::uint8_t>(TcpKind::RoomPlayers) || !room || !count ||
+        *count > tuning::max_players) {
+        return std::nullopt;
+    }
+    RoomPlayers result{.room = *room, .players = {}};
+    for (std::uint8_t index = 0; index < *count; ++index) {
+        const std::optional<std::uint8_t> player = reader.read_u8();
+        std::optional<std::string> name = reader.read_string();
+        const std::optional<bool> ready = read_flag(reader);
+        if (!player || !name || !ready) {
+            return std::nullopt;
+        }
+        result.players.push_back(
+            RoomPlayer{.player = *player, .name = std::move(*name), .ready = *ready});
+    }
+    if (!reader.at_end()) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+bool read_game_start(std::span<const std::byte> message) noexcept {
+    return is_kind_alone(message, TcpKind::GameStart);
+}
+
+std::vector<std::byte> write_join_room(std::uint8_t room) {
+    return write_u8_message(TcpKind::JoinRoom, room);
+}
+
+std::vector<std::byte> write_room_joined(std::uint8_t room, std::uint8_t player) {
+    net::BinaryWriter writer;
+    writer.write_u8(static_cast<std::uint8_t>(TcpKind::RoomJoined));
+    writer.write_u8(room);
+    writer.write_u8(player);
+    return bytes_of(writer);
+}
+
+std::vector<std::byte> write_join_rejected(JoinRejection reason) {
+    return write_u8_message(TcpKind::JoinRejected, static_cast<std::uint8_t>(reason));
+}
+
+std::vector<std::byte> write_leave_room() {
+    return kind_alone(TcpKind::LeaveRoom);
+}
+
+std::vector<std::byte> write_set_ready(bool ready) {
+    return write_u8_message(TcpKind::SetReady, ready ? 1 : 0);
+}
+
+std::vector<std::byte> write_room_players(const RoomPlayers& players) {
+    if (players.players.size() > tuning::max_players) {
+        throw std::invalid_argument{"a RoomPlayers holds at most 4 players"};
+    }
+    net::BinaryWriter writer;
+    writer.write_u8(static_cast<std::uint8_t>(TcpKind::RoomPlayers));
+    writer.write_u8(players.room);
+    writer.write_u8(static_cast<std::uint8_t>(players.players.size()));
+    for (const RoomPlayer& player : players.players) {
+        writer.write_u8(player.player);
+        writer.write_string(player.name);
+        writer.write_u8(player.ready ? 1 : 0);
+    }
+    return bytes_of(writer);
+}
+
+std::vector<std::byte> write_game_start() {
+    return kind_alone(TcpKind::GameStart);
 }
 
 } // namespace rtype

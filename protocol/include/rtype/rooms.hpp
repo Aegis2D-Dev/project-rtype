@@ -1,5 +1,6 @@
 /// @file
-/// @brief TCP messages of the rooms (RFC section 3.6): listing them and creating one.
+/// @brief TCP messages of the rooms (RFC sections 3.6 and 3.7): listing them, creating one,
+/// joining and leaving one, and starting its game.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -7,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace rtype {
@@ -30,6 +32,42 @@ enum class RoomRejection : std::uint8_t {
     BadName = 2,
     /// @brief The number of players is not 1 to 4.
     BadSize = 3,
+};
+
+/// @brief Why a room is not joined, the `reason` of `JoinRejected`.
+enum class JoinRejection : std::uint8_t {
+    /// @brief No room in use has this number.
+    NoSuchRoom = 1,
+    /// @brief The room has as many players as it takes.
+    RoomFull = 2,
+    /// @brief The player is in game: it plays in its room until its session ends.
+    InGame = 3,
+};
+
+/// @brief A player of a room, as a `RoomPlayers` describes it.
+struct RoomPlayer {
+    /// @brief Number in the room, 0 to 3.
+    std::uint8_t player = 0;
+    /// @brief Name given at login.
+    std::string name;
+    /// @brief Whether it is ready to start.
+    bool ready = false;
+
+    /// @brief Field-by-field equality.
+    /// @return `true` if every field is equal.
+    bool operator==(const RoomPlayer&) const = default;
+};
+
+/// @brief Content of a `RoomPlayers`.
+struct RoomPlayers {
+    /// @brief Number of the room.
+    std::uint8_t room = 0;
+    /// @brief Its players, at most 4, by number.
+    std::vector<RoomPlayer> players;
+
+    /// @brief Field-by-field equality.
+    /// @return `true` if both fields are equal.
+    bool operator==(const RoomPlayers&) const = default;
 };
 
 /// @brief A room, as a `RoomList` describes it.
@@ -99,6 +137,55 @@ read_room_created(std::span<const std::byte> message) noexcept;
 [[nodiscard]] std::optional<std::uint8_t>
 read_room_rejected(std::span<const std::byte> message) noexcept;
 
+/// @brief Short name of a rejection, for logs.
+/// @param reason Reason to name.
+/// @return `"no such room"`, `"room full"`, `"in game"` or `"unknown"`.
+[[nodiscard]] std::string_view to_string(JoinRejection reason) noexcept;
+
+/// @brief Reads a `JoinRoom`.
+/// @param message Message received, length prefix excluded.
+/// @return The number of the room, or `std::nullopt` if the message is not a well-formed
+/// `JoinRoom`.
+[[nodiscard]] std::optional<std::uint8_t>
+read_join_room(std::span<const std::byte> message) noexcept;
+
+/// @brief Reads a `RoomJoined`.
+/// @param message Message received, length prefix excluded.
+/// @return The room and the player's number there, or `std::nullopt` if the message is not a
+/// well-formed `RoomJoined`.
+[[nodiscard]] std::optional<std::pair<std::uint8_t, std::uint8_t>>
+read_room_joined(std::span<const std::byte> message) noexcept;
+
+/// @brief Reads a `JoinRejected`.
+/// @param message Message received, length prefix excluded.
+/// @return The reason as sent (unknown values included), or `std::nullopt` if the message
+/// is not a well-formed `JoinRejected`.
+[[nodiscard]] std::optional<std::uint8_t>
+read_join_rejected(std::span<const std::byte> message) noexcept;
+
+/// @brief Tells whether a message is a well-formed `LeaveRoom`: its kind alone.
+/// @param message Message received, length prefix excluded.
+/// @return `true` if it is.
+[[nodiscard]] bool read_leave_room(std::span<const std::byte> message) noexcept;
+
+/// @brief Reads a `SetReady`.
+/// @param message Message received, length prefix excluded.
+/// @return Whether the player is ready, or `std::nullopt` if the message is not a
+/// well-formed `SetReady`, its `ready` being 0 or 1.
+[[nodiscard]] std::optional<bool> read_set_ready(std::span<const std::byte> message) noexcept;
+
+/// @brief Reads a `RoomPlayers`.
+/// @param message Message received, length prefix excluded.
+/// @return Its room and players, or `std::nullopt` if the message is not a well-formed
+/// `RoomPlayers`: another kind, more than 4 players, a `ready` other than 0 or 1, a field
+/// past the end, or bytes after the last player.
+[[nodiscard]] std::optional<RoomPlayers> read_room_players(std::span<const std::byte> message);
+
+/// @brief Tells whether a message is a well-formed `GameStart`: its kind alone.
+/// @param message Message received, length prefix excluded.
+/// @return `true` if it is.
+[[nodiscard]] bool read_game_start(std::span<const std::byte> message) noexcept;
+
 /// @brief Encodes a `ListRooms`.
 /// @return The message, without length prefix.
 [[nodiscard]] std::vector<std::byte> write_list_rooms();
@@ -123,5 +210,40 @@ read_room_rejected(std::span<const std::byte> message) noexcept;
 /// @param reason Why the room is not created.
 /// @return The message, without length prefix.
 [[nodiscard]] std::vector<std::byte> write_room_rejected(RoomRejection reason);
+
+/// @brief Encodes a `JoinRoom`.
+/// @param room Number of the room to join.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_join_room(std::uint8_t room);
+
+/// @brief Encodes a `RoomJoined`.
+/// @param room Number of the room joined.
+/// @param player Number of the player there.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_room_joined(std::uint8_t room, std::uint8_t player);
+
+/// @brief Encodes a `JoinRejected`.
+/// @param reason Why the room is not joined.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_join_rejected(JoinRejection reason);
+
+/// @brief Encodes a `LeaveRoom`.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_leave_room();
+
+/// @brief Encodes a `SetReady`.
+/// @param ready Whether the player is ready to start.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_set_ready(bool ready);
+
+/// @brief Encodes a `RoomPlayers`.
+/// @param players The room and its players, at most 4, their names fitting a `string`.
+/// @return The message, without length prefix.
+/// @throws std::invalid_argument If there are more than 4 players.
+[[nodiscard]] std::vector<std::byte> write_room_players(const RoomPlayers& players);
+
+/// @brief Encodes a `GameStart`.
+/// @return The message, without length prefix.
+[[nodiscard]] std::vector<std::byte> write_game_start();
 
 } // namespace rtype

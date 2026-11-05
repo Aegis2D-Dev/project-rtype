@@ -39,8 +39,12 @@ namespace rtype {
 /// closed once it is sent; a connection that sends anything else first, or nothing within
 /// login_timeout, is closed without a reply (section 6.5). Once logged in, a `ListRooms` gets
 /// the `RoomList` of the rooms in use and a `CreateRoom` its `RoomCreated` or `RoomRejected`
-/// (section 3.6); a `Logout` or the closing of the connection ends the session; any other
-/// message is a protocol error that ends it too.
+/// (section 3.6); a `JoinRoom` gets `RoomJoined` or `JoinRejected`, a `LeaveRoom` moves the
+/// session to the lobby and a `SetReady` sets whether it is ready (section 3.7); a `Logout` or
+/// the closing of the connection ends the session; any other message is a protocol error that
+/// ends it too. Whenever the sessions of a room or their ready states change, the clients of
+/// that room that sent a message of the rooms and are not in game get its `RoomPlayers`, then
+/// `GameStart` once every session of the room out of game is ready.
 ///
 /// Each datagram is checked as RFC section 6.3 says (header, direction, source). A
 /// `Connect` with an empty payload and the token of a session binds its source endpoint
@@ -296,11 +300,16 @@ private:
         std::uint64_t sent = 0;
         bool close_when_sent = false;
         bool closed = false;
+        // Whether it sent a message of the rooms, and so gets RoomPlayers and GameStart.
+        bool rooms = false;
     };
 
     void on_accept(aegis2d::net::TcpConnection connection);
     void on_message(std::uint64_t id, std::span<const std::byte> message);
     void on_login(Client& client, std::span<const std::byte> message);
+    bool on_room_message(Client& client, std::span<const std::byte> message);
+    void on_join(Client& client, std::uint8_t room);
+    void announce_room(std::uint32_t room);
     void on_close(std::uint64_t id, aegis2d::net::TcpCloseReason reason);
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void on_connect(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram,
