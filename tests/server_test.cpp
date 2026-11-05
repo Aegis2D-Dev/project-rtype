@@ -788,7 +788,7 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
 
     rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
     snapshot.entities.resize(130);
-    server.send_snapshot(rtype::write_snapshot(snapshot));
+    server.send_snapshot(rtype::write_snapshot(snapshot), 0);
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 3; }));
 
     // Two datagrams (122 + 8 entities), after the Accept of sequence 0, acknowledging 1 and 0;
@@ -823,10 +823,10 @@ TEST_CASE("payloads from the compression threshold go compressed, and back whole
     const std::vector<std::vector<std::byte>> payloads = rtype::write_snapshot(snapshot);
     REQUIRE(payloads.size() == 2);
     CHECK(!server.compression().has_value());
-    server.send_snapshot(payloads);
+    server.send_snapshot(payloads, 0);
     server.set_compression(128);
     CHECK(server.compression() == 128U);
-    server.send_snapshot(payloads);
+    server.send_snapshot(payloads, 0);
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 5; }));
 
     for (std::size_t index = 0; index < payloads.size(); ++index) {
@@ -874,7 +874,7 @@ TEST_CASE("the server knows the latest snapshot each player acknowledged",
     for (const std::uint32_t tick : {3U, 6U}) {
         const auto snapshot = std::make_shared<const rtype::Snapshot>(
             rtype::Snapshot{.tick = tick, .players = {}, .entities = {}});
-        server.send_snapshot(rtype::write_snapshot(*snapshot), snapshot);
+        server.send_snapshot(rtype::write_snapshot(*snapshot), 0, snapshot);
     }
     REQUIRE(pump(context, server, [&] {
         return first_udp.received.size() == 3 && second_udp.received.size() == 3;
@@ -904,7 +904,8 @@ TEST_CASE("the server knows the latest snapshot each player acknowledged",
 
     // The next snapshot goes to each player against the latest one it acknowledged.
     server.send_snapshot(std::make_shared<const rtype::Snapshot>(
-        rtype::Snapshot{.tick = 9, .players = {}, .entities = {}}));
+                             rtype::Snapshot{.tick = 9, .players = {}, .entities = {}}),
+                         0);
     REQUIRE(pump(context, server, [&] {
         return first_udp.received.size() == 4 && second_udp.received.size() == 4;
     }));
@@ -966,7 +967,7 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     const std::vector<std::vector<std::byte>> spawns{
         rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 5, .kind = 3}),
         rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 6, .kind = 3})};
-    server.send_events(spawns);
+    server.send_events(spawns, 0);
     REQUIRE(pump(context, server, [&] {
         return first_udp.received.size() == 2 && second_udp.received.size() == 2;
     }));
@@ -979,7 +980,7 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     // To the player who joins only.
     const std::vector<std::vector<std::byte>> world{
         rtype::write_event(rtype::SpawnEvent{.tick = 2, .id = 7, .kind = 4})};
-    server.send_events(world, second);
+    server.send_events(world, 0, second);
     REQUIRE(pump(context, server, [&] { return second_udp.received.size() == 3; }));
     CHECK(events_of(second_client, second_udp.datagrams.at(2)) == world);
     context.run_for(std::chrono::milliseconds{50});
@@ -1352,6 +1353,141 @@ TEST_CASE("players learn who joins, and who leaves before its ship is destroyed"
         });
     REQUIRE(left_at.has_value());
     CHECK(left_at < first_log.find<rtype::DestroyEvent>(destroyed));
+}
+
+namespace {
+
+// Snapshot datagrams a socket received, read whole: the test clients acknowledge none, so
+// none is a delta.
+std::vector<rtype::DeltaSnapshot> snapshots_of(const Socket& socket) {
+    std::vector<rtype::DeltaSnapshot> snapshots;
+    for (std::size_t index = 0; index < socket.datagrams.size(); ++index) {
+        if (socket.received.at(index).type != PacketType::Snapshot) {
+            continue;
+        }
+        const std::span<const std::byte> bytes{socket.datagrams.at(index)};
+        const std::optional<rtype::DeltaSnapshot> snapshot =
+            rtype::read_delta_snapshot(bytes.subspan(PacketHeader::size));
+        REQUIRE(snapshot.has_value());
+        snapshots.push_back(snapshot.value_or(rtype::DeltaSnapshot{}));
+    }
+    return snapshots;
+}
+
+// Ships whose Spawn a player got, each counted once: a player bound while the events of a
+// tick are on their way to the network thread gets them, and the same Spawn again in the
+// world it is sent when it joins (RFC section 4.6), which a client applies again harmlessly.
+std::size_t ships_in(const EventLog& log) {
+    std::vector<std::uint32_t> ships;
+    for (const rtype::GameEvent& event : log.events) {
+        const auto* const spawn = std::get_if<rtype::SpawnEvent>(&event);
+        if (spawn != nullptr &&
+            spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip) &&
+            std::ranges::find(ships, spawn->id) == ships.end()) {
+            ships.push_back(spawn->id);
+        }
+    }
+    return ships.size();
+}
+
+} // namespace
+
+TEST_CASE("two rooms play side by side and nothing of one reaches the other", "[server][room]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    REQUIRE(game_server.rooms() == 2);
+
+    // Four players fill the first room, the next two play in the second, as its 0 and 1.
+    constexpr std::size_t count = rtype::tuning::max_players + 2;
+    const auto room_of = [](std::size_t index) {
+        return index < rtype::tuning::max_players ? 0U : 1U;
+    };
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::unique_ptr<Socket>> sockets;
+    std::vector<std::uint32_t> tokens;
+    std::vector<EventLog> logs(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        players.push_back(std::make_unique<Player>(context, server));
+        const std::uint32_t token =
+            log_in(context, server, *players.back(), "p" + std::to_string(index));
+        tokens.push_back(token);
+        const rtype::Session* const session = server.sessions().find(token);
+        REQUIRE(session != nullptr);
+        CHECK(session->room == room_of(index));
+        CHECK(session->player == index % rtype::tuning::max_players);
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, token));
+    }
+    const auto update = [&] {
+        for (std::size_t index = 0; index < count; ++index) {
+            logs.at(index).update(*sockets.at(index));
+        }
+    };
+
+    // Events: each player sees the ships and names of its room only.
+    const auto every_ship_seen = [&] {
+        update();
+        for (std::size_t index = 0; index < count; ++index) {
+            if (ships_in(logs.at(index)) < (room_of(index) == 0 ? 4U : 2U)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    REQUIRE(pump(context, server, every_ship_seen));
+    context.run_for(std::chrono::milliseconds{100});
+    update();
+    for (std::size_t index = 0; index < count; ++index) {
+        CAPTURE(index);
+        CHECK(ships_in(logs.at(index)) == (room_of(index) == 0 ? 4U : 2U));
+        for (std::size_t other = 0; other < count; ++other) {
+            const std::string name = "p" + std::to_string(other);
+            const bool known = logs.at(index)
+                                   .find<rtype::PlayerJoinedEvent>(
+                                       [&](const auto& joined) { return joined.name == name; })
+                                   .has_value();
+            CHECK(known == (other != index && room_of(other) == room_of(index)));
+        }
+    }
+
+    // Inputs and snapshots: the input of player 0 of the second room is applied there, and
+    // not to player 0 of the first room, whose snapshots only list the 4 players there.
+    const auto input_of_first = [](const rtype::DeltaSnapshot& snapshot) {
+        const auto first = std::ranges::find_if(
+            snapshot.players, [](const rtype::PlayerRecord& record) { return record.player == 0; });
+        return first == snapshot.players.end() ? std::nullopt : first->input;
+    };
+    sockets.at(4)->send(server,
+                        datagram(PacketType::Input, tokens.at(4), 1, input_payload(7, {0x08})));
+    const std::size_t seen = snapshots_of(*sockets.at(0)).size();
+    REQUIRE(pump(context, server, [&] {
+        const std::vector<rtype::DeltaSnapshot> second = snapshots_of(*sockets.at(4));
+        return !second.empty() && input_of_first(second.back()) == 7;
+    }));
+    REQUIRE(pump(context, server, [&] { return snapshots_of(*sockets.at(0)).size() > seen; }));
+    const rtype::DeltaSnapshot first_room = snapshots_of(*sockets.at(0)).back();
+    CHECK(first_room.players.size() == 4);
+    CHECK(!input_of_first(first_room).has_value());
+    CHECK(snapshots_of(*sockets.at(4)).back().players.size() == 2);
+
+    // Leaving: the other player of the second room learns it, the first room does not.
+    players.at(4)->send(rtype::write_logout(LogoutReason::Left));
+    const auto left = [](const EventLog& log) {
+        return log.find<rtype::PlayerLeftEvent>([](const auto& /*event*/) { return true; });
+    };
+    REQUIRE(pump(context, server, [&] {
+        update();
+        return left(logs.at(5)).has_value();
+    }));
+    context.run_for(std::chrono::milliseconds{100});
+    update();
+    CHECK(std::get<rtype::PlayerLeftEvent>(logs.at(5).events.at(left(logs.at(5)).value_or(0)))
+              .player == 0);
+    for (std::size_t index = 0; index < rtype::tuning::max_players; ++index) {
+        CHECK(!left(logs.at(index)).has_value());
+    }
 }
 
 TEST_CASE("an exception while handling a client kicks that client only", "[server][errors]") {

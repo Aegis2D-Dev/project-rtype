@@ -258,7 +258,8 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
         return;
     case BindResult::Bound: {
         const Session& session = *sessions_.find(header.session);
-        core::log_info("UDP: player {} plays from {}", session.player, from.to_string());
+        core::log_info("UDP: player {} of room {} plays from {}", session.player, session.room,
+                       from.to_string());
         if (joined_) {
             joined_(session);
         }
@@ -313,15 +314,17 @@ void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
 }
 
 void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads,
+                                  std::uint32_t room,
                                   const std::shared_ptr<const Snapshot>& snapshot) {
     send_snapshot(
         [payloads](const SnapshotHistory&) {
             return std::vector<std::vector<std::byte>>{payloads.begin(), payloads.end()};
         },
-        snapshot);
+        room, snapshot);
 }
 
-void ServerNetwork::send_snapshot(const std::shared_ptr<const Snapshot>& snapshot) {
+void ServerNetwork::send_snapshot(const std::shared_ptr<const Snapshot>& snapshot,
+                                  std::uint32_t room) {
     if (!snapshot) {
         return;
     }
@@ -333,16 +336,16 @@ void ServerNetwork::send_snapshot(const std::shared_ptr<const Snapshot>& snapsho
             }
             return write_delta_snapshot(*snapshot, baseline);
         },
-        snapshot);
+        room, snapshot);
 }
 
 void ServerNetwork::send_snapshot(
     const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
-    const std::shared_ptr<const Snapshot>& snapshot) {
+    std::uint32_t room, const std::shared_ptr<const Snapshot>& snapshot) {
     const auto now = Clock::now();
     for (auto& [token, peer] : peers_) {
         const Session* const session = sessions_.find(token);
-        if (session == nullptr) {
+        if (session == nullptr || session->room != room) {
             continue;
         }
         if (!session->endpoint.has_value()) {
@@ -379,25 +382,26 @@ std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
     return snapshots_sent_;
 }
 
-void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events,
+void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events, std::uint32_t room,
                                 std::optional<std::uint32_t> token) {
-    queue_events(events, [&](std::uint32_t peer) { return !token || *token == peer; });
+    queue_events(events, [&](const Session& session) {
+        return session.room == room && (!token || *token == session.token);
+    });
 }
 
 void ServerNetwork::send_events_to_others(std::span<const std::vector<std::byte>> events,
-                                          std::uint32_t token) {
-    queue_events(events, [&](std::uint32_t peer) { return peer != token; });
+                                          std::uint32_t room, std::uint32_t token) {
+    queue_events(events, [&](const Session& session) {
+        return session.room == room && session.token != token;
+    });
 }
 
 void ServerNetwork::queue_events(std::span<const std::vector<std::byte>> events,
-                                 const std::function<bool(std::uint32_t token)>& receives) {
+                                 const std::function<bool(const Session& session)>& receives) {
     std::vector<std::uint32_t> lost;
     for (auto& [peer_token, peer] : peers_) {
-        if (!receives(peer_token)) {
-            continue;
-        }
         const Session* const session = sessions_.find(peer_token);
-        if (session == nullptr || !session->endpoint) {
+        if (session == nullptr || !session->endpoint || !receives(*session)) {
             continue;
         }
         for (const std::vector<std::byte>& event : events) {
@@ -555,8 +559,9 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
     const auto& session = *std::get_if<Session>(&result);
     client.token = session.token;
     // The name passed valid_player_name(): no control character reaches the log.
-    core::log_info("TCP: {} logged in as player {} ({})",
-                   client.connection.remote_endpoint().to_string(), session.player, session.name);
+    core::log_info("TCP: {} logged in as player {} of room {} ({})",
+                   client.connection.remote_endpoint().to_string(), session.player, session.room,
+                   session.name);
     send(client, write_login_accepted(LoginAccepted{
                      .session = session.token,
                      .player = session.player,

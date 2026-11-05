@@ -21,20 +21,21 @@ namespace rtype {
 /// @details The game, the tracker and the names belong to the simulation thread: other
 /// threads post() to simulation() to use them, or wait until it stopped. The thread starts
 /// once the rest of the room is built, and stops first when the room is destroyed. The
-/// server keeps a single room for now; more rooms will run side by side, each on its own
-/// thread.
+/// rooms of a server run side by side, each on its own thread, and its sessions play in the
+/// room of their Session::room.
 class Room {
 public:
     /// @brief Called on the simulation thread after each tick of the room.
     using TickHandler = std::function<void(Room& room, GameInstance& instance)>;
 
     /// @brief Creates the game and starts its thread.
+    /// @param id Number of the room in its server, its sessions' Session::room.
     /// @param seed Seed of the random spawns, or `std::nullopt` for none (see ServerGame).
     /// @param waves Waves to play in every game of the room, at their start.
     /// @param rate Ticks per second.
     /// @param after_tick Called after each tick, on the simulation thread.
-    Room(std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves, std::uint32_t rate,
-         TickHandler after_tick);
+    Room(std::uint32_t id, std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves,
+         std::uint32_t rate, TickHandler after_tick);
 
     Room(const Room&) = delete;
     Room& operator=(const Room&) = delete;
@@ -42,6 +43,10 @@ public:
     Room& operator=(Room&&) = delete;
     /// @brief Stops the thread, then destroys the game.
     ~Room() = default;
+
+    /// @brief Number of the room in its server.
+    /// @return The id given to the constructor.
+    [[nodiscard]] std::uint32_t id() const noexcept;
 
     /// @brief The game of the room.
     /// @return It; use it from the simulation thread, or once simulation() stopped.
@@ -61,6 +66,7 @@ public:
     [[nodiscard]] std::array<std::optional<std::string>, tuning::max_players>& names() noexcept;
 
 private:
+    std::uint32_t id_;
     GameInstance instance_;
     EventTracker events_;
     std::array<std::optional<std::string>, tuning::max_players> names_{};
