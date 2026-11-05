@@ -23,6 +23,23 @@ std::size_t index_of(ConnectField field) noexcept {
     return static_cast<std::size_t>(field);
 }
 
+// The start of @p text that fits in @p room bytes, in whole UTF-8 characters: the text field
+// counts characters, the form bytes, so what would not fit is refused before it is typed.
+std::string fitting(const std::string& text, std::size_t room) {
+    std::size_t end = 0;
+    while (end < text.size()) {
+        std::size_t next = end + 1;
+        while (next < text.size() && (static_cast<unsigned char>(text.at(next)) & 0xC0U) == 0x80U) {
+            ++next;
+        }
+        if (next > room) {
+            break;
+        }
+        end = next;
+    }
+    return text.substr(0, end);
+}
+
 // A text field of the tree, with the form's text and length; its box is set when drawn.
 ui::TextField make_field(ui::WidgetTree& tree, const ConnectForm& form, ConnectField which) {
     return ui::TextField{tree,
@@ -96,7 +113,7 @@ bool ConnectFields::update(const platform::TextInput& typed, const platform::Key
     }
     platform::TextInput filtered;
     filtered.set_active(true);
-    filtered.add(kept);
+    filtered.add(fitting(kept, ConnectForm::max_length(*which) - form_.text(*which).size()));
     // Left and Right move the cursor; Up, Down and Tab stay the screen's, to change rows.
     ui::Navigation navigation;
     if (keyboard.pressed(platform::Key::Left)) {
