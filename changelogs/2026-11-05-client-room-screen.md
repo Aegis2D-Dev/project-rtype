@@ -34,14 +34,17 @@ ready. Four clients fill and start a room while a second room plays. Seventh tic
 - `r-type_client`: the rooms screen leads to the room screen.
 - Tests: the client of the rooms screen test gets ready in its room before it plays.
 - *Play*: the room screen. *Architecture*: the `InRoom` state.
+- Changelog, with `develop` merged in: #78 (`1dba810`) marked as merged.
 
 ## Commits
 - `693421f` feat(client): added the room screen, ready to start or leave
 - `d7a797c` feat(tests): added four clients starting a room while another plays
-- feat(docs): documented the room screen and updated changelogs
+- `f6eb65a` feat(docs): documented the room screen and updated changelogs
+- Merge remote-tracking branch 'origin/develop' into feat/client-room-screen
 
 ## Notes
-- Stacked on #78 (itself on #77, #76, #75 and #74): merge them first.
+- Stacked on #78 (itself on #77, #76, #75 and #74), all merged on 2026-11-05; retargeted to
+  `develop`, which was merged in: the only conflict was the index of `CHANGELOG.md`.
 - The screen was built (client with `SDL_UNIX_CONSOLE_BUILD`, Clang 20, warnings as errors)
   and checked by clang-tidy, but not seen in a window: the machine used has no display.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors):

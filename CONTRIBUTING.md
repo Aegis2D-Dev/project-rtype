@@ -67,7 +67,9 @@ To hunt memory errors and undefined behavior, configure with the engine's saniti
   in [CHANGELOG.md](CHANGELOG.md), following the template there.
 - **Checks**: the *Code quality* workflow must be green: format, build + tests +
   clang-tidy on Linux, build + tests on Windows, and tests under ASan and UBSan; so must
-  the *Documentation* workflow when the docs or the game's headers change.
+  the *Documentation* workflow when the docs or the game's headers change. A pull request
+  that only changes `docs/`, `changelogs/`, Markdown files or `mkdocs.yml` does not run
+  *Code quality*.
 - **Merge**: with a merge commit, never squash, after one approval.
 - **Delivery**: a pull request from `develop` to `master`; merging it asks the engine's
   *Epitech mirror* to publish the game and the engine's `master` to the Epitech repository.

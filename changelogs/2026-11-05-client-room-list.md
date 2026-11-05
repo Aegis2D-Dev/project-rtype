@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#78](https://github.com/Aegis2D-Dev/project-rtype/pull/78) (opened 2026-11-05) |
 | Branch | `feat/client-room-list` → `develop` (stacked on `feat/protocol-room-join`, #77) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`1dba810`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#304](https://github.com/Aegis2D-Dev/aegis2d/issues/304) feat(client): room list screen |
 
@@ -38,14 +38,17 @@ multi-instance server* epic (Aegis2D-Dev/aegis2d#298), on the room messages of #
   that used the rooms gets, and says goodbye with `Logout` from the lobby too.
 - `r-type_client`: joining from the connect screen goes through the rooms screen.
 - *Play*: the rooms screen and its keys. *Architecture*: the lobby of the client.
+- Changelog, with `develop` merged in: #77 (`db01923`) marked as merged.
 
 ## Commits
 - `a589278` feat(client): added the room list screen and the lobby of the session
 - `0c30675` feat(tests): added a client creating and joining rooms from the screen
-- feat(docs): documented the room list screen and updated changelogs
+- `d6d39b8` feat(docs): documented the room list screen and updated changelogs
+- Merge remote-tracking branch 'origin/develop' into feat/client-room-list
 
 ## Notes
-- Stacked on #77 (itself on #76, #75 and #74): merge them first.
+- Stacked on #77 (itself on #76, #75 and #74), all merged on 2026-11-05; retargeted to
+  `develop`, which was merged in: the only conflict was the index of `CHANGELOG.md`.
 - The ready step and the players of the room come with Aegis2D-Dev/aegis2d#305: until then, a
   room joined from the screen is played at once.
 - 527 lines added and 35 removed in `client/`, documentation comments included, past the 350
