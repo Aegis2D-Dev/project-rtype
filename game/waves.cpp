@@ -3,9 +3,26 @@
 
 #include <rtype/waves.hpp>
 
+#include <algorithm>
 #include <filesystem>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace rtype {
+
+std::vector<std::string> waves_names(const std::filesystem::path& directory) {
+    std::vector<std::string> names;
+    std::error_code error;
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator{directory, error}) {
+        if (entry.path().extension() == ".json") {
+            names.push_back(entry.path().stem().string());
+        }
+    }
+    std::ranges::sort(names);
+    return names;
+}
 
 std::filesystem::path default_waves_file() {
     return aegis2d::core::asset_path("waves/stage1.json");

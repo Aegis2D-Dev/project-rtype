@@ -32,6 +32,45 @@ enum class RoomRejection : std::uint8_t {
     BadName = 2,
     /// @brief The number of players is not 1 to 4.
     BadSize = 3,
+    /// @brief The lives are not 1 to max_room_lives.
+    BadLives = 4,
+    /// @brief The difficulty is not a Difficulty.
+    BadDifficulty = 5,
+    /// @brief The server has no waves file of this name.
+    UnknownWaves = 6,
+    /// @brief The friendly fire is not 0 or 1.
+    BadFriendlyFire = 7,
+};
+
+/// @brief Most lives a room may give its players.
+inline constexpr std::uint8_t max_room_lives = 9;
+
+/// @brief How hard the enemies of a room are: how often they come and how much they take.
+enum class Difficulty : std::uint8_t {
+    /// @brief Fewer enemies, easier to destroy.
+    Easy = 0,
+    /// @brief The game as tuned.
+    Normal = 1,
+    /// @brief More enemies, harder to destroy.
+    Hard = 2,
+};
+
+/// @brief How a room plays, chosen at its creation (`CreateRoom`, RFC section 3.6).
+/// @details The values are as received: the server checks them (SessionTable::create_room()).
+struct RoomRules {
+    /// @brief Lives of each player, 1 to max_room_lives.
+    std::uint8_t lives = 3;
+    /// @brief A Difficulty value.
+    std::uint8_t difficulty = static_cast<std::uint8_t>(Difficulty::Normal);
+    /// @brief Name of the waves file to play, among those the server offers, without its
+    /// `.json`; empty for the server's own.
+    std::string waves;
+    /// @brief 1 if the players' missiles hit the other players, 0 if not.
+    std::uint8_t friendly_fire = 0;
+
+    /// @brief Field-by-field equality.
+    /// @return `true` if every field is equal.
+    bool operator==(const RoomRules&) const = default;
 };
 
 /// @brief Why a room is not joined, the `reason` of `JoinRejected`.
@@ -94,15 +133,17 @@ struct CreateRoomRequest {
     std::string name;
     /// @brief Most players the room takes, not checked yet: 1 to 4 are valid.
     std::uint8_t max_players = 0;
+    /// @brief How the room plays, not checked yet.
+    RoomRules rules{};
 
     /// @brief Field-by-field equality.
-    /// @return `true` if both fields are equal.
+    /// @return `true` if every field is equal.
     bool operator==(const CreateRoomRequest&) const = default;
 };
 
 /// @brief Short name of a rejection, for logs.
 /// @param reason Reason to name.
-/// @return `"no room left"`, `"bad name"`, `"bad size"` or `"unknown"`.
+/// @return `"no room left"`, `"bad name"`, `"bad size"`, `"bad lives"`... or `"unknown"`.
 [[nodiscard]] std::string_view to_string(RoomRejection reason) noexcept;
 
 /// @brief Tells whether a message is a well-formed `ListRooms`: its kind alone.
@@ -197,7 +238,7 @@ read_join_rejected(std::span<const std::byte> message) noexcept;
 [[nodiscard]] std::vector<std::byte> write_room_list(std::span<const RoomRecord> rooms);
 
 /// @brief Encodes a `CreateRoom`.
-/// @param request Name and number of players; the name must fit a `string`.
+/// @param request Name, number of players and rules; the strings must fit a `string`.
 /// @return The message, without length prefix.
 [[nodiscard]] std::vector<std::byte> write_create_room(const CreateRoomRequest& request);
 

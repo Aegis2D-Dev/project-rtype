@@ -207,7 +207,13 @@ TEST_CASE("room messages follow the RFC example", "[server][rooms]") {
     CHECK(rtype::write_room_list(rooms) == list);
     CHECK(rtype::read_room_list(list) == rooms);
     CHECK(rtype::write_create_room({.name = "Aces", .max_players = 2}) ==
-          bytes({0x07, 0x04, 0x00, 0x41, 0x63, 0x65, 0x73, 0x02}));
+          bytes({0x07, 0x04, 0x00, 0x41, 0x63, 0x65, 0x73, 0x02, 0x03, 0x01, 0x00, 0x00, 0x00}));
+    CHECK(rtype::write_create_room(
+              {.name = "Hard",
+               .max_players = 4,
+               .rules = {.lives = 1, .difficulty = 2, .waves = "stage9", .friendly_fire = 1}}) ==
+          bytes({0x07, 0x04, 0x00, 0x48, 0x61, 0x72, 0x64, 0x04, 0x01, 0x02, 0x06, 0x00, 0x73, 0x74,
+                 0x61, 0x67, 0x65, 0x39, 0x01}));
     CHECK(rtype::write_room_created(1) == bytes({0x08, 0x01}));
     CHECK(rtype::write_room_rejected(RoomRejection::BadSize) == bytes({0x09, 0x03}));
 }
@@ -217,11 +223,24 @@ TEST_CASE("room messages are read whole or not at all", "[server][rooms]") {
     CHECK(!rtype::read_list_rooms(bytes({0x05, 0x00})));
     CHECK(!rtype::read_list_rooms(bytes({0x04})));
 
-    CHECK(rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x03})) ==
-          rtype::CreateRoomRequest{.name = "A", .max_players = 3});
-    CHECK(!rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41})).has_value());
-    CHECK(!rtype::read_create_room(bytes({0x07, 0x05, 0x00, 0x41, 0x03})).has_value());
-    CHECK(!rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x03, 0x00})).has_value());
+    CHECK(rtype::read_create_room(
+              bytes({0x07, 0x01, 0x00, 0x41, 0x03, 0x02, 0x00, 0x01, 0x00, 0x62, 0x01})) ==
+          rtype::CreateRoomRequest{
+              .name = "A",
+              .max_players = 3,
+              .rules = {.lives = 2, .difficulty = 0, .waves = "b", .friendly_fire = 1}});
+    // Values out of range are read as they are, for the server to refuse them with a reason.
+    CHECK(
+        rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x09, 0x00, 0x07, 0x00, 0x00, 0x05}))
+            .value_or(rtype::CreateRoomRequest{})
+            .rules.friendly_fire == 5);
+    CHECK(!rtype::read_create_room(bytes({0x07, 0x01, 0x00, 0x41, 0x03})).has_value());
+    CHECK(!rtype::read_create_room(
+               bytes({0x07, 0x01, 0x00, 0x41, 0x03, 0x03, 0x01, 0x05, 0x00, 0x00}))
+               .has_value());
+    CHECK(!rtype::read_create_room(
+               bytes({0x07, 0x01, 0x00, 0x41, 0x03, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00}))
+               .has_value());
 
     CHECK(rtype::read_room_list(bytes({0x06, 0x00})) == std::vector<RoomRecord>{});
     CHECK(!rtype::read_room_list(bytes({0x06})).has_value());
@@ -383,6 +402,46 @@ TEST_CASE("sessions out of game join and leave rooms, and get ready", "[server][
     // From the lobby to a room.
     CHECK(number(table.join(first.token, 0)) == 1);
     CHECK(table.size() == 3);
+}
+
+TEST_CASE("room rules are checked in order, refused with a reason, and kept", "[server][rooms]") {
+    SessionTable table{19};
+    table.set_rooms(3);
+    table.set_waves({"stage1", "stage2"});
+    const auto create = [&](std::uint8_t size, rtype::RoomRules rules) {
+        return table.create_room({.name = "Aces", .max_players = size, .rules = std::move(rules)});
+    };
+    const auto rejection = [](const std::variant<std::uint8_t, RoomRejection>& result) {
+        REQUIRE(std::holds_alternative<RoomRejection>(result));
+        return std::get<RoomRejection>(result);
+    };
+    CHECK(rejection(create(2, {.lives = 0, .difficulty = 9, .waves = "", .friendly_fire = 0})) ==
+          RoomRejection::BadLives);
+    CHECK(rejection(create(2, {.lives = 10, .difficulty = 1, .waves = "", .friendly_fire = 0})) ==
+          RoomRejection::BadLives);
+    CHECK(rejection(create(2, {.lives = 9, .difficulty = 3, .waves = "x", .friendly_fire = 0})) ==
+          RoomRejection::BadDifficulty);
+    CHECK(rejection(
+              create(2, {.lives = 9, .difficulty = 2, .waves = "stage9", .friendly_fire = 2})) ==
+          RoomRejection::UnknownWaves);
+    CHECK(rejection(
+              create(2, {.lives = 9, .difficulty = 2, .waves = "stage2", .friendly_fire = 2})) ==
+          RoomRejection::BadFriendlyFire);
+    CHECK(rejection(create(5, {.lives = 0, .difficulty = 0, .waves = "", .friendly_fire = 0})) ==
+          RoomRejection::BadSize);
+    CHECK(table.list_rooms().empty());
+
+    // Valid rules are kept with the room; a room opened for a login has the default ones.
+    const rtype::RoomRules hard{.lives = 1, .difficulty = 2, .waves = "stage2", .friendly_fire = 1};
+    const auto created = create(2, hard);
+    REQUIRE(std::holds_alternative<std::uint8_t>(created));
+    CHECK(table.rules(std::get<std::uint8_t>(created)) == hard);
+    CHECK(accepted(table, "R9").room == 0);
+    CHECK(accepted(table, "R10").room == 0);
+    CHECK(accepted(table, "R11").room == 1);
+    CHECK(table.rules(1) == rtype::RoomRules{});
+    CHECK(table.rules(2) == std::nullopt);
+    CHECK(rtype::RoomRules{}.lives == rtype::tuning::player_lives);
 }
 
 TEST_CASE("the same seed gives the same tokens", "[server][sessions]") {

@@ -148,12 +148,23 @@ public:
 
     /// @brief Creates a room, empty, for the next logins (`CreateRoom`, RFC section 3.6).
     /// @details Checked in this order: the name, by the rules of player names
-    /// (valid_player_name()), the size, a room not in use. The room takes the lowest number
-    /// of those.
+    /// (valid_player_name()), the size, the lives, the difficulty, the waves (empty, or one of
+    /// set_waves()), the friendly fire, a room not in use. The room takes the lowest number of
+    /// those.
     /// @param request Name and most players of the room.
     /// @return Its number, or why it is not created.
     [[nodiscard]] std::variant<std::uint8_t, RoomRejection>
     create_room(const CreateRoomRequest& request);
+
+    /// @brief Sets the waves files a room may be created with, besides the server's own.
+    /// @param names Their names, without `.json` (waves_names()).
+    void set_waves(std::vector<std::string> names);
+
+    /// @brief The rules of a room in use.
+    /// @details A room opened for a login has the default RoomRules.
+    /// @param room Number of the room.
+    /// @return Its rules, or `std::nullopt` if it is not in use.
+    [[nodiscard]] std::optional<RoomRules> rules(std::uint32_t room) const;
 
     /// @brief The rooms in use, by number, as a `RoomList` describes them.
     /// @details A room is RoomState::Playing once one of its sessions is bound.
@@ -165,6 +176,7 @@ private:
     struct Listing {
         std::string name;
         std::uint8_t max_players = tuning::max_players;
+        RoomRules rules;
     };
 
     [[nodiscard]] bool has_place(std::uint32_t room) const;
@@ -178,6 +190,7 @@ private:
     std::vector<Session> sessions_;
     // The rooms in use, by number.
     std::vector<std::optional<Listing>> listings_ = std::vector<std::optional<Listing>>(1);
+    std::vector<std::string> waves_;
 };
 
 } // namespace rtype

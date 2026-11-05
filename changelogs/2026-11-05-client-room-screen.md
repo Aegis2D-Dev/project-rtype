@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#79](https://github.com/Aegis2D-Dev/project-rtype/pull/79) (opened 2026-11-05) |
 | Branch | `feat/client-room-screen` → `develop` (stacked on `feat/client-room-list`, #78) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`4a020aa`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#305](https://github.com/Aegis2D-Dev/aegis2d/issues/305) feat(client): room screen |
 
