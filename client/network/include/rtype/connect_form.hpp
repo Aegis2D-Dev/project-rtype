@@ -37,7 +37,7 @@ public:
     static constexpr std::size_t max_host = 45;
     /// @brief Longest port: five digits.
     static constexpr std::size_t max_port = 5;
-    /// @brief Longest name, in bytes, as `LoginRequest` allows.
+    /// @brief Longest name, in bytes of UTF-8, as `LoginRequest` allows.
     static constexpr std::size_t max_name = 16;
 
     /// @brief Creates the form, filled with settings (the command line's, or the last ones
@@ -59,22 +59,24 @@ public:
     /// @brief Focuses the previous field, the last before the first one.
     void previous() noexcept;
 
-    /// @brief Tells whether a field takes a character.
+    /// @brief Tells whether a field takes a character, or a byte of a UTF-8 character.
     /// @details The address takes letters, digits, `.`, `:`, `-`, `[` and `]`; the port
-    /// takes digits; the name takes printable ASCII characters (space included).
+    /// takes digits; the name takes printable ASCII characters (space included) and the
+    /// bytes of longer UTF-8 characters, such as accented letters, as the login does.
     /// @param field Field to type in.
-    /// @param character Character, or a byte of a longer UTF-8 character, which no field takes.
+    /// @param character Character, or a byte of a longer UTF-8 character.
     /// @return `true` if the field takes it.
     [[nodiscard]] static bool accepts(ConnectField field, char character) noexcept;
 
     /// @brief Longest text of a field.
     /// @param field Field.
-    /// @return max_host, max_port or max_name, in characters.
+    /// @return max_host, max_port or max_name, in bytes (characters, but for a name with
+    /// longer UTF-8 characters).
     [[nodiscard]] static std::size_t max_length(ConnectField field) noexcept;
 
-    /// @brief Adds a character at the end of the focused field.
-    /// @details The address takes letters, digits, `.`, `:`, `-`, `[` and `]`; the port
-    /// takes digits; the name takes printable ASCII characters (space included).
+    /// @brief Adds an ASCII character at the end of the focused field.
+    /// @details As accepts() says; a byte of a longer UTF-8 character is refused, those
+    /// characters coming whole through set_text().
     /// @param character Character typed.
     /// @return `false` if the field does not take it or is full; the field is unchanged.
     bool type(char character);
@@ -84,8 +86,8 @@ public:
 
     /// @brief Replaces the text of a field, as edited in a text field.
     /// @param field Field to set.
-    /// @param text New text; characters the field does not take, and those past its
-    /// length, are left out.
+    /// @param text New text in UTF-8; characters the field does not take are left out, and
+    /// the text is cut to the field's length, never inside a character.
     /// @return `true` if the whole of @p text was kept.
     bool set_text(ConnectField field, std::string_view text);
 

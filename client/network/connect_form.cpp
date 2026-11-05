@@ -3,6 +3,7 @@
 #include <rtype/connect_form.hpp>
 #include <rtype/login.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -28,8 +29,22 @@ bool host_character(char character) noexcept {
            character == '-' || character == '[' || character == ']';
 }
 
+// Printable ASCII, or a byte of a longer UTF-8 character: names are UTF-8, as the login
+// takes them (valid_player_name() checks the whole name before joining).
 bool name_character(char character) noexcept {
-    return character >= ' ' && character <= '~';
+    return (character >= ' ' && character <= '~') || static_cast<unsigned char>(character) >= 0x80U;
+}
+
+// Bytes of the UTF-8 character that starts with @p lead; 1 for a byte that starts none.
+std::size_t sequence_size(char lead) noexcept {
+    const auto byte = static_cast<unsigned char>(lead);
+    if (byte >= 0xF0U && byte <= 0xF7U) {
+        return 4;
+    }
+    if (byte >= 0xE0U) {
+        return byte <= 0xEFU ? 3 : 1;
+    }
+    return byte >= 0xC0U ? 2 : 1;
 }
 
 std::size_t index_of(ConnectField field) noexcept {
@@ -84,7 +99,9 @@ std::size_t ConnectForm::max_length(ConnectField field) noexcept {
 
 bool ConnectForm::type(char character) {
     std::string& field = fields_.at(index_of(focused_));
-    if (!accepts(focused_, character) || field.size() >= max_length(focused_)) {
+    // One byte is one character only in ASCII: longer ones go through set_text().
+    if (static_cast<unsigned char>(character) >= 0x80U || !accepts(focused_, character) ||
+        field.size() >= max_length(focused_)) {
         return false;
     }
     field.push_back(character);
@@ -93,9 +110,18 @@ bool ConnectForm::type(char character) {
 
 bool ConnectForm::set_text(ConnectField field, std::string_view text) {
     std::string kept;
-    for (const char character : text) {
-        if (accepts(field, character) && kept.size() < max_length(field)) {
-            kept.push_back(character);
+    bool full = false;
+    // Character by character, so a field is never cut inside a UTF-8 character.
+    for (std::size_t start = 0; start < text.size();) {
+        const std::size_t size = std::min(sequence_size(text.at(start)), text.size() - start);
+        const std::string_view character = text.substr(start, size);
+        start += size;
+        if (!std::ranges::all_of(character, [field](char byte) { return accepts(field, byte); })) {
+            continue;
+        }
+        full = full || kept.size() + character.size() > max_length(field);
+        if (!full) {
+            kept.append(character);
         }
     }
     const bool whole = kept.size() == text.size();
