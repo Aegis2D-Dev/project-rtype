@@ -92,8 +92,8 @@ TEST_CASE("both ends count the datagrams of a known exchange", "[client][server]
 
     // Two snapshots of a known size.
     const std::vector<std::vector<std::byte>> snapshot = rtype::write_snapshot(rtype::Snapshot{});
-    server.send_snapshot(snapshot);
-    server.send_snapshot(snapshot);
+    server.send_snapshot(snapshot, 0);
+    server.send_snapshot(snapshot, 0);
     const TrafficCount snapshots{.datagrams = 2 * snapshot.size(),
                                  .bytes = 2 * datagram_bytes(snapshot)};
     CHECK(on_server->total(Direction::Sent, PacketType::Snapshot) == snapshots);
@@ -104,7 +104,7 @@ TEST_CASE("both ends count the datagrams of a known exchange", "[client][server]
     // An event: every Event datagram the server sent, resends included, reaches the client.
     const std::vector<rtype::GameEvent> events{
         rtype::PlayerLeftEvent{.tick = 1, .player = 3, .reason = rtype::LeaveReason::Left}};
-    server.send_events(rtype::write_events(events));
+    server.send_events(rtype::write_events(events), 0);
     REQUIRE(pump(context, server, client, [&] {
         const TrafficCount sent = on_server->total(Direction::Sent, PacketType::Event);
         return sent.datagrams >= 1 &&

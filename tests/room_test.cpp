@@ -17,7 +17,7 @@ TEST_CASE("a room runs its own game on its own thread", "[server][room]") {
     const std::thread::id caller = std::this_thread::get_id();
     std::atomic<bool> joined{false};
     {
-        rtype::Room room{std::nullopt, aegis2d::ecs::WaveSchedule{}, rtype::tuning::tick_rate,
+        rtype::Room room{3, std::nullopt, aegis2d::ecs::WaveSchedule{}, rtype::tuning::tick_rate,
                          [&](rtype::Room& /*room*/, rtype::GameInstance& instance) {
                              ticks = instance.game().ticks();
                              other_thread = std::this_thread::get_id() != caller;
@@ -32,6 +32,7 @@ TEST_CASE("a room runs its own game on its own thread", "[server][room]") {
             std::this_thread::sleep_for(std::chrono::milliseconds{5});
         }
         room.simulation().stop();
+        CHECK(room.id() == 3);
         CHECK(ticks >= 6);
         CHECK(other_thread);
         CHECK(joined);

@@ -754,7 +754,7 @@ TEST_CASE("the client reads the compressed snapshots of the server", "[client][c
     const std::vector<std::vector<std::byte>> payloads =
         rtype::write_delta_snapshot(*snapshot, nullptr);
     REQUIRE(payloads.size() == 1);
-    server.send_snapshot(snapshot);
+    server.send_snapshot(snapshot, 0);
     // The client acknowledges only the datagrams whose payload it could read (RFC 5.1).
     REQUIRE(pump(context, &server, {&client}, [&] {
         const rtype::SnapshotHistory* const history = server.snapshots(token);

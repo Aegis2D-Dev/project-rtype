@@ -155,6 +155,37 @@ TEST_CASE("logins are refused in the RFC order", "[server][sessions]") {
     CHECK(table.size() == 1);
 }
 
+TEST_CASE("logins fill the first room, then the next one", "[server][sessions]") {
+    SessionTable table{11};
+    CHECK(table.rooms() == 1);
+    table.set_rooms(2);
+    CHECK(table.rooms() == 2);
+    std::vector<Session> sessions;
+    for (std::size_t index = 0; index < 2 * rtype::tuning::max_players; ++index) {
+        sessions.push_back(accepted(table, "p" + std::to_string(index)));
+        CHECK(sessions.back().room == index / rtype::tuning::max_players);
+        CHECK(sessions.back().player == index % rtype::tuning::max_players);
+    }
+    CHECK(refused(table, rtype::protocol_version, "ninth") == LoginRejection::ServerFull);
+    // A name is taken in every room.
+    CHECK(table.end(sessions.back().token));
+    CHECK(refused(table, rtype::protocol_version, "p0") == LoginRejection::NameTaken);
+
+    // A number freed in the first room goes before the one freed in the second.
+    CHECK(table.end(sessions.at(2).token));
+    const Session first = accepted(table, "first");
+    CHECK(first.room == 0);
+    CHECK(first.player == 2);
+    const Session second = accepted(table, "second");
+    CHECK(second.room == 1);
+    CHECK(second.player == rtype::tuning::max_players - 1);
+
+    // At least one room.
+    SessionTable single{12};
+    single.set_rooms(0);
+    CHECK(single.rooms() == 1);
+}
+
 TEST_CASE("the same seed gives the same tokens", "[server][sessions]") {
     SessionTable first{99};
     SessionTable second{99};
