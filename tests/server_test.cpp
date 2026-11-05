@@ -237,6 +237,18 @@ TEST_CASE("the compression threshold is read from the command line", "[server][o
     CHECK(error_of({"--compress"}) == "--compress needs a value");
 }
 
+TEST_CASE("the room limit is read from the command line", "[server][options]") {
+    CHECK(parse({}).max_rooms == rtype::default_max_rooms);
+    CHECK(parse({"--max-rooms", "1"}).max_rooms == 1);
+    CHECK(parse({"--max-rooms", "64"}).max_rooms == 64);
+    for (const std::string_view rooms : {"0", "65", "-1", "many", ""}) {
+        CAPTURE(rooms);
+        CHECK(error_of({"--max-rooms", rooms}) ==
+              "--max-rooms: \"" + std::string{rooms} + "\" is not a room count (1 to 64)");
+    }
+    CHECK(error_of({"--max-rooms"}) == "--max-rooms needs a value");
+}
+
 TEST_CASE("help and version stop the reading", "[server][options]") {
     CHECK(parse({"--help"}).command == ServerCommand::Help);
     CHECK(parse({"--version"}).command == ServerCommand::Version);
@@ -1390,7 +1402,7 @@ TEST_CASE("two rooms play side by side and nothing of one reaches the other", "[
     rtype::GameServer game_server{
         context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
     ServerNetwork& server = game_server.network();
-    REQUIRE(game_server.rooms() == 2);
+    REQUIRE(game_server.max_rooms() == 2);
 
     // Four players fill the first room, the next two play in the second, as its 0 and 1.
     constexpr std::size_t count = rtype::tuning::max_players + 2;
@@ -1430,6 +1442,7 @@ TEST_CASE("two rooms play side by side and nothing of one reaches the other", "[
         return true;
     };
     REQUIRE(pump(context, server, every_ship_seen));
+    CHECK(game_server.open_rooms() == 2);
     context.run_for(std::chrono::milliseconds{100});
     update();
     for (std::size_t index = 0; index < count; ++index) {
@@ -1481,6 +1494,49 @@ TEST_CASE("two rooms play side by side and nothing of one reaches the other", "[
     for (std::size_t index = 0; index < rtype::tuning::max_players; ++index) {
         CHECK(!left(logs.at(index)).has_value());
     }
+}
+
+TEST_CASE("a room opens with its first player in game and closes with its last", "[server][room]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    CHECK(game_server.open_rooms() == 0);
+    CHECK_THROWS_AS(game_server.room(0), std::out_of_range);
+
+    // Logged in, the first player is not in game yet: no room opens.
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    context.run_for(std::chrono::milliseconds{50});
+    CHECK(game_server.open_rooms() == 0);
+
+    // In game, its room opens and its game runs; the second player joins the same room.
+    Socket first_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket second_udp{context};
+    second_udp.send(server, datagram(PacketType::Connect, second));
+    REQUIRE(pump(context, server, [&] { return !second_udp.received.empty(); }));
+    CHECK(game_server.open_rooms() == 1);
+    REQUIRE(pump(context, server, [&] { return game_server.room(0).simulation().ticks() >= 30; }));
+
+    // The room stays while a player is left, and closes with the last one.
+    first_player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == 1; }));
+    CHECK(game_server.open_rooms() == 1);
+    second_player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 0; }));
+    CHECK_THROWS_AS(game_server.room(0), std::out_of_range);
+
+    // The next player of that room starts a new game.
+    Player third_player{context, server};
+    const std::uint32_t third = log_in(context, server, third_player, "R11");
+    Socket third_udp{context};
+    third_udp.send(server, datagram(PacketType::Connect, third));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    CHECK(game_server.room(0).simulation().ticks() < 30);
 }
 
 TEST_CASE("an exception while handling a client kicks that client only", "[server][errors]") {
@@ -1718,6 +1774,11 @@ TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
     const std::uint16_t port = server.udp_endpoint().port();
+    // A player in game, so that its room ticks.
+    Player player{context, server};
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, log_in(context, server, player, "R9")));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
 
     // A second context and thread flood the server as fast as they can for a second, while
     // the server's context handles them and the simulation ticks. A jthread, so that it stops

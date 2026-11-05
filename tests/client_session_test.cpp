@@ -519,7 +519,6 @@ TEST_CASE("inputs acknowledge the datagrams of the server", "[client][input]") {
 TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[client][input]") {
     NetworkContext context;
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
-    rtype::GameInstance& instance = game_server.room().instance();
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
@@ -557,6 +556,7 @@ TEST_CASE("the input the snapshots acknowledge follows the inputs sent", "[clien
     CHECK(client.inputs_sent() >= 5);
     // The server's game applied the same input: the one of the player's record.
     game_server.simulation().stop();
+    rtype::GameInstance& instance = game_server.room().instance();
     const std::optional<rtype::PlayerState> state = instance.player_state(0);
     REQUIRE(state.has_value());
     CHECK(state.value_or(rtype::PlayerState{}).input.has_value());
@@ -660,7 +660,6 @@ TEST_CASE("reconciled with the snapshots, the own ship ends where the server's i
           "[client][reconciliation]") {
     NetworkContext context;
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
-    rtype::GameInstance& instance = game_server.room().instance();
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
@@ -684,6 +683,7 @@ TEST_CASE("reconciled with the snapshots, the own ship ends where the server's i
     run_for(context, server, client, std::chrono::milliseconds{100});
 
     game_server.simulation().stop();
+    rtype::GameInstance& instance = game_server.room().instance();
     const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
     REQUIRE(ship.has_value());
     const aegis2d::Vec2 at =
@@ -703,7 +703,6 @@ TEST_CASE("reconciled with the snapshots, the own ship ends where the server's i
 TEST_CASE("the server compensates each player by its round trip time", "[client][lag]") {
     NetworkContext context;
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
-    rtype::GameInstance& instance = game_server.room().instance();
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
@@ -719,6 +718,7 @@ TEST_CASE("the server compensates each player by its round trip time", "[client]
     // On loopback the round trip is a few milliseconds at most: the rewind is about the
     // client's interpolation delay, 6 ticks.
     game_server.simulation().stop();
+    rtype::GameInstance& instance = game_server.room().instance();
     const aegis2d::net::RttEstimator* const rtt = server.rtt(token);
     REQUIRE(rtt != nullptr);
     const std::optional<aegis2d::ecs::Entity> ship = instance.ship(0);
@@ -772,7 +772,6 @@ TEST_CASE("the client reads the compressed snapshots of the server", "[client][c
 TEST_CASE("a client holding right moves its ship in the server's game", "[client][input]") {
     NetworkContext context;
     rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
-    rtype::GameInstance& instance = game_server.room().instance();
     ServerNetwork& server = game_server.network();
     ClientSession client{context, settings_for(server, "R9")};
     client.start();
@@ -783,6 +782,7 @@ TEST_CASE("a client holding right moves its ship in the server's game", "[client
 
     // Stopped, the game is the test's to read.
     game_server.simulation().stop();
+    rtype::GameInstance& instance = game_server.room().instance();
     // The server sends delta snapshots, which the client rebuilds as the server took them.
     const rtype::SnapshotHistory* const history =
         server.snapshots(client.login().value_or(rtype::LoginAccepted{}).session);
