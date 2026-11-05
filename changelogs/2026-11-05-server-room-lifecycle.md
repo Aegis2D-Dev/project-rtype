@@ -41,10 +41,14 @@ multi-instance server* epic (Aegis2D-Dev/aegis2d#298), on the rooms of #74.
 ## Commits
 - `1766006` feat(server): opened rooms with their first player and closed them with the last
 - `d9d7466` feat(tests): added two games of four bots in rooms opened on demand
-- feat(docs): documented rooms opened on demand and updated changelogs
+- `9e969df` feat(docs): documented rooms opened on demand and updated changelogs
+- Merge remote-tracking branch 'origin/feat/server-room-routing' into feat/server-room-lifecycle
 
 ## Notes
-- Stacked on #74: merge it first.
+- Stacked on #74: merge it first. #74 merged in once its two rooms test counted each ship
+  once: under ASan in CI, a player of that test bound while the events of a tick were on their
+  way got a ship's `Spawn` twice, more often now that a room's game starts with its first
+  player.
 - A closed room's thread may have posted events and a snapshot for the network thread before
   it stopped; they go to the sessions of that room only, none by then, as a player who joins
   it next is bound by a datagram handled after them.
