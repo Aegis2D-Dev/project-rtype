@@ -35,21 +35,26 @@ std::filesystem::path write_waves(std::string_view name, std::string_view text) 
 
 // A draft of one wave with two enemies, far apart.
 LevelDraft two_enemies() {
-    return LevelDraft{.loop = false,
-                      .waves = {{.delay = 1.0F,
-                                 .enemies = {{.type = "bydos_slave", .position = {300.0F, 200.0F}},
-                                             {.type = "bydos_slave", .position = {900.0F, 500.0F}}}}}};
+    return LevelDraft{
+        .loop = false,
+        .waves = {{.delay = 1.0F,
+                   .enemies = {{.type = "bydos_slave", .position = {300.0F, 200.0F}},
+                               {.type = "bydos_slave", .position = {900.0F, 500.0F}}}}}};
 }
 
 // The mouse over a point of the play area, as the editor's view draws it.
 EditorPointer over(Vec2 level, bool pressed = false, bool held = false, bool remove = false) {
-    return {.position = EditorView{}.to_screen(level), .pressed = pressed, .held = held, .remove = remove};
+    return {.position = EditorView{}.to_screen(level),
+            .pressed = pressed,
+            .held = held,
+            .remove = remove};
 }
 
 } // namespace
 
 TEST_CASE("a waves file opens as one enemy per member of its groups", "[client][editor][369]") {
-    const LevelDraft stage = LevelDraft::from_file(std::filesystem::path{RTYPE_ASSET_DIR} / "waves" / "stage1.json");
+    const LevelDraft stage =
+        LevelDraft::from_file(std::filesystem::path{RTYPE_ASSET_DIR} / "waves" / "stage1.json");
     CHECK(stage.loop);
     REQUIRE(stage.waves.size() == 4);
     const std::size_t enemies = std::accumulate(
@@ -59,7 +64,8 @@ TEST_CASE("a waves file opens as one enemy per member of its groups", "[client][
     CHECK(stage.waves.at(0).delay == 2.0F);
     REQUIRE(stage.waves.at(0).enemies.size() == 5);
     CHECK(stage.waves.at(0).enemies.at(4) ==
-          DraftEnemy{.type = "bydos_slave", .position = {1296.0F, 136.0F + (4 * 112.0F)}, .at = 0.0F});
+          DraftEnemy{
+              .type = "bydos_slave", .position = {1296.0F, 136.0F + (4 * 112.0F)}, .at = 0.0F});
     // A file of six, one every half second, the second file two seconds in.
     const auto& files = stage.waves.at(1).enemies;
     REQUIRE(files.size() == 12);
@@ -67,15 +73,18 @@ TEST_CASE("a waves file opens as one enemy per member of its groups", "[client][
     CHECK(files.at(6).position == Vec2{1296.0F, 520.0F});
     CHECK(files.at(6).at == Approx(2.0F));
 
-    const auto broken = write_waves("broken.json", R"({"waves": [{"spawns": [{"type": "boss", "position": [1, 2]}]}]})");
+    const auto broken = write_waves(
+        "broken.json", R"({"waves": [{"spawns": [{"type": "boss", "position": [1, 2]}]}]})");
     CHECK_THROWS_AS(LevelDraft::from_file(broken), aegis2d::core::ConfigError);
     CHECK_THROWS_AS(LevelDraft::from_file(broken.parent_path() / "missing.json"),
                     aegis2d::core::ConfigError);
 }
 
-TEST_CASE("the editor's view shows the play area and the strip beyond it", "[client][editor][369]") {
+TEST_CASE("the editor's view shows the play area and the strip beyond it",
+          "[client][editor][369]") {
     const EditorView view;
-    const Vec2 right = view.to_screen({tuning::area_width + EditorView::strip, tuning::area_height});
+    const Vec2 right =
+        view.to_screen({tuning::area_width + EditorView::strip, tuning::area_height});
     CHECK(right.x <= tuning::area_width);
     CHECK(right.y <= tuning::area_height);
     CHECK(view.to_screen({0.0F, 0.0F}).x >= 0.0F);
@@ -89,7 +98,8 @@ TEST_CASE("enemies are placed with the mouse", "[client][editor][369]") {
     CHECK_FALSE(editor.changed());
     editor.update(over({640.0F, 360.0F}, true, true));
     REQUIRE(editor.enemies().size() == 3);
-    CHECK(editor.enemies().back() == DraftEnemy{.type = "bydos_slave", .position = {640.0F, 360.0F}});
+    CHECK(editor.enemies().back() ==
+          DraftEnemy{.type = "bydos_slave", .position = {640.0F, 360.0F}});
     CHECK(editor.dragged() == 2);
     CHECK(editor.changed());
     // Held, the new enemy follows the mouse; released, it stays.
