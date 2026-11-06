@@ -7,9 +7,11 @@
 #include <aegis2d/render/color.hpp>
 #include <aegis2d/render/renderer.hpp>
 #include <aegis2d/shmup/ship_controls.hpp>
+#include <aegis2d/ui/text_field.hpp>
 
 #include "game_art.hpp"
 #include "preferences.hpp"
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
@@ -17,7 +19,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -71,7 +72,7 @@ float centered_x(const render::BitmapFont& font, std::string_view text, float sc
 } // namespace
 
 void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
-                  const ConnectForm& form, const ScreenMessage& message, const ConnectView& view,
+                  ConnectFields& fields, const ScreenMessage& message, const ConnectView& view,
                   const Preferences& preferences) {
     constexpr std::string_view goal_text =
         "Fly through the Bydo empire with up to four players. Shoot the enemies, dodge their "
@@ -128,28 +129,44 @@ void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
     const float label_width = font.measure("MOVE RIGHT  ", label.scale).x;
     const float box_width = font.measure(widest_value, value.scale).x;
     const float left = (width - label_width - box_width) / 2.0F;
-    const auto row = [&](std::size_t index, std::string_view name, const std::string& text) {
-        const bool selected = index == view.row;
-        renderer.draw({.position = {left + label_width - 8.0F, y - 4.0F},
-                       .size = {box_width + 16.0F, row_height - 2.0F},
-                       .tint = color(selected ? 0x3A3A6A : box_color, preferences),
-                       .layer = 0});
+    const render::Rect box_at{.x = left + label_width - 8.0F,
+                              .y = 0.0F,
+                              .width = box_width + 16.0F,
+                              .height = row_height - 2.0F};
+    const auto label_row = [&](std::size_t index, std::string_view name) {
         render::TextStyle name_style = label;
-        if (selected) {
+        if (index == view.row) {
             name_style.color = color(title_color, preferences);
         }
         font.draw(renderer, name, {left, y}, name_style);
+    };
+    const auto row = [&](std::size_t index, std::string_view name, const std::string& text) {
+        renderer.draw({.position = {box_at.x, y - 4.0F},
+                       .size = {box_at.width, box_at.height},
+                       .tint = color(index == view.row ? 0x3A3A6A : box_color, preferences),
+                       .layer = 0});
+        label_row(index, name);
         font.draw(renderer, text, {left + label_width, y}, value);
         y += row_height;
     };
-    const bool cursor = std::fmod(view.seconds, 1.0) < 0.5;
+    // The fields: text fields in the rows' boxes, the one being edited outlined, with its
+    // cursor; text longer than its box scrolls with the cursor.
+    const aegis2d::ui::TextFieldStyle field_style{.background = color(box_color, preferences),
+                                                  .focused = color(0x3A3A6A, preferences),
+                                                  .disabled = color(box_color, preferences),
+                                                  .text = value.color,
+                                                  .placeholder = color(dim_color, preferences),
+                                                  .cursor = color(title_color, preferences),
+                                                  .outline = color(title_color, preferences),
+                                                  .outline_width = 2.0F,
+                                                  .text_scale = value.scale,
+                                                  .layer = 0};
     for (std::size_t field = 0; field < connect_field_count; ++field) {
-        const auto which = static_cast<ConnectField>(field);
-        std::string text = form.text(which);
-        if (view.row == field && cursor) {
-            text += '_';
-        }
-        row(field, field_labels.at(field), text);
+        render::Rect box = box_at;
+        box.y = y - 4.0F;
+        fields.draw(renderer, font, static_cast<ConnectField>(field), box, field_style);
+        label_row(field, field_labels.at(field));
+        y += row_height;
     }
     y += gap / 2.0F;
     const render::TextStyle heading = sized(2.0F, dim_color);

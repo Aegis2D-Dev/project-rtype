@@ -20,14 +20,19 @@ default). Type over them, then press Enter to join:
 
 | Key | On the connect screen |
 |---|---|
-| Letters, digits, `.`, `-`, `:` | Type in the selected field |
-| Backspace | Erase the last character |
+| Any character the field takes | Type it at the cursor of the selected field |
+| Left, Right / Home, End | Move the cursor / to the start or the end |
+| Backspace / Delete | Erase the character before / after the cursor |
 | Tab, Down / Shift+Tab, Up | Select the next / previous row |
 | Enter | Join the server; on a control row, change its key |
 | Escape | Quit |
 
-Letters follow the keyboard's layout; digits come from the top row or the keypad, and the
-keypad's `.` types a dot on any layout. A field the server cannot accept is told before
+What is typed follows the keyboard's layout, punctuation included, so an address typed on
+an AZERTY keyboard has its dots and colons. The address takes letters, digits, `.`, `:`,
+`-`, `[` and `]`, the port digits, the name any printable character, accented letters
+included, up to 16 bytes (an accented letter takes two); anything else is left out, and so
+is it from `--host` and `--name`, which fill the fields as if typed. A text longer than its box scrolls to keep the cursor in view. A field the
+server cannot accept is told before
 joining (an empty address, a port above 65535, a name longer than 16 characters), and
 what keeps the client out once it tries is told too: the server is full, the name is
 taken, the server does not answer, or its UDP port is blocked.
