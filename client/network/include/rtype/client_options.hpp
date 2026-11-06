@@ -17,7 +17,7 @@ namespace rtype {
 inline constexpr std::string_view client_usage =
     "usage: r-type_client [--host <address>] [--port <tcp port>] [--name <player name>]\n"
     "                     [--join] [--settings <file>] [--frames <count>]\n"
-    "                     [--screenshot <png file>] [--help] [--version]\n";
+    "                     [--screenshot <png file>] [--metrics] [--help] [--version]\n";
 
 /// @brief What the client was asked to do.
 enum class ClientCommand : std::uint8_t {
@@ -46,6 +46,8 @@ struct ClientOptions {
     /// @brief `--screenshot`: saves the frame before the last one as a PNG file (after
     /// `--frames`, or 300 frames by default).
     std::optional<std::filesystem::path> screenshot;
+    /// @brief `--metrics`: shows the frame metrics from the start, as F12 does.
+    bool metrics = false;
 };
 
 /// @brief Reads a TCP port, as `--port` and the connect screen take it.

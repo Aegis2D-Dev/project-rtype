@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#82](https://github.com/Aegis2D-Dev/project-rtype/pull/82) (opened 2026-11-05) |
 | Branch | `feat/client-text-fields` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-06 (`81877d8`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#345](https://github.com/Aegis2D-Dev/aegis2d/issues/345) feat(ui): text fields |
 

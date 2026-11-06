@@ -198,7 +198,7 @@ client/
     snapshot_decoder  the snapshots rebuilt from their baseline and delta
   ui/                 rtype_client_ui, built and tested with the client
     connect_fields    the connect screen's fields as the engine's text fields
-  client_app          r-type_client: window, screens, settings keys
+  client_app          r-type_client: window, screens, settings keys, frame metrics (F12)
   game_view           the game screen: entities, explosions, HUD, notices
   lagometer_view      the lagometer overlay, toggled with F6
   menu_screens        connect, joining and connection lost screens
