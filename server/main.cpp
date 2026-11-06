@@ -85,6 +85,9 @@ int main(int argc, char** argv) {
                                  options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
                                  options.max_rooms};
         rtype::ServerNetwork& network = server.network();
+        if (options.trace.has_value()) {
+            server.start_trace();
+        }
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
         network.set_waves(rtype::waves_names(rtype::default_waves_file().parent_path()));
@@ -121,6 +124,11 @@ int main(int argc, char** argv) {
         const auto deadline = rtype::ServerNetwork::Clock::now() + shutdown_grace;
         while (!network.idle() && rtype::ServerNetwork::Clock::now() < deadline) {
             run_network();
+        }
+        if (options.trace.has_value()) {
+            const std::size_t events = server.save_trace(*options.trace);
+            std::cout << "trace: " << events << " events in " << options.trace->string()
+                      << " (open it in Perfetto, ui.perfetto.dev)\n";
         }
         // Leaving the scope stops the simulation threads, then closes the sockets.
     } catch (const aegis2d::net::SocketError& error) {
