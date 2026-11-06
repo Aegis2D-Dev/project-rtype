@@ -12,6 +12,7 @@ add_executable(rtype_tests
     compact_test.cpp
     connect_form_test.cpp
     delta_snapshot_test.cpp
+    enemy_scripts_test.cpp
     entities_test.cpp
     events_test.cpp
     game_instance_test.cpp
@@ -48,6 +49,8 @@ if(TARGET rtype_client_ui)
     target_link_libraries(rtype_tests PRIVATE rtype_client_ui)
 endif()
 aegis2d_stage_runtime(rtype_tests)
+# The enemy scripts every ServerGame loads (core::asset_path("enemies")), next to the tests.
+aegis2d_copy_assets(rtype_tests "${PROJECT_SOURCE_DIR}/assets")
 
 catch_discover_tests(rtype_tests DISCOVERY_MODE PRE_TEST)
 
