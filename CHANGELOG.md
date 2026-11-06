@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#85](https://github.com/Aegis2D-Dev/project-rtype/pull/85) | Enemy scripts reloaded while the game runs | `feat/game-reload-behaviors` | Open | 2026-11-06 | [2026-11-06-game-reload-behaviors](changelogs/2026-11-06-game-reload-behaviors.md) |
 | [#84](https://github.com/Aegis2D-Dev/project-rtype/pull/84) | Enemy types and behaviors in Lua scripts | `feat/game-scripted-enemies` | Open | 2026-11-06 | [2026-11-06-game-scripted-enemies](changelogs/2026-11-06-game-scripted-enemies.md) |
 | [#83](https://github.com/Aegis2D-Dev/project-rtype/pull/83) | Frame metrics in the client, with F12 | `feat/client-frame-metrics` | Merged | 2026-11-05 | [2026-11-05-client-frame-metrics](changelogs/2026-11-05-client-frame-metrics.md) |
 | [#82](https://github.com/Aegis2D-Dev/project-rtype/pull/82) | Connect screen typed in the engine's text fields | `feat/client-text-fields` | Merged | 2026-11-05 | [2026-11-05-client-text-fields](changelogs/2026-11-05-client-text-fields.md) |

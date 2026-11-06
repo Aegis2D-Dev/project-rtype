@@ -111,6 +111,25 @@ runs too long (an endless loop), is logged once, with its line, and stops that b
 failed `update` leaves the enemies of the type at their speed, a failed `spawn` means no
 more enemies of the type. The game goes on.
 
+### Change it while the game runs
+
+In a debug build, each game of the server reloads a script when its file changes, so a
+pattern can be tuned while playing: edit the copy next to the server,
+`build/<preset>/assets/enemies/pata_pata.lua` (or edit `assets/enemies/pata_pata.lua` and
+build again, which copies it), and the Pata-Pata on screen fly the new pattern within a
+quarter of a second, no restart:
+
+```text
+2026-11-06T20:31:07.204Z [INFO ] enemy pata_pata reloaded
+```
+
+The enemies alive keep their `self` table and run the new `update` from the next tick;
+the new values (size, health, score, fire rate) are for the enemies spawned from then on. A
+script that does not load is logged, and the game plays on with the last version that
+worked. A new room loads the scripts as they are when it opens: if one does not load then,
+it is logged and the player who opens the room is turned away, until the script is fixed. `ServerGame{seed, folder,
+true}` turns the reloading on in a release build, `false` off.
+
 ## 3. A wave that uses it
 
 Add a wave to `assets/waves/stage1.json` (the format is in [Add a
