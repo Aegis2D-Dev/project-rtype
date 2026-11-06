@@ -142,7 +142,13 @@ TEST_CASE("a wrong enemy script is refused with its file", "[rtype][enemies][356
     CHECK_THROWS_WITH(refused("value", {"big.lua", R"(enemy { width = "big" })"}),
                       ContainsSubstring("width is not a number"));
     CHECK_THROWS_WITH(refused("zero", {"ghost.lua", "enemy { health = 0 }"}),
-                      ContainsSubstring("health must be at least 1"));
+                      ContainsSubstring("health must be from 1"));
+    CHECK_THROWS_WITH(refused("huge", {"giant.lua", "enemy { width = math.huge }"}),
+                      ContainsSubstring("width and height must be above 0"));
+    CHECK_THROWS_WITH(refused("rich", {"rich.lua", "enemy { score = 1e10 }"}),
+                      ContainsSubstring("score from 0"));
+    CHECK_THROWS_WITH(refused("never", {"never.lua", "enemy { fire_every = math.huge }"}),
+                      ContainsSubstring("fire_every and first_shot"));
     CHECK_THROWS_WITH(refused("twice", {"twin.lua", "enemy {} enemy {}"}),
                       ContainsSubstring("called once"));
     CHECK_THROWS_WITH(refused("behavior", {"odd.lua", "enemy { update = 3 }"}),
@@ -153,7 +159,7 @@ TEST_CASE("a wrong enemy script is refused with its file", "[rtype][enemies][356
                     ConfigError);
 }
 
-TEST_CASE("a failing behavior stops its type only, once", "[rtype][enemies][356]") {
+TEST_CASE("a failing behavior is stopped, once, and the others go on", "[rtype][enemies][356]") {
     Registry registry;
     EnemyScripts scripts{registry, write_folder("failing", {
                                                                {"broken.lua", R"lua(
@@ -174,6 +180,57 @@ TEST_CASE("a failing behavior stops its type only, once", "[rtype][enemies][356]
     CHECK(registry.get<Velocity>(first).value.x == -50.0F);
     CHECK(registry.get<Velocity>(second).value.x == -50.0F);
     CHECK(registry.get<Transform>(mover).position.x == Approx(30.0F));
+    // Its update stopped, its spawn still runs.
+    const Entity third = scripts.spawn("broken", Vec2{});
+    CHECK(registry.get<Velocity>(third).value.x == -50.0F);
+}
+
+TEST_CASE("an endless behavior is cut off and stopped, once", "[rtype][enemies][356]") {
+    Registry registry;
+    EnemyScripts scripts{
+        registry,
+        write_folder("endless", {
+                                    {"looper.lua", "enemy { update = function(self) loops = (loops "
+                                                   "or 0) + 1; while true do end end }"},
+                                    {"mover.lua", R"lua(
+            enemy { update = function(self, dt) ecs.get(self.entity, "Transform").x = 10 * self.age end })lua"},
+                                })};
+    scripts.lua().set_instruction_limit(100'000);
+    std::vector<Entity> movers;
+    movers.reserve(8);
+    for (int made = 0; made < 4; ++made) {
+        movers.push_back(scripts.spawn("mover", Vec2{}));
+    }
+    scripts.spawn("looper", Vec2{});
+    for (int made = 0; made < 4; ++made) {
+        movers.push_back(scripts.spawn("mover", Vec2{}));
+    }
+    scripts.update(1.0F); // cut off: some movers did not move
+    scripts.update(1.0F);
+    scripts.update(1.0F);
+    CHECK(scripts.lua().number("loops") == 1.0);
+    for (const Entity mover : movers) {
+        CHECK(registry.get<Transform>(mover).position.x >= 20.0F);
+    }
+}
+
+TEST_CASE("an enemy whose spawn fails is not created", "[rtype][enemies][356]") {
+    Registry registry;
+    EnemyScripts scripts{
+        registry,
+        write_folder("spawn_fails",
+                     {
+                         {"faulty.lua", R"lua(
+            enemy { spawn = function(self) tries = (tries or 0) + 1; ecs.get(self.entity, "Nothing") end })lua"},
+                         {"endless.lua", "enemy { spawn = function(self) while true do end end }"},
+                     })};
+    scripts.lua().set_instruction_limit(100'000);
+    CHECK(scripts.spawn("faulty", Vec2{}) == Entity{});
+    CHECK(scripts.spawn("faulty", Vec2{}) == Entity{});
+    CHECK(scripts.lua().number("tries") == 1.0);
+    CHECK(scripts.spawn("endless", Vec2{}) == Entity{});
+    CHECK(scripts.spawn("endless", Vec2{}) == Entity{});
+    CHECK(registry.size() == 0);
 }
 
 TEST_CASE("an enemy whose behavior is stopped keeps its speed", "[rtype][enemies][356]") {
