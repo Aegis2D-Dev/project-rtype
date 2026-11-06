@@ -80,6 +80,15 @@ Vec2 EditorView::to_level(Vec2 screen) const noexcept {
     return (screen - origin) / scale;
 }
 
+float EditorView::timeline_seconds(float end) noexcept {
+    return std::max(10.0F, end * 1.2F);
+}
+
+bool EditorView::on_timeline(Vec2 screen) const noexcept {
+    return screen.x >= timeline.x && screen.x <= timeline.x + timeline_size.x &&
+           screen.y >= timeline.y && screen.y <= timeline.y + timeline_size.y;
+}
+
 LevelEditor::LevelEditor(LevelDraft draft, std::string type)
     : draft_{std::move(draft)}, type_{std::move(type)} {
     if (draft_.waves.empty()) {
@@ -107,6 +116,44 @@ void LevelEditor::previous_wave() noexcept {
     dragged_.reset();
 }
 
+std::vector<WaveSpan> LevelEditor::timeline() const {
+    std::vector<WaveSpan> spans;
+    float last = 0.0F;
+    for (const DraftWave& wave : draft_.waves) {
+        const float start = last + wave.delay;
+        float end = start;
+        for (const DraftEnemy& enemy : wave.enemies) {
+            end = std::max(end, start + enemy.at);
+        }
+        spans.push_back({.start = start, .end = end});
+        last = end;
+    }
+    return spans;
+}
+
+void LevelEditor::shift_delay(float seconds) {
+    float& delay = draft_.waves.at(wave_).delay;
+    const float shifted = std::max(0.0F, std::round((delay + seconds) * 10.0F) / 10.0F);
+    changed_ = changed_ || shifted != delay;
+    delay = shifted;
+}
+
+void LevelEditor::move_wave(bool later) {
+    const std::size_t other = later ? wave_ + 1 : wave_ - 1;
+    if ((later && other >= draft_.waves.size()) || (!later && wave_ == 0)) {
+        return;
+    }
+    std::swap(draft_.waves.at(wave_), draft_.waves.at(other));
+    wave_ = other;
+    hovered_.reset();
+    dragged_.reset();
+    changed_ = true;
+}
+
+bool LevelEditor::dragging_wave() const noexcept {
+    return timeline_grab_.has_value();
+}
+
 std::span<const DraftEnemy> LevelEditor::enemies() const noexcept {
     return draft_.waves.at(wave_).enemies;
 }
@@ -130,6 +177,39 @@ std::optional<std::size_t> LevelEditor::enemy_at(Vec2 level) const {
 }
 
 void LevelEditor::update(const EditorPointer& pointer, const EditorView& view) {
+    // A wave taken on the timeline follows the mouse until the button is up.
+    if (timeline_grab_.has_value()) {
+        if (pointer.held) {
+            float& delay = draft_.waves.at(wave_).delay;
+            const float moved =
+                grabbed_delay_ + ((pointer.position.x - *timeline_grab_) * seconds_per_pixel_);
+            const float kept_delay = std::max(0.0F, std::round(moved * 10.0F) / 10.0F);
+            changed_ = changed_ || kept_delay != delay;
+            delay = kept_delay;
+            return;
+        }
+        timeline_grab_.reset();
+    }
+    if (view.on_timeline(pointer.position)) {
+        hovered_.reset();
+        if (pointer.pressed) {
+            // The wave started last before the time clicked, the first one before them all.
+            const std::vector<WaveSpan> spans = timeline();
+            seconds_per_pixel_ =
+                EditorView::timeline_seconds(spans.back().end) / view.timeline_size.x;
+            const float time = (pointer.position.x - view.timeline.x) * seconds_per_pixel_;
+            wave_ = 0;
+            for (std::size_t index = 0; index < spans.size(); ++index) {
+                if (spans.at(index).start <= time) {
+                    wave_ = index;
+                }
+            }
+            dragged_.reset();
+            timeline_grab_ = pointer.position.x;
+            grabbed_delay_ = draft_.waves.at(wave_).delay;
+        }
+        return;
+    }
     const Vec2 level = view.to_level(pointer.position);
     std::vector<DraftEnemy>& placed = wave_enemies();
     if (pointer.remove) {

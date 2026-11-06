@@ -63,15 +63,38 @@ struct EditorPointer {
     bool remove = false;
 };
 
-/// @brief Where the editor draws the play area: shrunk to show the strip beyond its right
-/// edge, where the enemies appear, and the editor's text above.
+/// @brief When a wave plays, in seconds from the start of the waves.
+struct WaveSpan {
+    /// @brief When its delay is over: its first enemies may appear.
+    float start = 0.0F;
+    /// @brief When its last enemy appears.
+    float end = 0.0F;
+};
+
+/// @brief Where the editor draws the play area, shrunk to show the strip beyond its right
+/// edge where the enemies appear, and the timeline of the waves under it.
 struct EditorView {
     /// @brief Width of the strip beyond the right edge of the play area that is shown.
     static constexpr float strip = 96.0F;
     /// @brief Size of a logical pixel of the play area on screen.
-    float scale = 0.85F;
+    float scale = 0.78F;
     /// @brief Where the top-left corner of the play area is on screen.
-    aegis2d::Vec2 origin{52.0F, 70.0F};
+    aegis2d::Vec2 origin{103.0F, 56.0F};
+    /// @brief Where the timeline of the waves is on screen: its top-left corner.
+    aegis2d::Vec2 timeline{103.0F, 644.0F};
+    /// @brief Size of the timeline on screen.
+    aegis2d::Vec2 timeline_size{1074.0F, 28.0F};
+
+    /// @brief Seconds of the waves the timeline shows across its width.
+    /// @param end When the last wave ends (the last WaveSpan::end).
+    /// @return At least 10 seconds, and a fifth more than @p end so the last wave can move
+    /// later.
+    [[nodiscard]] static float timeline_seconds(float end) noexcept;
+
+    /// @brief Tells whether a point of the screen is on the timeline.
+    /// @param screen Point on screen.
+    /// @return `true` inside it.
+    [[nodiscard]] bool on_timeline(aegis2d::Vec2 screen) const noexcept;
 
     /// @brief A point of the play area on screen.
     /// @param level Point of the play area.
@@ -84,11 +107,13 @@ struct EditorView {
     [[nodiscard]] aegis2d::Vec2 to_level(aegis2d::Vec2 screen) const noexcept;
 };
 
-/// @brief Places and moves the enemies of a wave with the mouse.
+/// @brief Places and moves the enemies of a wave with the mouse, and the waves in time.
 /// @details The left button places an enemy of the current type where it is clicked, or takes
 /// the enemy under the mouse; either follows the mouse while the button is held. The right
 /// button removes the enemy under the mouse. Positions are whole logical pixels, kept within
-/// the play area and the strip beyond its right edge (EditorView::strip).
+/// the play area and the strip beyond its right edge (EditorView::strip). On the timeline,
+/// a click on a wave edits it, and the wave follows the mouse while the button is held: its
+/// delay changes, and the waves after it move with it.
 class LevelEditor {
 public:
     /// @brief Distance from an enemy's position within which the mouse is over it.
@@ -112,6 +137,26 @@ public:
 
     /// @brief Edits the wave before, or the last before the first.
     void previous_wave() noexcept;
+
+    /// @brief When each wave plays, as the server plays them: a wave starts its delay after
+    /// the last enemy of the wave before appeared.
+    /// @return One span per wave, in order.
+    [[nodiscard]] std::vector<WaveSpan> timeline() const;
+
+    /// @brief Moves the wave edited in time: changes its delay, and so moves the waves after.
+    /// @param seconds Seconds later (positive) or earlier (negative); the delay stays at least
+    /// 0 and is rounded to a tenth of a second.
+    void shift_delay(float seconds);
+
+    /// @brief Moves the wave edited before or after its neighbour, which takes its place; the
+    /// wave stays the one edited.
+    /// @param later `true` to swap it with the wave after, `false` with the one before;
+    /// nothing at the ends.
+    void move_wave(bool later);
+
+    /// @brief Tells whether the wave edited follows the mouse on the timeline.
+    /// @return `true` while a wave is dragged there.
+    [[nodiscard]] bool dragging_wave() const noexcept;
 
     /// @brief The enemies of the wave edited.
     /// @return Its enemies.
@@ -144,6 +189,11 @@ private:
     std::optional<std::size_t> hovered_;
     std::optional<std::size_t> dragged_;
     aegis2d::Vec2 grab_{};
+    // A wave dragged on the timeline: where the mouse took it, its delay then, and the scale
+    // of the timeline then, so that it does not change under the mouse.
+    std::optional<float> timeline_grab_;
+    float grabbed_delay_ = 0.0F;
+    float seconds_per_pixel_ = 0.0F;
     bool changed_ = false;
 };
 

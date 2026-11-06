@@ -10,12 +10,14 @@
 #include <rtype/level_editor.hpp>
 #include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -91,14 +93,50 @@ void draw_editor(render::IRenderer& renderer, const render::BitmapFont& font, co
                    .tint = cross,
                    .layer = text_layer});
 
+    // The timeline: a block per wave, from its start to its last enemy, the one edited lit.
+    const std::vector<WaveSpan> spans = editor.timeline();
+    const float seconds = EditorView::timeline_seconds(spans.back().end);
+    const float per_second = view.timeline_size.x / seconds;
+    renderer.draw({.position = view.timeline,
+                   .size = view.timeline_size,
+                   .tint = color(area_color, vision),
+                   .layer = area_layer});
+    // A mark every 5 seconds.
+    const auto marks = static_cast<int>(seconds / 5.0F);
+    for (int mark = 0; mark <= marks; ++mark) {
+        renderer.draw(
+            {.position = view.timeline + Vec2{static_cast<float>(mark) * 5.0F * per_second, 0.0F},
+             .size = {1.0F, view.timeline_size.y},
+             .tint = color(strip_color, vision),
+             .layer = area_layer + 1});
+    }
+    for (std::size_t wave = 0; wave < spans.size(); ++wave) {
+        const WaveSpan span = spans.at(wave);
+        const bool edited = wave == editor.wave();
+        const float width = std::max((span.end - span.start) * per_second, 4.0F);
+        renderer.draw({.position = view.timeline + Vec2{span.start * per_second, 4.0F},
+                       .size = {width, view.timeline_size.y - 8.0F},
+                       .tint = color(edited ? picked_color : dim_color, vision),
+                       .layer = enemy_layer});
+    }
+    const WaveSpan edited = spans.at(editor.wave());
+    font.draw(renderer,
+              std::format("DELAY {:.1f}S  FROM {:.1f}S TO {:.1f}S  OF {:.1f}S",
+                          editor.draft().waves.at(editor.wave()).delay, edited.start, edited.end,
+                          spans.back().end),
+              view.timeline - Vec2{0.0F, font.line_height(text) + 2.0F},
+              {.scale = text,
+               .color = color(editor.dragging_wave() ? picked_color : dim_color, vision),
+               .layer = text_layer});
+
     const std::size_t waves = editor.draft().waves.size();
     const std::string title =
         std::format("LEVEL EDITOR  {}  WAVE {}/{}  {} ENEMIES{}", file, editor.wave() + 1, waves,
                     editor.enemies().size(), editor.changed() ? "  (CHANGED)" : "");
     font.draw(renderer, title, {16.0F, 16.0F},
               {.scale = text, .color = color(text_color, vision), .layer = text_layer});
-    const std::string help =
-        "LEFT CLICK: PLACE OR MOVE   RIGHT CLICK: REMOVE   PAGE UP / DOWN: WAVE   ESCAPE: QUIT";
+    const std::string help = "CLICK: PLACE, MOVE  RIGHT CLICK: REMOVE  PAGE UP/DOWN: WAVE  "
+                             "LEFT/RIGHT: DELAY  UP/DOWN: ORDER  ESC: QUIT";
     font.draw(renderer, help, {16.0F, tuning::area_height - 16.0F - font.line_height(text)},
               {.scale = text, .color = color(dim_color, vision), .layer = text_layer});
 }
