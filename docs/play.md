@@ -182,7 +182,10 @@ normal within a few.
 F12 shows the **frame metrics** at the top center of every screen (the engine's
 `render::MetricsOverlay`): the frames per second over the last second, the mean and longest
 frame times of the last 120 frames, the entities of the game (in game only), and the
-sprites and draw calls of the frame before, the overlay's own left out. Under them, a bar
+sprites and draw calls of the frame before, the overlay's own left out, the memory the
+client uses, and, while connected to a game, the network numbers of the lagometer (round
+trip, jitter, loss, the bytes received and sent per second, the time between two snapshots
+and the corrections of your ship), with or without the lagometer. Under them, a bar
 per frame, newest on the right: blue within 16.7 ms (60 frames per second, the line half
 way up), orange above, a frame of 33 ms or more filling the graph. `--metrics` shows them
 from the start, for a capture.
