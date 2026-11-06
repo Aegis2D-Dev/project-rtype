@@ -104,7 +104,7 @@ public:
     /// @brief Creates an enemy of a type its script gives (EnemyScripts::spawn()).
     /// @param type Name of the type, as waves files name it.
     /// @param position Where it appears.
-    /// @return The enemy.
+    /// @return The enemy, or a null handle if the `spawn` of its type failed.
     /// @throws std::invalid_argument If no script gives @p type.
     aegis2d::ecs::Entity spawn_enemy(std::string_view type, aegis2d::Vec2 position);
 

@@ -49,8 +49,10 @@ enemy_types(const std::filesystem::path& directory = default_enemies_directory()
 /// `ecs` functions), `x` and `y` where it appeared, `random`, a number from 0 to 1 the game
 /// draws for it, and `age`, its seconds alive; the script may keep its own fields there.
 /// The scripts share one sandboxed state, with `ecs` (script::bind_components()) and
-/// `events`. A behavior that fails is logged once and stopped for its type; its enemies keep
-/// their speed. Not thread-safe, as the registry.
+/// `events`. A behavior that fails, by an error or by taking the whole budget of the state,
+/// is logged once and stopped: an `update` stops moving the enemies of its type, which keep
+/// their speed, and the enemies of a type whose `spawn` failed are not created. Not
+/// thread-safe, as the registry.
 class EnemyScripts {
 public:
     /// @brief Loads every `.lua` file of a directory.
@@ -80,7 +82,8 @@ public:
     /// @param position Where it appears.
     /// @param random Number from 0 to 1 the script gets as `self.random`.
     /// @param shot_delay Seconds added to the type's first_shot.
-    /// @return The enemy.
+    /// @return The enemy, or a null handle if the type's `spawn` failed, now or before (the
+    /// enemy is destroyed: it would stand still).
     /// @throws std::invalid_argument If no script gives @p type.
     aegis2d::ecs::Entity spawn(std::string_view type, aegis2d::Vec2 position, float random = 0.0F,
                                float shot_delay = 0.0F);

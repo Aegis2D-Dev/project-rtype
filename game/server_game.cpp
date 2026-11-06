@@ -84,13 +84,20 @@ void ServerGame::register_systems() {
         for (const Vec2 line : spawn_points_) {
             const float random = spawner_.random().uniform(0.0F, 1.0F);
             const float shot_delay = spawner_.random().uniform(0.0F, fire_every);
-            spawned_.push_back(enemies_.spawn(tuning::random_enemy, line, random, shot_delay));
+            const ecs::Entity enemy =
+                enemies_.spawn(tuning::random_enemy, line, random, shot_delay);
+            if (registry_.alive(enemy)) {
+                spawned_.push_back(enemy);
+            }
         }
     });
     systems_.add("waves", [this](ecs::Registry& /*world*/, const ecs::Tick& tick) {
         waves_.update(tick, due_);
         for (const ecs::WaveSpawn& spawn : due_) {
-            spawned_.push_back(enemies_.spawn(spawn.type, spawn.position));
+            const ecs::Entity enemy = enemies_.spawn(spawn.type, spawn.position);
+            if (registry_.alive(enemy)) {
+                spawned_.push_back(enemy);
+            }
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& tick) {

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -34,10 +35,12 @@ namespace {
 
 // The game's side of the scripts, run once before them: `enemy { ... }` keeps the type of the
 // file being loaded, the EnemySpawned listener gives each enemy its table and runs `spawn`,
-// and _update_enemies runs `update`. A behavior that fails is logged and stopped for its type
-// (not at every tick), and the other enemies go on.
+// and _update_enemies runs `update`. A behavior that fails is logged and stopped (not at
+// every tick), and the other enemies go on; one that takes the whole budget is cut off with
+// the run, which pcall cannot catch, so the C++ side stops it with _stop_running(). A spawn
+// that failed leaves enemy_spawn_failed set, for the C++ side to destroy the enemy.
 constexpr std::string_view prelude = R"lua(
-local types, order, enemies, broken, loading = {}, {}, {}, {}, nil
+local types, order, enemies, broken, loading, running = {}, {}, {}, {}, nil, nil
 
 function enemy(definition)
     if type(definition) ~= "table" then
@@ -75,14 +78,32 @@ function _describe_enemy()
     loading = nil
 end
 
+local function stop(behavior, name, why)
+    broken[behavior] = true
+    print("enemy " .. name .. " stopped: " .. tostring(why))
+end
+
+-- Runs a behavior; false if it failed, now or before.
 local function behave(self, behavior, ...)
-    if behavior == nil or broken[self.type] then
-        return
+    if behavior == nil then
+        return true
     end
+    if broken[behavior] then
+        return false
+    end
+    running = { behavior = behavior, type = self.type }
     local ok, message = pcall(behavior, self, ...)
+    running = nil
     if not ok then
-        broken[self.type] = true
-        print("enemy " .. self.type .. " stopped: " .. tostring(message))
+        stop(behavior, self.type, message)
+    end
+    return ok
+end
+
+function _stop_running()
+    if running ~= nil then
+        stop(running.behavior, running.type, "too many instructions or too much memory")
+        running = nil
     end
 end
 
@@ -90,8 +111,11 @@ events.on("EnemySpawned", function(event)
     local name = order[event.type]
     local self = { entity = event.entity, type = name, x = event.x, y = event.y,
                    random = event.random, age = 0 }
-    enemies[event.entity] = self
-    behave(self, types[name].spawn)
+    enemy_spawn_failed = true
+    if behave(self, types[name].spawn) then
+        enemies[event.entity] = self
+        enemy_spawn_failed = false
+    end
 end)
 
 function _stop_enemy(entity)
@@ -110,6 +134,9 @@ function _update_enemies(dt)
 end
 )lua";
 
+// Largest width or height of an enemy, far beyond the screen.
+constexpr float max_size = 65536.0F;
+
 bool type_name(std::string_view name) noexcept {
     return !name.empty() && std::ranges::all_of(name, [](char c) {
         return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
@@ -119,11 +146,12 @@ bool type_name(std::string_view name) noexcept {
 // The error of a script, named by its file: Lua names it already for an error in the file.
 [[noreturn]] void fail(const std::filesystem::path& file, const script::ScriptState& lua) {
     const std::optional<script::ScriptError>& error = lua.last_error();
-    if (error && error->chunk == file.string()) {
+    // run_file() names the chunk with the generic path, `/` on Windows too.
+    if (error && error->chunk == file.generic_string()) {
         throw core::ConfigError{script::to_string(*error)};
     }
-    throw core::ConfigError{
-        std::format("{}: {}", file.string(), error ? error->message : std::string{"failed"})};
+    throw core::ConfigError{std::format("{}: {}", file.generic_string(),
+                                        error ? error->message : std::string{"failed"})};
 }
 
 // The values `enemy { ... }` gave, which _describe_enemy() left in globals.
@@ -139,16 +167,19 @@ EnemyType describe(std::string name, const std::filesystem::path& file,
     type.fire_every = value("fire_every", type.fire_every);
     type.first_shot = value("first_shot", type.first_shot);
     const auto wrong = [&file](std::string_view what) {
-        return core::ConfigError{std::format("{}: {}", file.string(), what)};
+        return core::ConfigError{std::format("{}: {}", file.generic_string(), what)};
     };
-    if (!(type.size.x > 0.0F) || !(type.size.y > 0.0F)) {
-        throw wrong("width and height must be above 0");
+    // Negated, so that NaN fails too; the bounds of the integers are powers of 2, exact floats.
+    if (!(type.size.x > 0.0F && type.size.x < max_size) ||
+        !(type.size.y > 0.0F && type.size.y < max_size)) {
+        throw wrong("width and height must be above 0 and below 65536");
     }
-    if (!(health >= 1.0F) || !(score >= 0.0F)) {
-        throw wrong("health must be at least 1 and score at least 0");
+    if (!(health >= 1.0F && health < 2147483648.0F) || !(score >= 0.0F && score < 4294967296.0F)) {
+        throw wrong("health must be from 1 to 2^31 - 1 and score from 0 to 2^32 - 1");
     }
-    if (!(type.fire_every >= 0.0F) || !(type.first_shot >= 0.0F)) {
-        throw wrong("fire_every and first_shot must be at least 0");
+    if (!(type.fire_every >= 0.0F && std::isfinite(type.fire_every)) ||
+        !(type.first_shot >= 0.0F && std::isfinite(type.first_shot))) {
+        throw wrong("fire_every and first_shot must be at least 0, and finite");
     }
     type.health = static_cast<std::int32_t>(health);
     type.score = static_cast<std::uint32_t>(score);
@@ -183,8 +214,9 @@ EnemyScripts::EnemyScripts(ecs::Registry& registry, const std::filesystem::path&
     for (std::string& name : enemy_types(directory)) {
         const std::filesystem::path file = directory / (name + ".lua");
         if (!type_name(name)) {
-            throw core::ConfigError{std::format(
-                "{}: an enemy type is named with lowercase letters, digits and _", file.string())};
+            throw core::ConfigError{
+                std::format("{}: an enemy type is named with lowercase letters, digits and _",
+                            file.generic_string())};
         }
         if (!lua_.run(std::format("_load_enemy('{}')", name), "enemy_scripts") ||
             !lua_.run_file(file) || !lua_.call("_describe_enemy")) {
@@ -236,7 +268,13 @@ ecs::Entity EnemyScripts::spawn(std::string_view type, Vec2 position, float rand
         script::EventField{.name = "y", .value = position.y},
         script::EventField{.name = "random", .value = random},
     };
-    script::emit(lua_, "EnemySpawned", fields);
+    if (!script::emit(lua_, "EnemySpawned", fields)) {
+        lua_.call("_stop_running");
+    }
+    if (lua_.boolean("enemy_spawn_failed").value_or(true)) {
+        world.destroy(enemy);
+        return ecs::Entity{};
+    }
     return enemy;
 }
 
@@ -245,7 +283,9 @@ void EnemyScripts::stop(ecs::Entity enemy) {
 }
 
 void EnemyScripts::update(float seconds) {
-    lua_.call("_update_enemies", seconds);
+    if (!lua_.call("_update_enemies", seconds)) {
+        lua_.call("_stop_running");
+    }
 }
 
 script::ScriptState& EnemyScripts::lua() noexcept {
