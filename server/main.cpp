@@ -7,6 +7,7 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_game.hpp>
@@ -60,24 +61,31 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path waves_file = options.waves.value_or(rtype::default_waves_file());
     std::optional<aegis2d::ecs::WaveSchedule> loaded;
+    // The systems and the enemy scripts of every game, as a game the room has not started
+    // yet runs them: a wrong script stops the server here, not when a room starts.
+    std::optional<rtype::ServerGame> game;
     try {
         loaded = rtype::load_waves(waves_file);
+        game.emplace();
     } catch (const aegis2d::core::ConfigError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
     }
     const aegis2d::ecs::WaveSchedule& waves = *loaded;
-    // The systems of every game, as a game the room has not started yet runs them.
-    const rtype::ServerGame game;
     std::cout << "waves: " << waves_file.string() << " (" << waves.waves()
               << (waves.waves() == 1 ? " wave, " : " waves, ") << waves.spawns().size()
               << " enemies in " << waves.duration() << " s" << (waves.loops() ? ", looping" : "")
               << ")\n";
     std::cout << "systems:";
-    for (const std::string_view system : game.systems().names()) {
+    for (const std::string_view system : game->systems().names()) {
         std::cout << ' ' << system;
     }
     std::cout << '\n';
+    std::cout << "enemies:";
+    for (const rtype::EnemyType& type : game->enemies().types()) {
+        std::cout << ' ' << type.name;
+    }
+    std::cout << " (" << rtype::default_enemies_directory().string() << ")\n";
 
     aegis2d::net::NetworkContext context;
     try {
