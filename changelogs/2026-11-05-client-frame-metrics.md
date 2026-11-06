@@ -29,11 +29,13 @@ first: until then, this branch does not build against the engine's `develop`.
 - Documentation: F12 and `--metrics` in *Play* (options, controls, and a *Frame metrics*
   section with a screenshot, `docs/images/frame-metrics.png`); `client_app` in the code map
   of the architecture page.
+- Changelog: #82 marked as merged (`81877d8`).
 
 ## Commits
 - `8897168` feat(client): showed the frame metrics with f12 or --metrics
 - `1e0ab36` feat(tests): added the --metrics option to the client options tests
-- feat(docs): documented the frame metrics and updated changelogs
+- `4a7da6d` feat(docs): documented the frame metrics and updated changelogs
+- Merge of `develop` (#82's text fields), and #82 marked as merged
 
 ## Notes
 - Built and run on macOS (AppleClang 21, warnings as errors) against the engine's

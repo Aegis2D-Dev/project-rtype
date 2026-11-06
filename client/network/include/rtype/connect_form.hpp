@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <variant>
 
 namespace rtype {
@@ -25,18 +26,18 @@ enum class ConnectField : std::uint8_t {
 inline constexpr std::size_t connect_field_count = 3;
 
 /// @brief What the player types on the connect screen, checked before joining.
-/// @details The form only keeps text: the client turns the keys pressed into characters
-/// and gives them to type(), which refuses those the focused field cannot hold (a letter
-/// in the port, a field already full). submit() checks the fields and gives the settings
-/// of ClientSession, or a sentence for the player. Nothing here draws or reads the keyboard,
-/// so the form is the same with any window.
+/// @details The form only keeps text and its rules: accepts() and max_length() tell what
+/// each field holds, type() and set_text() refuse the rest (a letter in the port, a field
+/// already full). submit() checks the fields and gives the settings of ClientSession, or a
+/// sentence for the player. Nothing here draws or reads the keyboard, so the form is the
+/// same with any window; the client edits it through ConnectFields.
 class ConnectForm {
 public:
     /// @brief Longest address: an IPv6 address with its brackets fits.
     static constexpr std::size_t max_host = 45;
     /// @brief Longest port: five digits.
     static constexpr std::size_t max_port = 5;
-    /// @brief Longest name, in bytes, as `LoginRequest` allows.
+    /// @brief Longest name, in bytes of UTF-8, as `LoginRequest` allows.
     static constexpr std::size_t max_name = 16;
 
     /// @brief Creates the form, filled with settings (the command line's, or the last ones
@@ -58,15 +59,37 @@ public:
     /// @brief Focuses the previous field, the last before the first one.
     void previous() noexcept;
 
-    /// @brief Adds a character at the end of the focused field.
+    /// @brief Tells whether a field takes a character, or a byte of a UTF-8 character.
     /// @details The address takes letters, digits, `.`, `:`, `-`, `[` and `]`; the port
-    /// takes digits; the name takes printable ASCII characters (space included).
+    /// takes digits; the name takes printable ASCII characters (space included) and the
+    /// bytes of longer UTF-8 characters, such as accented letters, as the login does.
+    /// @param field Field to type in.
+    /// @param character Character, or a byte of a longer UTF-8 character.
+    /// @return `true` if the field takes it.
+    [[nodiscard]] static bool accepts(ConnectField field, char character) noexcept;
+
+    /// @brief Longest text of a field.
+    /// @param field Field.
+    /// @return max_host, max_port or max_name, in bytes (characters, but for a name with
+    /// longer UTF-8 characters).
+    [[nodiscard]] static std::size_t max_length(ConnectField field) noexcept;
+
+    /// @brief Adds an ASCII character at the end of the focused field.
+    /// @details As accepts() says; a byte of a longer UTF-8 character is refused, those
+    /// characters coming whole through set_text().
     /// @param character Character typed.
     /// @return `false` if the field does not take it or is full; the field is unchanged.
     bool type(char character);
 
     /// @brief Removes the last character of the focused field, if any.
     void erase() noexcept;
+
+    /// @brief Replaces the text of a field, as edited in a text field.
+    /// @param field Field to set.
+    /// @param text New text in UTF-8; characters the field does not take are left out, and
+    /// the text is cut to the field's length, never inside a character.
+    /// @return `true` if the whole of @p text was kept.
+    bool set_text(ConnectField field, std::string_view text);
 
     /// @brief Text of a field.
     /// @param field Field to read.

@@ -18,6 +18,7 @@
 #include "preferences.hpp"
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/lagometer.hpp>
 #include <rtype/room_list_form.hpp>
@@ -126,7 +127,7 @@ private:
     // lagometer on the right.
     aegis2d::render::MetricsOverlay metrics_overlay_{{.position = {465.0F, 40.0F}}};
     ClientSettings joined_;
-    ConnectForm form_;
+    ConnectFields fields_;
     RoomListForm room_list_;
     std::string room_error_;
     ScreenMessage message_;

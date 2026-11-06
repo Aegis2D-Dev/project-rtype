@@ -23,6 +23,7 @@
 #include "typed_character.hpp"
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
@@ -82,7 +83,7 @@ ClientApp::ClientApp(const ClientOptions& options)
                .height = static_cast<int>(tuning::area_height),
                .resizable = true}},
       renderer_{window_}, textures_{renderer_}, font_{render::BitmapFont::builtin(textures_)},
-      art_{textures_}, sounds_{events_}, view_{art_, font_, events_}, form_{options.settings},
+      art_{textures_}, sounds_{events_}, view_{art_, font_, events_}, fields_{options.settings},
       started_{Clock::now()}, last_frame_{started_} {
     // The game is laid out on a 1280 x 720 screen, scaled to the window with black bars.
     renderer_.set_logical_screen(
@@ -100,8 +101,14 @@ ClientApp::ClientApp(const ClientOptions& options)
     metrics_overlay_.set_visible(options.metrics);
     core::log_info("settings: {}", preferences_.file.string());
     select(static_cast<std::size_t>(ConnectField::Name));
+    // --join joins with the fields as shown, so a rejoin from this screen is the same.
     if (options.join) {
-        join(options.settings);
+        if (const auto settings = fields_.form().submit();
+            std::holds_alternative<ClientSettings>(settings)) {
+            join(std::get<ClientSettings>(settings));
+        } else {
+            message_ = {.text = std::get<std::string>(settings), .error = true};
+        }
     }
 }
 
@@ -150,6 +157,10 @@ bool ClientApp::frame() {
         lost_screen();
         break;
     }
+    // The fields take typed text while one is selected on the connect screen; the game's
+    // keys are actions then, never text.
+    window_.set_text_input(screen_ == ClientScreen::Connect && !capture_.waiting().has_value() &&
+                           fields_.focused().has_value());
     update_session();
     sounds_.update();
     draw();
@@ -227,6 +238,10 @@ void ClientApp::connect_screen() {
         }
         return;
     }
+    // The frame's typed text and editing keys first, in the field selected when they were
+    // pressed: a character typed just before Tab stays in its field, one typed just before
+    // Enter is joined with.
+    fields_.update(window_.text_input(), keyboard);
     for (const Key key : keyboard.pressed_keys()) {
         switch (key) {
         case Key::Escape:
@@ -241,11 +256,6 @@ void ClientApp::connect_screen() {
         case Key::Down:
             select(row_ + 1);
             break;
-        case Key::Backspace:
-            if (row_ < connect_field_count) {
-                form_.erase();
-            }
-            break;
         case Key::Enter:
         case Key::KeypadEnter:
             if (row_ >= connect_field_count) {
@@ -254,7 +264,7 @@ void ClientApp::connect_screen() {
                     keyboard);
                 return;
             }
-            if (const auto settings = form_.submit();
+            if (const auto settings = fields_.form().submit();
                 std::holds_alternative<ClientSettings>(settings)) {
                 ClientSettings chosen = std::get<ClientSettings>(settings);
                 chosen.choose_room = true;
@@ -264,11 +274,6 @@ void ClientApp::connect_screen() {
             }
             return;
         default:
-            if (row_ < connect_field_count) {
-                if (const std::optional<char> character = typed_character(key, shift(keyboard))) {
-                    form_.type(*character);
-                }
-            }
             break;
         }
     }
@@ -530,12 +535,9 @@ void ClientApp::draw() {
             break;
         case ClientScreen::Connect:
         case ClientScreen::Game:
-            draw_connect(
-                renderer_, font_, form_, message_,
-                ConnectView{.row = row_,
-                            .capturing = capture_.waiting().has_value(),
-                            .seconds = std::chrono::duration<double>{now - started_}.count()},
-                preferences_);
+            draw_connect(renderer_, font_, fields_, message_,
+                         ConnectView{.row = row_, .capturing = capture_.waiting().has_value()},
+                         preferences_);
             break;
         }
     }
@@ -554,9 +556,8 @@ void ClientApp::draw() {
 
 void ClientApp::select(std::size_t row) {
     row_ = row % connect_rows;
-    if (row_ < connect_field_count) {
-        form_.focus(static_cast<ConnectField>(row_));
-    }
+    fields_.focus(row_ < connect_field_count ? std::optional{static_cast<ConnectField>(row_)}
+                                             : std::nullopt);
 }
 
 } // namespace rtype

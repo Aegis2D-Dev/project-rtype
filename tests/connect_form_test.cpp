@@ -101,6 +101,43 @@ TEST_CASE("a wrong field is told to the player", "[client][connect]") {
     CHECK(std::get<std::string>(form.submit()) == "Enter the address of the server.");
 }
 
+TEST_CASE("the rules of each field are told and kept by set_text", "[client][connect]") {
+    CHECK(ConnectForm::accepts(ConnectField::Host, ':'));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Host, ' '));
+    CHECK(ConnectForm::accepts(ConnectField::Port, '7'));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Port, '.'));
+    CHECK(ConnectForm::accepts(ConnectField::Name, ' '));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Name, '\t'));
+    // The bytes of a longer UTF-8 character, such as the first of 'é', are a name's only.
+    CHECK(ConnectForm::accepts(ConnectField::Name, static_cast<char>(0xC3)));
+    CHECK_FALSE(ConnectForm::accepts(ConnectField::Host, static_cast<char>(0xC3)));
+    CHECK(ConnectForm::max_length(ConnectField::Host) == ConnectForm::max_host);
+    CHECK(ConnectForm::max_length(ConnectField::Port) == ConnectForm::max_port);
+    CHECK(ConnectForm::max_length(ConnectField::Name) == ConnectForm::max_name);
+
+    ConnectForm form{ClientSettings{.host = "", .tcp_port = 1, .name = ""}};
+    CHECK(form.set_text(ConnectField::Host, "10.0.0.7"));
+    CHECK(form.text(ConnectField::Host) == "10.0.0.7");
+    // What the field does not take, or holds no more of, is left out.
+    CHECK_FALSE(form.set_text(ConnectField::Port, "80a80"));
+    CHECK(form.text(ConnectField::Port) == "8080");
+    CHECK_FALSE(form.set_text(ConnectField::Port, "1234567"));
+    CHECK(form.text(ConnectField::Port) == "12345");
+    CHECK(form.set_text(ConnectField::Name, ""));
+    CHECK(form.text(ConnectField::Name).empty());
+
+    // Names are UTF-8, as the login takes them, and cut to 16 bytes between characters.
+    CHECK(form.set_text(ConnectField::Name, "Zoé"));
+    CHECK(form.text(ConnectField::Name) == "Zoé");
+    CHECK_FALSE(form.set_text(ConnectField::Name, "ééééééééé"));
+    CHECK(form.text(ConnectField::Name) == "éééééééé");
+    CHECK_FALSE(form.set_text(ConnectField::Name, "abcdefghijklmnoé"));
+    CHECK(form.text(ConnectField::Name) == "abcdefghijklmno");
+    // One byte of a longer character cannot be typed alone.
+    form.focus(ConnectField::Name);
+    CHECK_FALSE(form.type(static_cast<char>(0xC3)));
+}
+
 TEST_CASE("the room list form keeps its selection and makes the request of a new room",
           "[client][rooms]") {
     using rtype::RoomRecord;

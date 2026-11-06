@@ -6,6 +6,7 @@
 #include <aegis2d/shmup/ship_controls.hpp>
 
 #include "preferences.hpp"
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/room_list_form.hpp>
 
@@ -39,20 +40,21 @@ struct ConnectView {
     std::size_t row = 0;
     /// @brief Whether the selected control waits for its new key.
     bool capturing = false;
-    /// @brief Seconds since the start, for the blinking cursor.
-    double seconds = 0.0;
 };
 
 /// @brief Draws the connect screen (#123): the goal of the game, the server, port and
 /// name fields, the player's controls, which Enter changes, and the keys of the screen.
+/// @details The fields are drawn by their text fields (Aegis2D-Dev/aegis2d#345), each in
+/// its row's box: the text, scrolled to keep the cursor in view, and the cursor of the one
+/// being edited.
 /// @param renderer Renderer, between begin_frame() and end_frame().
 /// @param font Font of the texts.
-/// @param form The fields.
+/// @param fields The fields; their boxes are set to the rows' places.
 /// @param message Last message, under the fields.
-/// @param view Selected row and cursor.
+/// @param view Selected row.
 /// @param preferences The player's settings: keys, text size, color vision.
 void draw_connect(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
-                  const ConnectForm& form, const ScreenMessage& message, const ConnectView& view,
+                  ConnectFields& fields, const ScreenMessage& message, const ConnectView& view,
                   const Preferences& preferences);
 
 /// @brief Most rooms the room list screen shows at once, around the selected one.
