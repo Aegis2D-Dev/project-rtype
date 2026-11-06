@@ -8,6 +8,8 @@
 #include <rtype/network_stats.hpp>
 
 #include <chrono>
+#include <string>
+#include <vector>
 #include <cstddef>
 #include <cstdint>
 
@@ -196,4 +198,13 @@ TEST_CASE("the lagometer shows a degraded link, then its return to normal", "[cl
     // The graphs still show the degraded seconds, on the left.
     CHECK(link.lagometer.samples().size() == Lagometer::length);
     CHECK(link.lagometer.scale(LagGraph::Rtt) > 150.0);
+}
+
+TEST_CASE("the figures of a sample are lines of the metrics overlay", "[client][lag][366]") {
+    LagSample sample;
+    sample.values = {42.4, 3.0, 0.5, 50.0, 2560.0, 1024.0, 2.0};
+    CHECK(rtype::lag_lines(sample) ==
+          std::vector<std::string>{"RTT 42 MS  JITTER 3 MS  LOSS 0.5 %", "IN 2.5 KB/S  OUT 1.0 KB/S",
+                                   "SNAPSHOTS 50 MS  CORRECTED 2/S"});
+    CHECK(rtype::lag_lines(LagSample{}).front() == "RTT 0 MS  JITTER 0 MS  LOSS 0.0 %");
 }
