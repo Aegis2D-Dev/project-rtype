@@ -9,7 +9,9 @@
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/room.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/scoreboard.hpp>
+#include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
@@ -17,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +28,14 @@
 #include <vector>
 
 namespace rtype {
+
+/// @brief The gameplay of the rules a room was created with.
+/// @details `Easy` and `Hard` take the enemy health and the spawn intervals of their
+/// `tuning::easy_*` and `tuning::hard_*` values; `Normal`, and anything else, the game as
+/// tuned. The waves file is not part of it: GameServer picks the waves of the room.
+/// @param rules Rules checked by SessionTable::create_room().
+/// @return The rules of the room's games.
+[[nodiscard]] GameRules game_rules(const RoomRules& rules) noexcept;
 
 /// @brief Runs the games of its rooms for the players of its sockets, as `r-type_server` does.
 /// @details The sockets work on the caller's context, each game in its Room, on the room's
@@ -44,7 +55,8 @@ namespace rtype {
 ///
 /// The logins fill the first room with a free player number, then the next one, up to
 /// max_rooms() rooms (SessionTable::set_rooms()). A room opens when its first player joins:
-/// its game starts on a new thread. It closes when its last player leaves: its thread is
+/// its game starts on a new thread, with the rules the room was created with (game_rules(),
+/// and the waves it names, see set_waves()). It closes when its last player leaves: its thread is
 /// stopped and joined, and its game is gone, so the next player of that room starts a new
 /// one. The caller runs the context and calls `network().update()` a few times per second.
 /// Destroying the server stops the simulation threads; the context must not run the tasks
@@ -70,6 +82,13 @@ public:
     GameServer& operator=(GameServer&&) = delete;
     /// @brief Stops the simulation threads, then closes the sockets.
     ~GameServer() = default;
+
+    /// @brief Sets the waves files a room may be created with, besides the server's own.
+    /// @details The network offers their names (ServerNetwork::set_waves()); a room naming
+    /// one plays its waves, a room naming none the waves given to the constructor. Call it
+    /// on the context's thread; the rooms open from now on use it.
+    /// @param waves The schedules, by name (waves_names(), without `.json`).
+    void set_waves(std::map<std::string, aegis2d::ecs::WaveSchedule> waves);
 
     /// @brief Keeps the best scores in a file: at the end of each game of a room, every
     /// player of it records its score there.
@@ -142,6 +161,7 @@ private:
     // What each room's game is built with.
     std::optional<std::uint64_t> seed_;
     aegis2d::ecs::WaveSchedule waves_;
+    std::map<std::string, aegis2d::ecs::WaveSchedule> named_waves_;
     std::uint32_t rate_;
     std::optional<Scoreboard> scores_;
     // The players in a game, by token; used by the network thread only.

@@ -1,6 +1,6 @@
 /// @file
 /// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules;
-/// those of the rooms are in rooms.hpp.
+/// those of the rooms are in rooms.hpp, those of the chat in chat.hpp.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +53,12 @@ enum class TcpKind : std::uint8_t {
     RoomPlayers = 15,
     /// @brief Server to client: every player of its room is ready, bind and play.
     GameStart = 16,
+    /// @brief Client to server: a text for the players of its room (RFC section 3.8).
+    ChatSend = 17,
+    /// @brief Server to client: a text relayed from a player of its room.
+    ChatMessage = 18,
+    /// @brief Server to client: why a `ChatSend` was not relayed.
+    ChatRejected = 19,
 };
 
 /// @brief Why a login is refused, the `reason` of `LoginRejected`.
@@ -111,6 +117,15 @@ struct LoginAccepted {
 /// @param reason Reason to name.
 /// @return `"server full"`, `"bad version"`... or `"unknown"`.
 [[nodiscard]] std::string_view to_string(LoginRejection reason) noexcept;
+
+/// @brief Tells whether a text is 1 to @p max_size bytes of valid UTF-8 without control
+/// characters, as player names and chat texts must be.
+/// @details No overlong form, surrogate or code point above U+10FFFF, and no control
+/// character (below U+0020, and U+007F).
+/// @param text Bytes received.
+/// @param max_size Most bytes allowed.
+/// @return `true` if the text follows these rules.
+[[nodiscard]] bool valid_text(std::string_view text, std::size_t max_size) noexcept;
 
 /// @brief Tells whether a name follows the rules of `LoginRequest`.
 /// @details 1 to max_name_size bytes of valid UTF-8 (no overlong form, surrogate or code

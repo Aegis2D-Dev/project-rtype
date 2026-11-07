@@ -10,6 +10,8 @@
 #include <aegis2d/render/metrics_overlay.hpp>
 #include <aegis2d/render/opengl/renderer.hpp>
 #include <aegis2d/render/texture_manager.hpp>
+#include <aegis2d/ui/text_field.hpp>
+#include <aegis2d/ui/widget_tree.hpp>
 
 #include "game_art.hpp"
 #include "game_sounds.hpp"
@@ -112,6 +114,7 @@ private:
     void join(const ClientSettings& settings);
     void leave();
     void update_session();
+    bool chat_keys();
     void draw();
     void select(std::size_t row);
 
@@ -148,6 +151,13 @@ private:
     std::size_t playtest_wave_ = 0;
     EditorView editor_view_;
     aegis2d::ecs::Entity playtest_ship_;
+    // The chat line, opened with T in the lobby, in a room and in game (RFC section 3.8).
+    aegis2d::ui::WidgetTree chat_tree_;
+    aegis2d::ui::TextField chat_field_{
+        chat_tree_,
+        chat_box,
+        {.text = {}, .placeholder = "say something", .max_length = chat_length}};
+    bool chatting_ = false;
     ClientScreen screen_ = ClientScreen::Connect;
     std::size_t row_ = 0;
     bool quit_ = false;

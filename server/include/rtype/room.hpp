@@ -35,8 +35,9 @@ public:
     /// @param rate Ticks per second.
     /// @param after_tick Called after each tick, on the simulation thread.
     /// @param trace `true` to record the timings of its ticks (Simulation::profiler()).
+    /// @param rules How the games of the room play.
     Room(std::uint32_t id, std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves,
-         std::uint32_t rate, TickHandler after_tick, bool trace = false);
+         std::uint32_t rate, TickHandler after_tick, bool trace = false, GameRules rules = {});
 
     Room(const Room&) = delete;
     Room& operator=(const Room&) = delete;

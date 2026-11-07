@@ -1,5 +1,6 @@
 # Messages of the protocol shared by the server and the client (docs/rfc in the engine).
 add_library(rtype_protocol STATIC
+    chat.cpp
     compact.cpp
     delta_snapshot.cpp
     events.cpp

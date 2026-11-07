@@ -10,7 +10,9 @@
 #include <rtype/game_server.hpp>
 #include <rtype/lag_compensation.hpp>
 #include <rtype/room.hpp>
+#include <rtype/rooms.hpp>
 #include <rtype/scoreboard.hpp>
+#include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/simulation.hpp>
@@ -23,6 +25,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -42,6 +45,18 @@ SessionTable sessions_in(std::uint32_t rooms) {
 }
 
 } // namespace
+
+GameRules game_rules(const RoomRules& rules) noexcept {
+    GameRules game{.lives = rules.lives, .friendly_fire = rules.friendly_fire == 1};
+    if (rules.difficulty == static_cast<std::uint8_t>(Difficulty::Easy)) {
+        game.enemy_health_factor = tuning::easy_enemy_health_factor;
+        game.spawn_interval_scale = tuning::easy_spawn_interval_scale;
+    } else if (rules.difficulty == static_cast<std::uint8_t>(Difficulty::Hard)) {
+        game.enemy_health_factor = tuning::hard_enemy_health_factor;
+        game.spawn_interval_scale = tuning::hard_spawn_interval_scale;
+    }
+    return game;
+}
 
 GameServer::GameServer(aegis2d::net::NetworkContext& context, std::optional<std::uint64_t> seed,
                        aegis2d::ecs::WaveSchedule waves, std::uint16_t tcp_port,
@@ -184,15 +199,23 @@ void GameServer::on_left(const Session& session, LeaveReason reason) {
     });
 }
 
-// The room of a player who joins, opened with its game on a new thread if it was not.
+// The room of a player who joins, opened with its game on a new thread if it was not, with
+// the rules and the waves the room was created with.
 Room& GameServer::open_room(std::uint32_t id) {
     std::unique_ptr<Room>& slot = rooms_.at(id);
     if (!slot) {
+        const RoomRules rules = network_.sessions().rules(id).value_or(RoomRules{});
+        const auto named = named_waves_.find(rules.waves);
         slot = std::make_unique<Room>(
-            id, seed_, waves_, rate_,
-            [this](Room& room, GameInstance& game) { after_tick(room, game); }, trace_);
-        aegis2d::core::log_info("server: room {} opened ({} of {} open)", id, open_rooms(),
-                                max_rooms());
+            id, seed_, named == named_waves_.end() ? waves_ : named->second, rate_,
+            [this](Room& room, GameInstance& game) { after_tick(room, game); }, trace_,
+            game_rules(rules));
+        aegis2d::core::log_info(
+            "server: room {} opened ({} of {} open): {} lives, difficulty {}, waves {}, "
+            "friendly fire {}",
+            id, open_rooms(), max_rooms(), rules.lives, rules.difficulty,
+            rules.waves.empty() ? "of the server" : rules.waves,
+            rules.friendly_fire == 1 ? "on" : "off");
     }
     return *slot;
 }
@@ -231,6 +254,16 @@ std::size_t GameServer::save_trace(const std::filesystem::path& file) {
     }
     aegis2d::core::save_chrome_trace(file, threads, "r-type_server");
     return events;
+}
+
+void GameServer::set_waves(std::map<std::string, aegis2d::ecs::WaveSchedule> waves) {
+    std::vector<std::string> names;
+    names.reserve(waves.size());
+    for (const auto& entry : waves) {
+        names.push_back(entry.first);
+    }
+    network_.set_waves(std::move(names));
+    named_waves_ = std::move(waves);
 }
 
 void GameServer::keep_scores(std::filesystem::path file) {

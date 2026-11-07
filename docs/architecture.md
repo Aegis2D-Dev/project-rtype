@@ -91,10 +91,20 @@ binds right after its login and plays in the room it was given. `ClientSession` 
 unless `ClientSettings::choose_room` is set: it then stays in the `Lobby` state, with the
 rooms refreshed every second, until it joins one, then in the `InRoom` state, with the players
 of the room, until `GameStart`; `RoomListForm` is the room list screen of `r-type_client`
-apart from its drawing. A room opens when its first player joins, its game on a new thread,
-and closes when its last player leaves: its thread is stopped and joined, and the next player
+apart from its drawing. A room opens when its first player joins, its game on a new thread
+with the rules the room was created with (`game_rules()`: the lives of each player, the health
+and spawn rate of the enemies for its difficulty, friendly fire, and the waves file it names,
+read once at start by `r-type_server` and given with `GameServer::set_waves()`; a room opened
+for a login plays the default rules), and closes when its last player leaves: its thread is stopped and joined, and the next player
 of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
-default); once they are all full, a login is refused as `ServerFull`. When the game of a room
+default); once they are all full, a login is refused as `ServerFull`. Players chat over TCP, in the
+lobby, in a room and in game (RFC section 3.8): a `ChatSend` whose text passes
+`check_chat_text()` (1 to 200 bytes of UTF-8 without control characters) and whose sender is
+within its `ChatRate` (5 messages at once, then 1 per second) goes as a `ChatMessage` to every
+session of the sender's room, or of the lobby (`player` 255), the sender included; any other
+gets `ChatRejected` with its reason, the connection going on. `ClientSession::send_chat()`
+sends a message once logged in, and its `ChatLog` keeps the last ones of the room and the
+reasons of the refused ones, which `r-type_client` draws over its screens. When the game of a room
 is over (`GameInstance::take_game_over()`, once per game), the score of each of its players
 goes to the `Scoreboard` of the server (`GameServer::keep_scores()`, `--scores`): the 10 best,
 best first, in a JSON file (`{"scores": [{"name": "R9", "score": 1200}]}`) written at each

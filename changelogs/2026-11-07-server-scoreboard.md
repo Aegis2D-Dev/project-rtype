@@ -36,22 +36,26 @@ epic (Aegis2D-Dev/aegis2d#298); the lobby shows the board with #313.
 - `r-type_server` prints the file of its scores at start.
 - `.gitignore`: `scores.json` of a server run from the clone.
 - *Getting started*: `--scores`. *Architecture*: the scoreboard.
-- Changelog, with `develop` merged in: #80 (`ce5d219`) and #91 (`7d37054`) marked as merged.
+- Changelog, with `develop` merged in: #80 (`ce5d219`), #91 (`7d37054`), #92 (`d274552`),
+  #93 (`27b5d25`) and #94 (`846b3fb`) marked as merged.
 
 ## Commits
 - `712d3f4` feat(server): kept the best scores in a json file across restarts
 - `048b649` feat(tests): added the best scores kept across a restart
 - `574552c` feat(docs): documented the scoreboard and updated changelogs
+- `aeee14a` Merge remote-tracking branch 'origin/develop' into feat/server-scoreboard
 - Merge remote-tracking branch 'origin/develop' into feat/server-scoreboard
 
 ## Notes
 - `develop` was merged in once it had `--trace` (#87): the conflicts were the options of
-  `r-type_server`, both kept, and the index of `CHANGELOG.md`.
+  `r-type_server`, both kept, and the index of `CHANGELOG.md`. It was merged in again once
+  #92 to #94 were there: `GameServer` keeps both the waves of the rooms and the scores, and
+  *Architecture* both the chat and the scoreboard.
 - The board is written on the network thread, at most once per player at the end of a game:
   a file of 10 scores.
 - The atomic write is the engine's `core::Config::save()` (`<file>.tmp`, then a rename).
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors):
   clang-format, clang-tidy 22 (81 files), `mkdocs build --strict`, Doxygen.
-- `ctest`: 294 of 295 tests pass; under ASan and UBSan, the test cases of the scores, the
+- `ctest`: 306 of 307 tests pass; under ASan and UBSan, the test cases of the scores, the
   game instance and the options pass. *a flooding address is cut off, and the players play
   on* fails on the machine used, as on `develop`, and passes in CI.

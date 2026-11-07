@@ -6,6 +6,9 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
 | [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) | Best scores kept in a JSON file across restarts | `feat/server-scoreboard` | Open | 2026-11-07 | [2026-11-07-server-scoreboard](changelogs/2026-11-07-server-scoreboard.md) |
+| [#94](https://github.com/Aegis2D-Dev/project-rtype/pull/94) | Chat in the client, opened with T | `feat/client-chat` | Merged | 2026-11-07 | [2026-11-07-client-chat](changelogs/2026-11-07-client-chat.md) |
+| [#93](https://github.com/Aegis2D-Dev/project-rtype/pull/93) | Chat relayed in each room, with length and rate limits | `feat/server-chat-relay` | Merged | 2026-11-07 | [2026-11-07-server-chat-relay](changelogs/2026-11-07-server-chat-relay.md) |
+| [#92](https://github.com/Aegis2D-Dev/project-rtype/pull/92) | Room rules applied to their games | `feat/server-room-rules` | Merged | 2026-11-07 | [2026-11-07-server-room-rules](changelogs/2026-11-07-server-room-rules.md) |
 | [#91](https://github.com/Aegis2D-Dev/project-rtype/pull/91) | Graphify merge driver for the graph output | `feat/gitattributes-graphify-merge` | Merged | 2026-11-07 | [2026-11-07-gitattributes-graphify-merge](changelogs/2026-11-07-gitattributes-graphify-merge.md) |
 | [#90](https://github.com/Aegis2D-Dev/project-rtype/pull/90) | Level editor save and play: new waves without editing JSON | `feat/client-editor-save-play` | Merged | 2026-11-06 | [2026-11-06-client-editor-save-play](changelogs/2026-11-06-client-editor-save-play.md) |
 | [#89](https://github.com/Aegis2D-Dev/project-rtype/pull/89) | Level editor timeline: the waves moved in time | `feat/client-editor-timeline` | Merged | 2026-11-06 | [2026-11-06-client-editor-timeline](changelogs/2026-11-06-client-editor-timeline.md) |
