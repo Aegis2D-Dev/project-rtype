@@ -48,11 +48,6 @@ namespace core = aegis2d::core;
 
 namespace {
 
-// A well-formed message of the chat (RFC section 3.8), which the client does not show yet.
-bool is_chat(std::span<const std::byte> message) {
-    return read_chat_message(message).has_value() || read_chat_rejected(message).has_value();
-}
-
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
 
@@ -244,8 +239,8 @@ void ClientSession::on_message(std::span<const std::byte> message) {
     }
     // Once logged in, the server only sends Logout (RFC section 3.3), the chat of the room
     // (section 3.8) and, to a client that used the rooms, RoomPlayers and GameStart, which a
-    // client in game ignores; the chat is not shown yet.
-    if (read_room_players(message).has_value() || read_game_start(message) || is_chat(message)) {
+    // client in game ignores.
+    if (on_chat(message) || read_room_players(message).has_value() || read_game_start(message)) {
         return;
     }
     if (const std::optional<std::uint8_t> reason = read_logout(message)) {
@@ -286,9 +281,40 @@ void ClientSession::on_room_message(std::span<const std::byte> message) {
         }
     } else if (const std::optional<std::uint8_t> reason = read_logout(message)) {
         fail(logout_text(*reason));
-    } else if (!is_chat(message)) {
+    } else if (!on_chat(message)) {
         fail("the server sent an unexpected message");
     }
+}
+
+// RFC section 3.8: a message of the room, or why one of this client was not sent; false for
+// any other message.
+bool ClientSession::on_chat(std::span<const std::byte> message) {
+    if (const std::optional<ChatMessage> chat = read_chat_message(message)) {
+        chat_.add(*chat, Clock::now());
+        return true;
+    }
+    if (const std::optional<std::uint8_t> reason = read_chat_rejected(message)) {
+        chat_.refused(*reason, Clock::now());
+        return true;
+    }
+    return false;
+}
+
+bool ClientSession::send_chat(std::string_view text) {
+    switch (state_) {
+    case ClientState::Lobby:
+    case ClientState::InRoom:
+    case ClientState::Binding:
+    case ClientState::InGame:
+        send_request(write_chat_send(text));
+        return true;
+    default:
+        return false;
+    }
+}
+
+ChatLog& ClientSession::chat() noexcept {
+    return chat_;
 }
 
 void ClientSession::set_ready(bool ready) {

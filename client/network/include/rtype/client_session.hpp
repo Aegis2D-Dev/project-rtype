@@ -13,6 +13,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat_log.hpp>
 #include <rtype/client_world.hpp>
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
@@ -165,6 +166,20 @@ public:
     /// @brief Leaves the room for the lobby, where the rooms are listed again (`LeaveRoom`).
     void leave_room();
 
+    /// @brief Sends a chat message to the players of the room, or of the lobby (`ChatSend`,
+    /// RFC section 3.8).
+    /// @details Only once logged in, until the session ends; the server's `ChatMessage`
+    /// puts it in chat() for every player of the room, this one too, or its `ChatRejected`
+    /// the reason it was not sent.
+    /// @param text Text typed; it must fit a `string`.
+    /// @return `false` if the session is not logged in or has ended: nothing was sent.
+    bool send_chat(std::string_view text);
+
+    /// @brief The last chat messages of the room, and why a message of this client was not
+    /// sent, each for a few seconds.
+    /// @return The log; ChatLog::prune() it before drawing.
+    [[nodiscard]] ChatLog& chat() noexcept;
+
     /// @brief Whether the player said it is ready, in its room.
     /// @return The last value given to set_ready() since the room was joined.
     [[nodiscard]] bool ready() const noexcept;
@@ -279,6 +294,7 @@ private:
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void start_binding();
     void on_room_message(std::span<const std::byte> message);
+    bool on_chat(std::span<const std::byte> message);
     void send_request(std::vector<std::byte> message);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
@@ -303,6 +319,7 @@ private:
     std::vector<RoomRecord> rooms_;
     std::string room_error_;
     RoomPlayers room_players_;
+    ChatLog chat_;
     std::uint64_t connects_sent_ = 0;
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;

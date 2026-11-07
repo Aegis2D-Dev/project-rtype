@@ -4,16 +4,21 @@
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/renderer.hpp>
 #include <aegis2d/shmup/ship_controls.hpp>
+#include <aegis2d/ui/text_field.hpp>
+#include <aegis2d/ui/widget_tree.hpp>
 
 #include "preferences.hpp"
+#include <rtype/chat.hpp>
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
 
 #include <array>
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -84,6 +89,27 @@ void draw_rooms(aegis2d::render::IRenderer& renderer, const aegis2d::render::Bit
 void draw_room(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
                std::string_view name, const RoomPlayers& room, std::uint8_t self,
                const ScreenMessage& message, const Preferences& preferences);
+
+/// @brief Most characters of the chat line: 4 bytes each at most, so a message always fits
+/// the server's limit (max_chat_size bytes).
+inline constexpr std::size_t chat_length = max_chat_size / 4;
+
+/// @brief Where the chat line goes while it is typed, at the bottom left.
+inline constexpr aegis2d::render::Rect chat_box{
+    .x = 20.0F, .y = 670.0F, .width = 640.0F, .height = 32.0F};
+
+/// @brief Draws the last chat messages above the chat line, each in its sender's color, and
+/// the line itself while it is typed.
+/// @param renderer Renderer, between begin_frame() and end_frame().
+/// @param font Font of the texts.
+/// @param lines Messages to show, oldest first (ChatLog::shown()).
+/// @param field The chat line, drawn when @p typing.
+/// @param tree The tree of the chat line.
+/// @param typing Whether the player is typing a message.
+/// @param preferences The player's settings: text size, color vision.
+void draw_chat(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
+               const std::vector<PlayerNotice>& lines, const aegis2d::ui::TextField& field,
+               const aegis2d::ui::WidgetTree& tree, bool typing, const Preferences& preferences);
 
 /// @brief Draws a screen of one message: joining, or the connection lost (#128).
 /// @param renderer Renderer, between begin_frame() and end_frame().

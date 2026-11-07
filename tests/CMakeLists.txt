@@ -7,6 +7,7 @@ include(Catch)
 
 add_executable(rtype_tests
     bot_test.cpp
+    chat_log_test.cpp
     chat_test.cpp
     client_session_test.cpp
     client_world_test.cpp

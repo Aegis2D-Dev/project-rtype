@@ -93,6 +93,7 @@ server and `--join`:
 | Lagometer on / off | F6 | |
 | Frame metrics on / off | F12 | |
 | Music on / off | M (in game) | |
+| Chat | T, then Enter to send (Escape cancels) | |
 
 The movement and fire keys can be changed on the connect screen: select a control with
 the arrows or Tab, press Enter, then the new key (Escape keeps the old one). A key already
@@ -102,6 +103,13 @@ the key.
 
 The F-keys work on every screen; the keys of the game show at the top of the screen for
 the first seconds of a game, and again after each change.
+
+T opens the chat line at the bottom left, on the room list, in a room and in game (on the
+room list, not while a new room's name is typed). Enter sends the message to the players of
+the room, or of the lobby; Escape closes the line. While it is open the ship stops and the
+keys type text. The last 6 messages show above the line for 8 seconds, each in its sender's
+color (gray from the lobby); a message the server refuses, too long or too fast, says so
+there.
 
 ## Settings
 
