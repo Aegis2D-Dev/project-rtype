@@ -1,4 +1,6 @@
 #include <aegis2d/core/config.hpp>
+#include <aegis2d/core/hot_reload.hpp>
+#include <aegis2d/core/log.hpp>
 #include <aegis2d/core/paths.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/script/components.hpp>
@@ -55,6 +57,21 @@ end
 function _load_enemy(name)
     loading = name
     order[#order + 1] = name
+end
+
+-- A reload keeps the definition it replaces until the new one is checked.
+local reloading, previous = nil, nil
+
+function _reload_enemy(name)
+    reloading, previous = name, types[name]
+    types[name], loading = nil, name
+end
+
+function _end_reload(keep)
+    if not keep and reloading ~= nil then
+        types[reloading] = previous
+    end
+    reloading, previous, loading = nil, nil, nil
 end
 
 function _describe_enemy()
@@ -206,7 +223,7 @@ std::vector<std::string> enemy_types(const std::filesystem::path& directory) {
 }
 
 EnemyScripts::EnemyScripts(ecs::Registry& registry, const std::filesystem::path& directory)
-    : registry_{&registry} {
+    : registry_{&registry}, directory_{directory} {
     script::bind_components(lua_, registry);
     if (!lua_.run(prelude, "enemy_scripts")) {
         fail("enemy_scripts", lua_);
@@ -223,6 +240,35 @@ EnemyScripts::EnemyScripts(ecs::Registry& registry, const std::filesystem::path&
             fail(file, lua_);
         }
         types_.push_back(describe(std::move(name), file, lua_));
+    }
+}
+
+void EnemyScripts::reload(std::string_view type) {
+    const auto found = std::ranges::find(types_, type, &EnemyType::name);
+    if (found == types_.end()) {
+        throw std::invalid_argument{std::format("rtype: unknown enemy type \"{}\"", type)};
+    }
+    const std::filesystem::path file = directory_ / (found->name + ".lua");
+    lua_.run(std::format("_reload_enemy('{}')", found->name), "enemy_scripts");
+    try {
+        if (!lua_.run_file(file) || !lua_.call("_describe_enemy")) {
+            fail(file, lua_);
+        }
+        *found = describe(found->name, file, lua_);
+    } catch (const core::ConfigError&) {
+        lua_.run("_end_reload(false)", "enemy_scripts");
+        throw;
+    }
+    lua_.run("_end_reload(true)", "enemy_scripts");
+}
+
+void EnemyScripts::watch(core::HotReload& hot) {
+    for (const EnemyType& type : types_) {
+        hot.watch(directory_ / (type.name + ".lua"),
+                  [this, name = type.name](const std::filesystem::path& /*file*/) {
+                      reload(name);
+                      core::log_info("enemy {} reloaded", name);
+                  });
     }
 }
 

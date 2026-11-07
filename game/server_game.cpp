@@ -42,8 +42,9 @@ bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
 
 } // namespace
 
-ServerGame::ServerGame(std::optional<std::uint64_t> seed, const std::filesystem::path& enemies)
-    : enemies_{registry_, enemies},
+ServerGame::ServerGame(std::optional<std::uint64_t> seed, const std::filesystem::path& enemies,
+                       bool hot_reload)
+    : enemies_{registry_, enemies}, hot_{hot_reload},
       grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
       spawner_{bydos_spawns(), seed.value_or(0)} {
     if (seed_ && enemies_.find(tuning::random_enemy) == nullptr) {
@@ -52,6 +53,7 @@ ServerGame::ServerGame(std::optional<std::uint64_t> seed, const std::filesystem:
     }
     register_systems();
     systems_.set_enabled("spawn", seed_.has_value());
+    enemies_.watch(hot_);
 }
 
 void ServerGame::register_systems() {
@@ -183,6 +185,7 @@ bool ServerGame::set_input(ecs::Entity player, ecs::PlayerInput input) {
 }
 
 void ServerGame::tick(aegis2d::core::Duration step) {
+    hot_.update();
     spawned_.clear();
     systems_.update(registry_, step);
     history_.record(ticks(), registry_);

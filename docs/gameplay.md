@@ -97,6 +97,12 @@ a behavior that fails, by an error or by running too long, is logged once and st
 `update` stops moving the enemies of its type, which keep their speed, and a type whose
 `spawn` failed spawns no more enemies; the game goes on.
 
+In a debug build, each game reloads a script when its file changes, checked at most every
+250 ms at the start of a tick (`EnemyScripts::reload()`): the enemies alive run the new
+behavior from that tick on, and the new values are for the next ones; a script that does
+not load is logged and the type keeps the one it had ([Change it while the game
+runs](add-an-enemy.md#change-it-while-the-game-runs)).
+
 ## Bydos slaves
 
 A Bydos slave (`assets/enemies/bydos_slave.lua`) flies left at 120 px/s and weaves around

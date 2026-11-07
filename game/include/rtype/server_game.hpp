@@ -2,6 +2,7 @@
 /// @brief The R-Type simulation run by the server: world, systems and players.
 #pragma once
 #include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/hot_reload.hpp>
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/collision.hpp>
 #include <aegis2d/ecs/components.hpp>
@@ -62,10 +63,13 @@ public:
     /// a game can be replayed from its logged seed. Without one, the `spawn` system is
     /// disabled and only what the caller creates is in the world (tests, scripted levels).
     /// @param enemies Directory of the enemy scripts (EnemyScripts).
+    /// @param hot_reload `true` to reload a script when its file changes, checked at most
+    /// every 250 ms by tick(); by default in debug builds (`core::hot_reload_by_default`).
     /// @throws aegis2d::core::ConfigError If a script is wrong, or, with a seed, none gives
     /// tuning::random_enemy.
     explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt,
-                        const std::filesystem::path& enemies = default_enemies_directory());
+                        const std::filesystem::path& enemies = default_enemies_directory(),
+                        bool hot_reload = aegis2d::core::hot_reload_by_default);
     ServerGame(const ServerGame&) = delete;
     ServerGame& operator=(const ServerGame&) = delete;
     ServerGame(ServerGame&&) = delete;
@@ -139,6 +143,8 @@ public:
     [[nodiscard]] std::uint32_t rewind(aegis2d::ecs::Entity player) const;
 
     /// @brief Runs one simulation step: every system, in order.
+    /// @details With hot reload, the enemy scripts whose file changed are read again first
+    /// (EnemyScripts::reload()); a wrong one is logged and the type keeps the one it had.
     /// @param step Duration of the step, `core::step_from_rate(tuning::tick_rate)`.
     void tick(aegis2d::core::Duration step);
 
@@ -207,6 +213,7 @@ private:
 
     aegis2d::ecs::Registry registry_;
     EnemyScripts enemies_;
+    aegis2d::core::HotReload hot_;
     aegis2d::ecs::Scheduler systems_;
     aegis2d::ecs::CollisionGrid grid_;
     std::vector<aegis2d::ecs::Entity> shooters_;

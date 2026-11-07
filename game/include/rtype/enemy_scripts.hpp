@@ -1,6 +1,7 @@
 /// @file
 /// @brief Enemy types written in Lua: their values and their behavior, run by the server.
 #pragma once
+#include <aegis2d/core/hot_reload.hpp>
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/registry.hpp>
@@ -88,6 +89,21 @@ public:
     aegis2d::ecs::Entity spawn(std::string_view type, aegis2d::Vec2 position, float random = 0.0F,
                                float shot_delay = 0.0F);
 
+    /// @brief Reads the script of a type again, as when it changed on disk.
+    /// @details The enemies of the type alive run the new `update` from the next tick on,
+    /// with the fields their `self` holds; the new values (size, health...) are for the
+    /// enemies spawned from now on. A behavior stopped by a failure runs again if the new
+    /// script gives it again. A wrong script is refused and the type keeps the one it had.
+    /// @param type Name of the type.
+    /// @throws std::invalid_argument If no script gives @p type.
+    /// @throws aegis2d::core::ConfigError If the script is wrong, as for the constructor.
+    void reload(std::string_view type);
+
+    /// @brief Reloads the script of each type when its file changes.
+    /// @details The scripts must not move afterwards: @p hot calls reload() on them.
+    /// @param hot Watcher, whose `update()` reloads; a reload that fails is logged by it.
+    void watch(aegis2d::core::HotReload& hot);
+
     /// @brief Stops running the behavior of an enemy: it keeps its components and its speed.
     /// @param enemy Enemy created by spawn().
     void stop(aegis2d::ecs::Entity enemy);
@@ -102,6 +118,7 @@ public:
 
 private:
     aegis2d::ecs::Registry* registry_;
+    std::filesystem::path directory_;
     aegis2d::script::ScriptState lua_;
     std::vector<EnemyType> types_;
 };

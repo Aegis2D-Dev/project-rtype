@@ -14,6 +14,7 @@
 #include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -21,6 +22,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -253,4 +255,95 @@ TEST_CASE("the scripts forget the enemies destroyed", "[rtype][enemies][356]") {
     scripts.update(0.1F);
     CHECK(scripts.lua().number("seen") == 3.0);
     CHECK_THROWS_AS(scripts.spawn("boss", Vec2{}), std::invalid_argument);
+}
+
+TEST_CASE("a reloaded script changes the enemies alive and the next ones",
+          "[rtype][enemies][357]") {
+    Registry registry;
+    const auto folder = write_folder("reload", {{"drifter.lua", R"lua(
+        enemy { score = 10, update = function(self) ecs.get(self.entity, "Velocity").y = 50 end })lua"}});
+    EnemyScripts scripts{registry, folder};
+    const Entity before = scripts.spawn("drifter", Vec2{});
+    scripts.update(0.1F);
+    CHECK(registry.get<Velocity>(before).value.y == 50.0F);
+
+    std::ofstream{folder / "drifter.lua"} << R"lua(
+        enemy { score = 20, update = function(self) ecs.get(self.entity, "Velocity").y = -self.age end })lua";
+    scripts.reload("drifter");
+    scripts.update(0.1F);
+    CHECK(registry.get<Velocity>(before).value.y == Approx(-0.2F));
+    CHECK(registry.get<aegis2d::ecs::ScoreValue>(before).points == 10);
+    CHECK(registry.get<aegis2d::ecs::ScoreValue>(scripts.spawn("drifter", Vec2{})).points == 20);
+    CHECK(scripts.find("drifter")->score == 20);
+    CHECK_THROWS_AS(scripts.reload("boss"), std::invalid_argument);
+}
+
+TEST_CASE("a wrong script is refused on reload, and the type keeps its own",
+          "[rtype][enemies][357]") {
+    Registry registry;
+    const auto folder = write_folder("reload_wrong", {{"drifter.lua", R"lua(
+        enemy { score = 10, update = function(self) ecs.get(self.entity, "Velocity").y = 50 end })lua"}});
+    EnemyScripts scripts{registry, folder};
+    const Entity drifter = scripts.spawn("drifter", Vec2{});
+    for (const std::string_view wrong :
+         {"enemy { update = function( }", "local x = 1", "enemy { score = -5 }"}) {
+        INFO(wrong);
+        std::ofstream{folder / "drifter.lua"} << wrong;
+        CHECK_THROWS_AS(scripts.reload("drifter"), ConfigError);
+        registry.get<Velocity>(drifter).value.y = 0.0F;
+        scripts.update(0.1F);
+        CHECK(registry.get<Velocity>(drifter).value.y == 50.0F);
+        CHECK(scripts.find("drifter")->score == 10);
+    }
+}
+
+TEST_CASE("a broken behavior runs again once its script is fixed", "[rtype][enemies][357]") {
+    Registry registry;
+    const auto folder = write_folder("reload_fixed", {{"drifter.lua", R"lua(
+        enemy { update = function(self) error("not yet") end })lua"}});
+    EnemyScripts scripts{registry, folder};
+    const Entity drifter = scripts.spawn("drifter", Vec2{});
+    scripts.update(0.1F);
+    std::ofstream{folder / "drifter.lua"} << R"lua(
+        enemy { update = function(self) ecs.get(self.entity, "Velocity").x = 7 end })lua";
+    scripts.reload("drifter");
+    scripts.update(0.1F);
+    CHECK(registry.get<Velocity>(drifter).value.x == 7.0F);
+}
+
+TEST_CASE("editing a pattern changes the enemies of the running game", "[rtype][enemies][357]") {
+    const auto folder = write_folder("running", {{"drifter.lua", R"lua(
+        enemy { spawn = function(self) ecs.get(self.entity, "Velocity").x = -100 end })lua"}});
+    ServerGame game{std::nullopt, folder, true};
+    const Entity drifter = game.spawn_enemy("drifter", Vec2{1000.0F, 300.0F});
+    run(game, 1);
+    CHECK(game.registry().get<Velocity>(drifter).value == Vec2{-100.0F, 0.0F});
+
+    // A new pattern: it climbs. The game looks at the files every 250 ms.
+    std::ofstream{folder / "drifter.lua"} << R"lua(
+        enemy {
+            spawn = function(self) ecs.get(self.entity, "Velocity").x = -100 end,
+            update = function(self) ecs.get(self.entity, "Velocity").y = -80 end,
+        })lua";
+    std::this_thread::sleep_for(std::chrono::milliseconds{300});
+    run(game, 1);
+    CHECK(game.registry().get<Velocity>(drifter).value == Vec2{-100.0F, -80.0F});
+
+    // A mistake is logged, and the game plays on with the last pattern that worked.
+    std::ofstream{folder / "drifter.lua"} << "enemy { update = function( }";
+    std::this_thread::sleep_for(std::chrono::milliseconds{300});
+    game.registry().get<Velocity>(drifter).value.y = 0.0F;
+    run(game, 1);
+    CHECK(game.registry().get<Velocity>(drifter).value.y == -80.0F);
+}
+
+TEST_CASE("a game reloads its scripts only when asked to", "[rtype][enemies][357]") {
+    const auto folder = write_folder("not_watched", {{"drifter.lua", "enemy {}"}});
+    ServerGame game{std::nullopt, folder, false};
+    const Entity drifter = game.spawn_enemy("drifter", Vec2{1000.0F, 300.0F});
+    std::ofstream{folder / "drifter.lua"} << R"lua(
+        enemy { update = function(self) ecs.get(self.entity, "Velocity").y = -80 end })lua";
+    std::this_thread::sleep_for(std::chrono::milliseconds{300});
+    run(game, 1);
+    CHECK(game.registry().get<Velocity>(drifter).value.y == 0.0F);
 }
