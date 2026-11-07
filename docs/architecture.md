@@ -116,7 +116,11 @@ refresh of the lobby (`scores()`), and the room list screen shows it. The admini
 (`AdminConsole`, on the engine's `core::Commands`; `ConsoleInput` reads the lines on a thread
 of its own, and the network thread runs them between two updates): `rooms`, `players`,
 `say` (a `ChatMessage` of the server, `player` 254, to every session), `close` (each session
-of the room gets `Logout` with `RoomClosed`) and `stop`. A bound player joins the
+of the room gets `Logout` with `RoomClosed`), `kick` and `ban` (`ServerNetwork::remove_player()`:
+`Logout` with `Kicked` or `Banned`, a message of the server to the others, `PlayerLeft` with
+`Kicked` in its game) and `stop`. The banned addresses are a `BanList` (`--bans`), a JSON file
+written like the scoreboard and read at start, checked before anything else of a login,
+which then gets `LoginRejected` with `Banned`. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid

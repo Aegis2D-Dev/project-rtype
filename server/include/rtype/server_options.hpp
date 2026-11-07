@@ -25,12 +25,15 @@ inline constexpr std::uint32_t default_max_rooms = 4;
 /// @brief File of the best scores, in the folder the server runs from.
 inline constexpr std::string_view default_scores_file = "scores.json";
 
+/// @brief File of the banned addresses, in the folder the server runs from.
+inline constexpr std::string_view default_bans_file = "bans.json";
+
 /// @brief Usage line printed by `--help` and after a command line error.
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
     "                     [--max-packet-rate <datagrams per second>] [--compress <bytes>]\n"
-    "                     [--max-rooms <count>] [--scores <file.json>] [--trace <file.json>]\n"
-    "                     [--help] [--version]\n";
+    "                     [--max-rooms <count>] [--scores <file.json>] [--bans <file.json>]\n"
+    "                     [--trace <file.json>] [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -61,6 +64,8 @@ struct ServerOptions {
     std::uint32_t max_rooms = default_max_rooms;
     /// @brief File of the best scores (Scoreboard).
     std::filesystem::path scores{default_scores_file};
+    /// @brief File of the banned addresses (BanList).
+    std::filesystem::path bans{default_bans_file};
     /// @brief File the timings of every tick are written to when the server stops, in the
     /// Chrome trace format (Perfetto), or `std::nullopt` (the default) for none.
     std::optional<std::filesystem::path> trace;

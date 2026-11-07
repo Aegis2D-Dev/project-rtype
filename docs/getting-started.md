@@ -90,6 +90,7 @@ Both binaries accept `--version`, which prints the version and exits. The server
 | `--compress <bytes>` | off | Sends the snapshots and events of at least that many bytes (1 to 1182) compressed with LZ4 when that makes them smaller |
 | `--max-rooms <count>` | `4` | Games played at once, 4 players in each (1 to 64): a room opens with its first player and closes with its last |
 | `--scores <file.json>` | `scores.json` | Where the 10 best scores are kept across runs, in the folder the server runs from by default |
+| `--bans <file.json>` | `bans.json` | Where the addresses banned with `ban` are kept across runs (`{"bans": ["203.0.113.7"]}`); remove one from the file to lift its ban |
 | `--trace <file.json>` | off | Times every tick of every room, its systems and the sending of its snapshots and events, and writes them to the file when the server stops, in the Chrome trace format: open it in [Perfetto](https://ui.perfetto.dev) to see the ticks on a timeline, a track per room |
 | `--help` | | Prints the usage and exits |
 
@@ -152,6 +153,8 @@ their answer:
 | `players` | Lists every player: its room and number, or the lobby, and the address it plays from |
 | `say <text>` | Sends a message of the server to every player, shown as the server's in their chat |
 | `close <room>` | Ends the sessions of a room: its players are told the administrator closed it |
+| `kick <player>` | Ends the session of a player: it is told why, the others that it was removed |
+| `ban <player>` | The same, and its IP address cannot log in again, even after a restart (`--bans`) |
 | `stop` | Stops the server, telling the players, as Ctrl+C does |
 | `help`, `help <command>` | Lists the commands, or tells how to use one |
 

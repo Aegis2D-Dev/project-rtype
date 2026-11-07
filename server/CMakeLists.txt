@@ -2,6 +2,7 @@
 # the game instance.
 add_library(rtype_server STATIC
     admin_console.cpp
+    ban_list.cpp
     event_tracker.cpp
     game_instance.cpp
     game_server.cpp

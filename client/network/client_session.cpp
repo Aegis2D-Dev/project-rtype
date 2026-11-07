@@ -71,6 +71,8 @@ std::string rejection_text(std::uint8_t reason) {
         return "another player has this name";
     case LoginRejection::GameStarted:
         return "the game has started";
+    case LoginRejection::Banned:
+        return "the administrator of the server banned this address";
     }
     return "the server refused the login";
 }
@@ -117,6 +119,10 @@ std::string logout_text(std::uint8_t reason) {
         return "the server ended the session after an invalid packet";
     case LogoutReason::RoomClosed:
         return "the administrator of the server closed your room";
+    case LogoutReason::Kicked:
+        return "the administrator of the server removed you";
+    case LogoutReason::Banned:
+        return "the administrator of the server banned you";
     case LogoutReason::Left:
         break;
     }

@@ -78,6 +78,8 @@ enum class LoginRejection : std::uint8_t {
     NameTaken = 4,
     /// @brief The game is running and does not take new players.
     GameStarted = 5,
+    /// @brief The administrator banned the address the client connects from.
+    Banned = 6,
 };
 
 /// @brief Why a session ends, the `reason` of `Logout`.
@@ -92,6 +94,10 @@ enum class LogoutReason : std::uint8_t {
     ProtocolError = 3,
     /// @brief The administrator of the server closed the player's room.
     RoomClosed = 4,
+    /// @brief The administrator of the server removed the player.
+    Kicked = 5,
+    /// @brief The administrator banned the player's address: it cannot log in again.
+    Banned = 6,
 };
 
 /// @brief Content of a `LoginRequest`.

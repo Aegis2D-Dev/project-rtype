@@ -17,6 +17,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <rtype/admin_console.hpp>
+#include <rtype/ban_list.hpp>
 #include <rtype/chat.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
@@ -268,6 +269,9 @@ TEST_CASE("the room limit is read from the command line", "[server][options]") {
 
 TEST_CASE("the scores file is read from the command line", "[server][options]") {
     CHECK(parse({}).scores == std::filesystem::path{rtype::default_scores_file});
+    CHECK(parse({}).bans == std::filesystem::path{rtype::default_bans_file});
+    CHECK(parse({"--bans", "/var/lib/rtype/bans.json"}).bans ==
+          std::filesystem::path{"/var/lib/rtype/bans.json"});
     CHECK(parse({"--scores", "/var/lib/rtype/best.json"}).scores ==
           std::filesystem::path{"/var/lib/rtype/best.json"});
     CHECK(error_of({"--scores"}) == "--scores needs a value");
@@ -669,7 +673,7 @@ TEST_CASE("every admin command works, and a wrong one says why", "[server][admin
     const aegis2d::core::CommandResult no_room = run("close 1");
     CHECK(no_room.status == CommandStatus::Failed);
     CHECK(no_room.text.contains("room 1 is not in use"));
-    CHECK(run("kick R9").status == CommandStatus::Unknown);
+    CHECK(run("teleport R9").status == CommandStatus::Unknown);
     CHECK(server.sessions().size() == 3);
     CHECK(!stopped);
 
@@ -687,6 +691,70 @@ TEST_CASE("every admin command works, and a wrong one says why", "[server][admin
     // stop: what the server was given.
     CHECK(run("stop").text == "stopping");
     CHECK(stopped);
+}
+
+TEST_CASE("a kicked player sees why, the others are told, and a ban outlives a restart",
+          "[server][admin][bans]") {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_server_bans_test";
+    std::filesystem::remove_all(folder);
+    const std::filesystem::path file = folder / "bans.json";
+    rtype::BanList bans{file};
+    NetworkContext context;
+    std::optional<ServerNetwork> server{std::in_place, context, 0, 0, rtype::SessionTable{31}};
+    rtype::AdminConsole console{*server, [] {}};
+    using aegis2d::core::CommandStatus;
+    const auto chats = [](const Player& player) {
+        std::vector<std::string> texts;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                CHECK(chat->player == rtype::server_player);
+                texts.push_back(chat->text);
+            }
+        }
+        return texts;
+    };
+    Player kicked{context, *server};
+    static_cast<void>(log_in(context, *server, kicked, "R9"));
+    Player other{context, *server};
+    static_cast<void>(log_in(context, *server, other, "Kaz"));
+
+    // Without a ban list, nobody is banned; an unknown player is said so.
+    CHECK(console.run("ban R9").status == CommandStatus::Failed);
+    const aegis2d::core::CommandResult unknown = console.run("kick Lolo");
+    CHECK(unknown.status == CommandStatus::Failed);
+    CHECK(unknown.text.contains("no player is named Lolo"));
+    CHECK(server->sessions().size() == 2);
+
+    // kick: the player is told why and its session ends; the other is told.
+    CHECK(console.run("kick R9").text == "R9 removed");
+    REQUIRE(pump(context, *server, [&] { return kicked.closed && !chats(other).empty(); }));
+    CHECK(rtype::read_logout(kicked.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::Kicked));
+    CHECK(chats(other) == std::vector<std::string>{"R9 was removed by the administrator"});
+    CHECK(server->sessions().size() == 1);
+
+    // ban: the same, and the address cannot log in again.
+    server->set_bans(&bans);
+    CHECK(console.run("ban Kaz").text == "Kaz banned (127.0.0.1)");
+    REQUIRE(pump(context, *server, [&] { return other.closed; }));
+    CHECK(rtype::read_logout(other.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::Banned));
+    CHECK(bans.banned(aegis2d::net::Endpoint::loopback(0)));
+    const auto refused = [&](ServerNetwork& network) {
+        Player again{context, network};
+        again.send(rtype::write_login_request(request("Again")));
+        REQUIRE(pump(context, network, [&] { return again.closed; }));
+        REQUIRE(!again.received.empty());
+        return rtype::read_login_rejected(again.received.back());
+    };
+    CHECK(refused(*server) == static_cast<std::uint8_t>(LoginRejection::Banned));
+
+    // After a restart, the bans read back from their file still refuse the address.
+    server.reset();
+    rtype::BanList reread{file};
+    ServerNetwork restarted{context, 0, 0, rtype::SessionTable{37}};
+    restarted.set_bans(&reread);
+    CHECK(refused(restarted) == static_cast<std::uint8_t>(LoginRejection::Banned));
 }
 
 TEST_CASE("the console takes the lines typed, until the end of the input", "[server][admin]") {

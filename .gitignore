@@ -10,3 +10,4 @@ compile_commands.json
 graphify-out/
 # The best scores of an r-type_server run from the clone (--scores).
 /scores.json
+/bans.json

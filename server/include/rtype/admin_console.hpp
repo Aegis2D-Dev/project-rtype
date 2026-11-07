@@ -20,6 +20,9 @@ namespace rtype {
 /// - `players`: every session, with its room (or the lobby), its number and its address;
 /// - `say <text>`: a message of the server to every player (RFC section 3.8);
 /// - `close <room>`: ends the sessions of a room, each told `RoomClosed`;
+/// - `kick <player>`: ends a player's session, telling it (`Kicked`) and the others;
+/// - `ban <player>`: the same (`Banned`), and its address may not log in again, even after
+///   a restart (ServerNetwork::bans());
 /// - `stop`: stops the server, as Ctrl+C does (the `stop` given, request_stop() in
 ///   `r-type_server`);
 /// - `help`, `help <command>`: what the commands do.

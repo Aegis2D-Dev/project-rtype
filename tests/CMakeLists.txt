@@ -6,6 +6,7 @@ list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
 include(Catch)
 
 add_executable(rtype_tests
+    ban_list_test.cpp
     bot_test.cpp
     chat_log_test.cpp
     chat_test.cpp
