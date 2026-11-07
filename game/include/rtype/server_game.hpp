@@ -2,6 +2,7 @@
 /// @brief The R-Type simulation run by the server: world, systems and players.
 #pragma once
 #include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/hot_reload.hpp>
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/collision.hpp>
 #include <aegis2d/ecs/components.hpp>
@@ -14,13 +15,16 @@
 #include <aegis2d/ecs/system.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/position_history.hpp>
 #include <rtype/tuning.hpp>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace rtype {
@@ -30,11 +34,12 @@ namespace rtype {
 ///
 /// 1. `steering`: player ships take the velocity of their held directions (steer_ships());
 /// 2. `movement`: every entity moves by its velocity;
-/// 3. `sine_motion`: Bydos slaves weave up and down on top of it;
+/// 3. `behaviors`: the script of each enemy's type moves it (EnemyScripts::update());
 /// 4. `play_area`: player ships are kept on screen (keep_ships_in_area());
 /// 5. `weapons`: players holding fire with a reloaded weapon fire a missile;
 /// 6. `enemy_fire`: enemies on screen with a reloaded weapon fire a missile to the left;
-/// 7. `spawn`: Bydos slaves appear at random on the right edge (only with a seed);
+/// 7. `spawn`: enemies of type tuning::random_enemy appear at random on the right edge
+///    (only with a seed);
 /// 8. `waves`: the enemies of the waves given to play_waves() appear when due;
 /// 9. `collision`: the grid and the layer masks give the contacts of the tick;
 /// 10. `damage`: contacts remove health, consume missiles and make kills;
@@ -57,7 +62,14 @@ public:
     /// @param seed Seed of the random Bydos spawns: the same seed gives the same spawns, so
     /// a game can be replayed from its logged seed. Without one, the `spawn` system is
     /// disabled and only what the caller creates is in the world (tests, scripted levels).
-    explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt);
+    /// @param enemies Directory of the enemy scripts (EnemyScripts).
+    /// @param hot_reload `true` to reload a script when its file changes, checked at most
+    /// every 250 ms by tick(); by default in debug builds (`core::hot_reload_by_default`).
+    /// @throws aegis2d::core::ConfigError If a script is wrong, or, with a seed, none gives
+    /// tuning::random_enemy.
+    explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt,
+                        const std::filesystem::path& enemies = default_enemies_directory(),
+                        bool hot_reload = aegis2d::core::hot_reload_by_default);
     ServerGame(const ServerGame&) = delete;
     ServerGame& operator=(const ServerGame&) = delete;
     ServerGame(ServerGame&&) = delete;
@@ -93,6 +105,17 @@ public:
     /// @return Ships that have lives left.
     [[nodiscard]] std::size_t players() const;
 
+    /// @brief Creates an enemy of a type its script gives (EnemyScripts::spawn()).
+    /// @param type Name of the type, as waves files name it.
+    /// @param position Where it appears.
+    /// @return The enemy, or a null handle if the `spawn` of its type failed.
+    /// @throws std::invalid_argument If no script gives @p type.
+    aegis2d::ecs::Entity spawn_enemy(std::string_view type, aegis2d::Vec2 position);
+
+    /// @brief Enemy types of the game and the scripts of their behaviors.
+    /// @return The scripts.
+    [[nodiscard]] EnemyScripts& enemies() noexcept;
+
     /// @brief Plays enemy waves from now on, replacing the ones played so far.
     /// @param waves Schedule read by load_waves(), at its start.
     void play_waves(aegis2d::ecs::WaveSchedule waves);
@@ -120,6 +143,8 @@ public:
     [[nodiscard]] std::uint32_t rewind(aegis2d::ecs::Entity player) const;
 
     /// @brief Runs one simulation step: every system, in order.
+    /// @details With hot reload, the enemy scripts whose file changed are read again first
+    /// (EnemyScripts::reload()); a wrong one is logged and the type keeps the one it had.
     /// @param step Duration of the step, `core::step_from_rate(tuning::tick_rate)`.
     void tick(aegis2d::core::Duration step);
 
@@ -191,6 +216,8 @@ private:
     void register_systems();
 
     aegis2d::ecs::Registry registry_;
+    EnemyScripts enemies_;
+    aegis2d::core::HotReload hot_;
     aegis2d::ecs::Scheduler systems_;
     aegis2d::ecs::CollisionGrid grid_;
     std::vector<aegis2d::ecs::Entity> shooters_;

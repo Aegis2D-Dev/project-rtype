@@ -21,11 +21,14 @@
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/lagometer.hpp>
+#include <rtype/level_editor.hpp>
 #include <rtype/room_list_form.hpp>
+#include <rtype/server_game.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -45,6 +48,11 @@ enum class ClientScreen : std::uint8_t {
     Game,
     /// @brief The server stopped or went silent (#128).
     Lost,
+    /// @brief The level editor, on the waves file of `--edit`, with no server.
+    Editor,
+    /// @brief A game of the waves of the level editor, played on the client from the wave
+    /// edited, with no server.
+    Playtest,
 };
 
 /// @brief The keys that change the player's settings, on every screen.
@@ -99,6 +107,8 @@ private:
     void room_screen();
     void game_screen();
     void lost_screen();
+    void editor_screen();
+    void playtest_screen();
     void join(const ClientSettings& settings);
     void leave();
     void update_session();
@@ -132,6 +142,12 @@ private:
     std::string room_error_;
     ScreenMessage message_;
     std::string lost_reason_;
+    std::optional<LevelEditor> editor_;
+    ScreenMessage editor_message_;
+    std::unique_ptr<ServerGame> playtest_;
+    std::size_t playtest_wave_ = 0;
+    EditorView editor_view_;
+    aegis2d::ecs::Entity playtest_ship_;
     ClientScreen screen_ = ClientScreen::Connect;
     std::size_t row_ = 0;
     bool quit_ = false;
@@ -139,6 +155,7 @@ private:
     std::chrono::steady_clock::time_point started_;
     std::chrono::steady_clock::time_point last_frame_;
     float frame_seconds_ = 0.0F;
+    float playtest_lag_ = 0.0F;
 };
 
 } // namespace rtype
