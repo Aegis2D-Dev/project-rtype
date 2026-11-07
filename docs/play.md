@@ -77,6 +77,7 @@ server and `--join`:
 | `--frames <count>` | Quit after this many frames (tests, captures) |
 | `--screenshot <png>` | Save the frame before the last one (after 300 frames by default) |
 | `--metrics` | Show the frame metrics from the start, as F12 does |
+| `--edit <file>` | Open a waves file in the [level editor](#level-editor) instead of the connect screen |
 
 ## Controls
 
@@ -188,6 +189,26 @@ way up), orange above, a frame of 33 ms or more filling the graph. `--metrics` s
 from the start, for a capture.
 
 ![R-Type with the frame metrics: 119 frames per second, 8.4 ms a frame, 11 entities, 410 sprites in 12 draw calls, and an orange bar for a slower frame.](images/frame-metrics.png)
+
+## Level editor
+
+`r-type_client --edit assets/waves/stage1.json` opens a waves file in the level editor,
+with no server: the play area is shown a little smaller, with the strip beyond its right
+edge where the enemies appear, and each enemy of the wave shown at its place, with the
+second it appears in its wave under it.
+
+| Action | Mouse or key |
+|---|---|
+| Place an enemy (a Bydos slave) | Left click on an empty place |
+| Move an enemy | Left click on it and drag |
+| Remove an enemy | Right click on it |
+| Next / previous wave | Page Down / Page Up |
+| Leave the editor | Escape |
+
+Each group of the file (`count`, `every`, `step`) shows as one enemy per member, so each can
+be moved on its own. Positions are whole logical pixels, kept within the play area and the
+strip. The top of the screen tells the wave shown, its enemies, and whether something
+changed.
 
 ## Accessibility
 

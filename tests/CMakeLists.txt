@@ -19,6 +19,7 @@ add_executable(rtype_tests
     input_test.cpp
     lag_compensation_test.cpp
     lagometer_test.cpp
+    level_editor_test.cpp
     login_test.cpp
     network_stats_test.cpp
     player_notices_test.cpp

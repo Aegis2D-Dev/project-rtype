@@ -21,6 +21,7 @@
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/lagometer.hpp>
+#include <rtype/level_editor.hpp>
 #include <rtype/room_list_form.hpp>
 
 #include <chrono>
@@ -45,6 +46,8 @@ enum class ClientScreen : std::uint8_t {
     Game,
     /// @brief The server stopped or went silent (#128).
     Lost,
+    /// @brief The level editor, on the waves file of `--edit`, with no server.
+    Editor,
 };
 
 /// @brief The keys that change the player's settings, on every screen.
@@ -99,6 +102,7 @@ private:
     void room_screen();
     void game_screen();
     void lost_screen();
+    void editor_screen();
     void join(const ClientSettings& settings);
     void leave();
     void update_session();
@@ -132,6 +136,8 @@ private:
     std::string room_error_;
     ScreenMessage message_;
     std::string lost_reason_;
+    std::optional<LevelEditor> editor_;
+    EditorView editor_view_;
     ClientScreen screen_ = ClientScreen::Connect;
     std::size_t row_ = 0;
     bool quit_ = false;

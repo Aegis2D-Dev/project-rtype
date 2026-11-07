@@ -14,6 +14,7 @@
 #include <aegis2d/render/letterbox.hpp>
 #include <aegis2d/render/opengl/renderer.hpp>
 
+#include "editor_view.hpp"
 #include "game_art.hpp"
 #include "game_sounds.hpp"
 #include "game_view.hpp"
@@ -101,6 +102,16 @@ ClientApp::ClientApp(const ClientOptions& options)
     metrics_overlay_.set_visible(options.metrics);
     core::log_info("settings: {}", preferences_.file.string());
     select(static_cast<std::size_t>(ConnectField::Name));
+    // --edit opens a waves file in the level editor, or says why it cannot.
+    if (options.edit.has_value()) {
+        try {
+            editor_.emplace(LevelDraft::from_file(*options.edit));
+            screen_ = ClientScreen::Editor;
+            core::log_info("level editor: {}", options.edit->string());
+        } catch (const core::ConfigError& error) {
+            message_ = {.text = error.what(), .error = true};
+        }
+    }
     // --join joins with the fields as shown, so a rejoin from this screen is the same.
     if (options.join) {
         if (const auto settings = fields_.form().submit();
@@ -155,6 +166,9 @@ bool ClientApp::frame() {
         break;
     case ClientScreen::Lost:
         lost_screen();
+        break;
+    case ClientScreen::Editor:
+        editor_screen();
         break;
     }
     // The fields take typed text while one is selected on the connect screen; the game's
@@ -382,6 +396,28 @@ void ClientApp::lost_screen() {
     }
 }
 
+// The level editor: the mouse places, moves and removes the enemies of the wave shown (#369).
+void ClientApp::editor_screen() {
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (keyboard.pressed(Key::Escape) || !editor_.has_value()) {
+        editor_.reset();
+        screen_ = ClientScreen::Connect;
+        return;
+    }
+    if (keyboard.pressed(Key::PageDown)) {
+        editor_->next_wave();
+    }
+    if (keyboard.pressed(Key::PageUp)) {
+        editor_->previous_wave();
+    }
+    const platform::Mouse& mouse = window_.mouse();
+    editor_->update({.position = renderer_.to_logical(mouse.position()),
+                     .pressed = mouse.pressed(platform::MouseButton::Left),
+                     .held = mouse.held(platform::MouseButton::Left),
+                     .remove = mouse.pressed(platform::MouseButton::Right)},
+                    editor_view_);
+}
+
 void ClientApp::join(const ClientSettings& settings) {
     message_ = {};
     joined_ = settings;
@@ -516,6 +552,13 @@ void ClientApp::draw() {
         case ClientScreen::Lost:
             draw_status(renderer_, font_, "CONNECTION LOST", sentence(lost_reason_),
                         "ENTER: BACK TO THE MENU    ESCAPE: QUIT", preferences_);
+            break;
+        case ClientScreen::Editor:
+            if (editor_.has_value()) {
+                draw_editor(renderer_, font_, art_, *editor_, editor_view_,
+                            renderer_.to_logical(window_.mouse().position()),
+                            options_.edit.value_or("").filename().string(), preferences_);
+            }
             break;
         case ClientScreen::Rooms:
             draw_rooms(renderer_, font_, room_list_, message_,
