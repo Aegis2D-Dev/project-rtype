@@ -36,7 +36,9 @@ accessibility page lists these screens and their options (Aegis2D-Dev/aegis2d#48
 ## Commits
 - `aaafac6` feat(client): added gamepad to the lobby and scaled chat and lagometer
 - `dc7b9f8` feat(tests): added the lobby keys from a gamepad
-- feat(docs): documented the accessibility of the new screens and updated changelogs
+- `c407e0d` feat(docs): documented the accessibility of the new screens and updated changelogs
+- `487718a` feat(format): fixed format
+- feat(changelog): updated changelogs
 
 ## Notes
 - The engine's part, the accessibility page, is Aegis2D-Dev/aegis2d#484, which closes the
