@@ -24,6 +24,7 @@ add_executable(rtype_tests
     position_history_test.cpp
     rate_limit_test.cpp
     room_test.cpp
+    scoreboard_test.cpp
     rtt_test.cpp
     server_game_test.cpp
     server_test.cpp
