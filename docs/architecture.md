@@ -100,7 +100,9 @@ goes to the `Scoreboard` of the server (`GameServer::keep_scores()`, `--scores`)
 best first, in a JSON file (`{"scores": [{"name": "R9", "score": 1200}]}`) written at each
 change through a temporary file that then replaces it, so a crash never leaves half a file. A
 file that cannot be read or is not a board is logged and replaced by the next score: the
-server starts anyway. A bound player joins the
+server starts anyway. A client reads the board with `ListScores`, answered by `ScoreList`
+(RFC section 3.9); `ClientSession` asks for it with the rooms, at the login and at each
+refresh of the lobby (`scores()`), and the room list screen shows it. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid

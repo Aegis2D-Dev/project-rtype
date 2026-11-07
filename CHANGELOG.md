@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#96](https://github.com/Aegis2D-Dev/project-rtype/pull/96) | Best scores in the lobby | `feat/client-lobby-scoreboard` | Open | 2026-11-07 | [2026-11-07-client-lobby-scoreboard](changelogs/2026-11-07-client-lobby-scoreboard.md) |
 | [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) | Best scores kept in a JSON file across restarts | `feat/server-scoreboard` | Open | 2026-11-07 | [2026-11-07-server-scoreboard](changelogs/2026-11-07-server-scoreboard.md) |
 | [#91](https://github.com/Aegis2D-Dev/project-rtype/pull/91) | Graphify merge driver for the graph output | `feat/gitattributes-graphify-merge` | Merged | 2026-11-07 | [2026-11-07-gitattributes-graphify-merge](changelogs/2026-11-07-gitattributes-graphify-merge.md) |
 | [#83](https://github.com/Aegis2D-Dev/project-rtype/pull/83) | Frame metrics in the client, with F12 | `feat/client-frame-metrics` | Open | 2026-11-05 | [2026-11-05-client-frame-metrics](changelogs/2026-11-05-client-frame-metrics.md) |

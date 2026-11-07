@@ -38,7 +38,8 @@ what keeps the client out once it tries is told too: the server is full, the nam
 taken, the server does not answer, or its UDP port is blocked.
 
 Once logged in, the client shows the **rooms** of the server, refreshed every second: each
-one with its name, its players and its size, waiting for players or playing. Each room is a
+one with its name, its players and its size, waiting for players or playing. Under them are
+the **best scores** of the server, the 10 best of its games, kept across its restarts. Each room is a
 game of its own, of up to 4 players. Choose one and press Enter to go in it, or create one
 on the last row: type its name, choose its size, and press Enter; it is listed at once,
 ready to be joined:
