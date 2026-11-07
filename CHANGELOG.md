@@ -5,8 +5,9 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#96](https://github.com/Aegis2D-Dev/project-rtype/pull/96) | Best scores in the lobby | `feat/client-lobby-scoreboard` | Open | 2026-11-07 | [2026-11-07-client-lobby-scoreboard](changelogs/2026-11-07-client-lobby-scoreboard.md) |
-| [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) | Best scores kept in a JSON file across restarts | `feat/server-scoreboard` | Open | 2026-11-07 | [2026-11-07-server-scoreboard](changelogs/2026-11-07-server-scoreboard.md) |
+| [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) | Best scores in the lobby brought to develop | `chore/client-lobby-scoreboard-to-develop` | Open | 2026-11-07 | [2026-11-07-develop-lobby-scoreboard](changelogs/2026-11-07-develop-lobby-scoreboard.md) |
+| [#96](https://github.com/Aegis2D-Dev/project-rtype/pull/96) | Best scores in the lobby | `feat/client-lobby-scoreboard` | Merged | 2026-11-07 | [2026-11-07-client-lobby-scoreboard](changelogs/2026-11-07-client-lobby-scoreboard.md) |
+| [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) | Best scores kept in a JSON file across restarts | `feat/server-scoreboard` | Merged | 2026-11-07 | [2026-11-07-server-scoreboard](changelogs/2026-11-07-server-scoreboard.md) |
 | [#94](https://github.com/Aegis2D-Dev/project-rtype/pull/94) | Chat in the client, opened with T | `feat/client-chat` | Merged | 2026-11-07 | [2026-11-07-client-chat](changelogs/2026-11-07-client-chat.md) |
 | [#93](https://github.com/Aegis2D-Dev/project-rtype/pull/93) | Chat relayed in each room, with length and rate limits | `feat/server-chat-relay` | Merged | 2026-11-07 | [2026-11-07-server-chat-relay](changelogs/2026-11-07-server-chat-relay.md) |
 | [#92](https://github.com/Aegis2D-Dev/project-rtype/pull/92) | Room rules applied to their games | `feat/server-room-rules` | Merged | 2026-11-07 | [2026-11-07-server-room-rules](changelogs/2026-11-07-server-room-rules.md) |

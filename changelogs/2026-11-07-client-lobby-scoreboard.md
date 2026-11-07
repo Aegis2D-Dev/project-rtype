@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#96](https://github.com/Aegis2D-Dev/project-rtype/pull/96) (opened 2026-11-07) |
 | Branch | `feat/client-lobby-scoreboard` → `develop` (stacked on `feat/server-scoreboard`, #95) |
-| Status | Open |
+| Status | Merged on 2026-11-07 into `feat/server-scoreboard` (`c7033b0`), brought to `develop` by #97 |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#313](https://github.com/Aegis2D-Dev/aegis2d/issues/313) feat(client): scoreboard in the lobby |
 
@@ -52,10 +52,7 @@ board (#95) in a `ScoreList`. Thirteenth ticket of the *Network: multi-instance 
 - `ctest`: 309 of 310 tests pass; under ASan and UBSan, the test cases of the scores, the
   client and the logins pass. *a flooding address is cut off, and the players play on* fails
   on the machine used, as on `develop`, and passes in CI.
-- **Draft**: the *Build and test (Windows)* job of CI fails twice in a row on *the client's
-  entities mirror the server's* (SEGFAULT), a test this pull request does not change; the same
-  test crashed once on #95 since `develop` was merged in, and passed on its rerun. It passes
-  30 times out of 30 on the machine used, 10 out of 10 under ASan and UBSan, and under TSan; no
-  code of this pull request runs in it (no game ends there, no scores are asked). It needs a
-  Windows machine to debug before review.
+- The *Build and test (Windows)* job failed on *the client's entities mirror the server's*
+  (SEGFAULT), a test this pull request does not change: the same crash hit #93, which has none
+  of its code, since `develop` got the enemy scripts and the level editor; a rerun passed.
 
