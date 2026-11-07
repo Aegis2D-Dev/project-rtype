@@ -33,17 +33,18 @@ first release lists every pull request, and a changelog with nothing new stops t
 ## Commits
 - `1b725c3` feat(ci): added release notes from the changelogs
 - `3190398` feat(tests): added release notes since the previous release
-- feat(docs): documented the release notes and updated changelogs
+- `c352427` feat(docs): documented the release notes and updated changelogs
+- `5968eff` feat(changelog): updated changelogs
+- feat(changelog): updated changelogs
 
 ## Notes
 - Refs Aegis2D-Dev/aegis2d#388 without closing it: the ticket is done once `develop` is
   delivered to `master` and the final delivery is tagged there. The first delivery was
   tagged `v0.2.0` (the version in `project()`), so the final one needs `project()` bumped
   first, to `0.3.0` for instance: to settle with the team.
-- Draft: the *Package* jobs of this pull request fail, as on any pull request touching the
-  workflow since the engine's first delivery (#53 already): they build the game with the
-  engine's `master`, delivered on 2026-10-17, which lacks `aegis2d::script` and
-  `aegis2d::shmup` (`CMake Error at game/CMakeLists.txt:13`). They pass once the engine's
+- Draft: the *Package* jobs of this pull request fail. They build the game with the
+  engine's `master`, delivered on 2026-10-17, which lacks the `script` and `shmup`
+  modules the game now links (`CMake Error at game/CMakeLists.txt:13`, `aegis2d::script`). They pass once the engine's
   `develop` is delivered to `master`; rerun them then, before merging.
 - The notes of the final delivery were generated locally from `v0.2.0`'s changelog: 53 pull
   requests.
