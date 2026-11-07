@@ -4,6 +4,7 @@
 # Variables: CHANGELOG, the changelog of the release; PREVIOUS, the previous release's (empty
 # or missing for the first release); BASE_URL, where the changelog's relative links point
 # (https://github.com/<owner>/<repo>/blob/<tag>/); OUTPUT, the file the notes are appended to.
+cmake_minimum_required(VERSION 3.30) # IN_LIST, which a script without it does not know
 set(row_regex "^\\| \\[#([0-9]+)\\]\\(([^)]+)\\) \\| ([^|]+) \\|.*\\[[^]]+\\]\\(([^)]+)\\) \\|$")
 
 set(known "")
