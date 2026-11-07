@@ -29,13 +29,14 @@ const Component* find(const ecs::Registry& world, ecs::Entity entity) {
 
 } // namespace
 
-GameInstance::GameInstance(std::optional<std::uint64_t> seed, ecs::WaveSchedule waves)
-    : seed_{seed}, waves_{std::move(waves)} {
+GameInstance::GameInstance(std::optional<std::uint64_t> seed, ecs::WaveSchedule waves,
+                           GameRules rules)
+    : seed_{seed}, waves_{std::move(waves)}, rules_{rules} {
     start();
 }
 
 void GameInstance::start() {
-    game_ = std::make_unique<ServerGame>(seed_);
+    game_ = std::make_unique<ServerGame>(seed_, rules_);
     game_->play_waves(waves_);
     ships_.fill(std::nullopt);
     scores_.fill(0);

@@ -4,6 +4,7 @@
 
 #include <rtype/entities.hpp>
 #include <rtype/lag_compensation.hpp>
+#include <rtype/layers.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/ship_movement.hpp>
 
@@ -22,11 +23,11 @@ using aegis2d::Vec2;
 
 namespace {
 
-ecs::SpawnSettings bydos_spawns() noexcept {
+ecs::SpawnSettings bydos_spawns(float scale) noexcept {
     return ecs::SpawnSettings{.from = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_top},
                               .to = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_bottom},
-                              .min_interval = tuning::bydos_spawn_min_interval,
-                              .max_interval = tuning::bydos_spawn_max_interval};
+                              .min_interval = tuning::bydos_spawn_min_interval * scale,
+                              .max_interval = tuning::bydos_spawn_max_interval * scale};
 }
 
 bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
@@ -38,9 +39,9 @@ bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
 
 } // namespace
 
-ServerGame::ServerGame(std::optional<std::uint64_t> seed)
+ServerGame::ServerGame(std::optional<std::uint64_t> seed, GameRules rules)
     : grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
-      spawner_{bydos_spawns(), seed.value_or(0)} {
+      rules_{rules}, spawner_{bydos_spawns(rules.spawn_interval_scale), seed.value_or(0)} {
     register_systems();
     systems_.set_enabled("spawn", seed_.has_value());
 }
@@ -55,7 +56,11 @@ void ServerGame::register_systems() {
         shmup::trigger_weapons(world, tick, shooters_);
         fired_.clear();
         for (const ecs::Entity shooter : shooters_) {
-            fired_.push_back(spawn_player_missile(world, shooter));
+            const ecs::Entity missile = spawn_player_missile(world, shooter);
+            if (rules_.friendly_fire) {
+                world.get<ecs::Collider>(missile).mask |= layer::player;
+            }
+            fired_.push_back(missile);
         }
     });
     systems_.add("enemy_fire", [this](ecs::Registry& world, const ecs::Tick& tick) {
@@ -74,12 +79,14 @@ void ServerGame::register_systems() {
             const float first_shot = tuning::bydos_first_shot +
                                      spawner_.random().uniform(0.0F, tuning::bydos_fire_cooldown);
             spawned_.push_back(spawn_bydos_slave(world, line, phase, first_shot));
+            world.emplace_or_replace<ecs::Health>(spawned_.back(), rules_.enemy_health);
         }
     });
     systems_.add("waves", [this](ecs::Registry& world, const ecs::Tick& tick) {
         waves_.update(tick, due_);
         for (const ecs::WaveSpawn& spawn : due_) {
             spawned_.push_back(spawn_enemy(world, spawn.type, spawn.position));
+            world.emplace_or_replace<ecs::Health>(spawned_.back(), rules_.enemy_health);
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& tick) {
@@ -126,6 +133,7 @@ ecs::Entity ServerGame::add_player(std::size_t slot) {
         throw std::logic_error{"rtype: this player slot is taken"};
     }
     ship = spawn_player(registry_, slot);
+    registry_.get<ecs::Lives>(ship).count = rules_.lives;
     rewinds_.at(slot) = 0;
     started_ = true;
     return ship;
@@ -226,6 +234,10 @@ const std::vector<ecs::Entity>& ServerGame::enemy_fired() const noexcept {
 
 const std::vector<ecs::Entity>& ServerGame::spawned() const noexcept {
     return spawned_;
+}
+
+const GameRules& ServerGame::rules() const noexcept {
+    return rules_;
 }
 
 std::optional<std::uint64_t> ServerGame::seed() const noexcept {

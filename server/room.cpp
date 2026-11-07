@@ -15,8 +15,8 @@
 namespace rtype {
 
 Room::Room(std::uint32_t id, std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves,
-           std::uint32_t rate, TickHandler after_tick)
-    : id_{id}, instance_{seed, std::move(waves)},
+           std::uint32_t rate, TickHandler after_tick, GameRules rules)
+    : id_{id}, instance_{seed, std::move(waves), rules},
       simulation_{instance_, rate, [this, after_tick = std::move(after_tick)](GameInstance& game) {
                       if (after_tick) {
                           after_tick(*this, game);

@@ -25,6 +25,21 @@
 
 namespace rtype {
 
+/// @brief How a game plays: the rules of its room, as the gameplay reads them.
+/// @details The default rules are the game as tuned. The server makes them from the rules a
+/// room was created with (RFC section 3.6).
+struct GameRules {
+    /// @brief Lives of each player at the start, at least 1.
+    std::uint32_t lives = tuning::player_lives;
+    /// @brief Health of each enemy that appears, at random or by the waves, at least 1.
+    std::int32_t enemy_health = tuning::bydos_health;
+    /// @brief Factor of the intervals between two random Bydos spawns: above 1, fewer
+    /// enemies; below 1, more.
+    float spawn_interval_scale = 1.0F;
+    /// @brief Whether the players' missiles hit the other players.
+    bool friendly_fire = false;
+};
+
 /// @brief One R-Type game on the server: the world, its systems in order, and the players.
 /// @details The constructor registers the server systems in the order of a tick:
 ///
@@ -57,7 +72,8 @@ public:
     /// @param seed Seed of the random Bydos spawns: the same seed gives the same spawns, so
     /// a game can be replayed from its logged seed. Without one, the `spawn` system is
     /// disabled and only what the caller creates is in the world (tests, scripted levels).
-    explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt);
+    /// @param rules How the game plays: lives, enemies and friendly fire.
+    explicit ServerGame(std::optional<std::uint64_t> seed = std::nullopt, GameRules rules = {});
     ServerGame(const ServerGame&) = delete;
     ServerGame& operator=(const ServerGame&) = delete;
     ServerGame(ServerGame&&) = delete;
@@ -159,6 +175,10 @@ public:
     /// @return The new enemies, random ones first, in spawn order.
     [[nodiscard]] const std::vector<aegis2d::ecs::Entity>& spawned() const noexcept;
 
+    /// @brief How the game plays.
+    /// @return The rules given to the constructor.
+    [[nodiscard]] const GameRules& rules() const noexcept;
+
     /// @brief Seed of the random spawns.
     /// @return The seed given to the constructor, or `std::nullopt` without random spawns.
     [[nodiscard]] std::optional<std::uint64_t> seed() const noexcept;
@@ -194,6 +214,7 @@ private:
     std::vector<aegis2d::ecs::Entity> gunners_;
     std::vector<aegis2d::ecs::Entity> enemy_fired_;
     std::optional<std::uint64_t> seed_;
+    GameRules rules_;
     aegis2d::ecs::RandomSpawner spawner_;
     std::vector<aegis2d::Vec2> spawn_points_;
     std::vector<aegis2d::ecs::Entity> spawned_;

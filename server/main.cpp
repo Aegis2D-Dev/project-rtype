@@ -21,10 +21,12 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -87,7 +89,17 @@ int main(int argc, char** argv) {
         rtype::ServerNetwork& network = server.network();
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
-        network.set_waves(rtype::waves_names(rtype::default_waves_file().parent_path()));
+        // The waves files next to the server's own, each read once; a bad one is not offered.
+        const std::filesystem::path waves_folder = rtype::default_waves_file().parent_path();
+        std::map<std::string, aegis2d::ecs::WaveSchedule> offered;
+        for (const std::string& name : rtype::waves_names(waves_folder)) {
+            try {
+                offered.emplace(name, rtype::load_waves(waves_folder / (name + ".json")));
+            } catch (const aegis2d::core::ConfigError& error) {
+                aegis2d::core::log_warn("server: waves {} not offered: {}", name, error.what());
+            }
+        }
+        server.set_waves(std::move(offered));
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
                   << network.udp_endpoint().port() << ", up to " << server.max_rooms()
