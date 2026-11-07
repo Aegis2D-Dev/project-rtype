@@ -2,6 +2,7 @@
 # the logic of the screens that does not draw (the connect form, the player notices).
 # Built without the client's window and sound, so the server preset builds and tests it too.
 add_library(rtype_client_net STATIC
+    chat_log.cpp
     client_options.cpp
     client_session.cpp
     client_world.cpp
