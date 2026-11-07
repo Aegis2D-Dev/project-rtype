@@ -1,5 +1,6 @@
 # Network side of the client: its session with the server, the world it describes, and
-# the logic of the screens that does not draw (the connect form, the player notices).
+# the logic of the screens that does not draw (the connect form, the player notices, the
+# level editor).
 # Built without the client's window and sound, so the server preset builds and tests it too.
 add_library(rtype_client_net STATIC
     client_options.cpp
@@ -7,6 +8,7 @@ add_library(rtype_client_net STATIC
     client_world.cpp
     connect_form.cpp
     lagometer.cpp
+    level_editor.cpp
     network_stats.cpp
     player_notices.cpp
     room_list_form.cpp

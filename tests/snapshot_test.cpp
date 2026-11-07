@@ -294,7 +294,7 @@ TEST_CASE("the snapshot holds the players and the entities of the game", "[serve
     GameInstance instance{std::nullopt, WaveSchedule{}};
     const Entity ship = instance.join(2);
     instance.game().registry().get<Score>(ship).points = 300;
-    const Entity bydos = rtype::spawn_bydos_slave(instance.game().registry(), {900.0F, 200.0F});
+    const Entity bydos = instance.game().spawn_enemy("bydos_slave", {900.0F, 200.0F});
     CHECK(instance.set_input(2, aegis2d::ecs::PlayerInput{}, 41));
     instance.game().tick(step_from_rate(tuning::tick_rate));
 
