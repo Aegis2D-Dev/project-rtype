@@ -45,7 +45,7 @@ struct Scene {
         world.emplace<Collider>(enemy, Collider{.size = tuning::bydos_size,
                                                 .layer = rtype::layer::enemy,
                                                 .mask = rtype::mask::enemy});
-        world.emplace<Health>(enemy, tuning::bydos_health);
+        world.emplace<Health>(enemy, 1);
         for (std::uint32_t tick = 0; tick < tuning::tick_rate; ++tick) {
             step();
         }

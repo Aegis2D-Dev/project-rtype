@@ -1,162 +1,120 @@
 # Add an enemy type
 
-This guide adds a new enemy from start to finish: its sprite, its values, its creation
-function, its name in the waves files, a wave that uses it, its tests and its
-documentation. It follows a real example, the **Pata-Pata**: a small, fast enemy that
-flutters up and down in short waves and does not fire. Replace `pata_pata` and `pata_` with
-your enemy's name as you go.
+This guide adds a new enemy from start to finish: its sprite, its script, a wave that uses
+it, and its tests. It follows a real example, the **Pata-Pata**: a small, fast enemy that
+flutters up and down in short waves and does not fire. Replace `pata_pata` with your
+enemy's name as you go.
 
-Everything happens in this repository, in one pull request: an enemy is game content made
-of engine components. If your enemy needs a behavior no engine function provides yet
-(homing, a laser, splitting in two...), write that behavior in the engine first (see
-[Add a system](how-to.md#add-a-system)), get it merged, then come back here.
+An enemy type is game content, not code: its values and its behavior are a Lua script that
+each game of the server loads when it starts, so a new type needs **no recompilation**. If your enemy
+needs something scripts cannot do yet (a component the engine does not give scripts, such
+as a laser), write it in the engine first (see [Add a system](how-to.md#add-a-system)),
+get it merged, then come back here.
 
 At the end, you will have touched these files:
 
 | Step | File |
 |---|---|
 | 1. Sprite | `assets/sprites/pata_pata.png` |
-| 2. Values | `game/include/rtype/tuning.hpp` |
-| 3. Creation | `game/include/rtype/entities.hpp`, `game/entities.cpp` |
-| 4. Name for the waves | `game/include/rtype/waves.hpp`, `game/entities.cpp` |
-| 5. Waves | `assets/waves/stage1.json` (or your own waves file) |
-| 6. Tests | `tests/entities_test.cpp`, `tests/waves_test.cpp` |
-| 7. Documentation | `docs/gameplay.md`, `CHANGELOG.md`, `changelogs/` |
+| 2. Script | `assets/enemies/pata_pata.lua` |
+| 3. Waves | `assets/waves/stage1.json` (or your own waves file) |
+| 4. Tests | `tests/enemy_scripts_test.cpp`, or a test of your own |
+| 5. Documentation | `docs/gameplay.md`, `CHANGELOG.md`, `changelogs/` |
 
 ## 1. The sprite
 
 Draw the enemy as a PNG in `assets/sprites/`, named after its type:
 `assets/sprites/pata_pata.png`. For an animation, put the frames side by side, all the
 same size. Note its size on screen in logical pixels (the play area is 1280 × 720); it is
-also the base of its hit box.
+also its hit box.
 
 !!! note "What the server sends, what the client draws"
     The server simulates the game and only knows sizes: an enemy's `ecs::Sprite` holds its
     `size` and keeps `texture` at 0, because texture ids belong to each client's GPU. The
-    client finds the image by the type name with the engine's `render::TextureManager`,
-    e.g. `textures.load("pata_pata", core::asset_path("sprites/pata_pata.png"))`; keeping
-    the file name equal to the type name is what lets it do so. The client does not draw
-    the world yet (it comes with the network tickets): until then, the image is not
-    loaded and the server tests are what checks your enemy.
+    protocol has one kind of enemy for now (`EntityKind::BydosSlave`, RFC section 4.1):
+    clients draw every enemy with the Bydos sprite, at the Bydos size, until the protocol
+    tells them each enemy's type. The sprite named after the type is what they will load
+    then, with the engine's `render::TextureManager`.
 
-## 2. Its values
+## 2. Its script
 
-Every number goes to `game/include/rtype/tuning.hpp`, next to the Bydos values, with a
-comment saying what it is. The Pata-Pata is faster and smaller than a Bydos slave, worth
-more points, and flutters in short, quick waves:
+Create `assets/enemies/pata_pata.lua`. Its file name is the type's name, as the waves files
+write it: lowercase letters, digits and `_`. The file describes the type with
+`enemy { ... }`:
 
-```cpp
-/// @brief Speed of a Pata-Pata, to the left.
-inline constexpr float pata_speed = 200.0F;
-/// @brief Size of a Pata-Pata.
-inline constexpr aegis2d::Vec2 pata_size{24.0F, 24.0F};
-/// @brief Health points of a Pata-Pata: one missile kills it.
-inline constexpr std::int32_t pata_health = 1;
-/// @brief Points for killing a Pata-Pata.
-inline constexpr std::uint32_t pata_score = 200;
-/// @brief Largest distance of a Pata-Pata above or below its line as it flutters.
-inline constexpr float pata_wave_amplitude = 32.0F;
-/// @brief Seconds for a Pata-Pata to flutter up, down and back to its line.
-inline constexpr float pata_wave_period = 0.8F;
-```
+```lua
+-- Pata-Pata: a small, fast enemy that flutters up and down in short waves and does not
+-- fire.
 
-An enemy whose path leaves the screen must come back within `despawn_margin` (64 px), or
-it is destroyed as gone: keep its wave amplitude at or below it. Add a check next to the
-Bydos one, at the end of the file:
+local speed = 200      -- to the left, in logical pixels per second
+local amplitude = 32   -- above and below its line; at most 64 (see below)
+local period = 0.8     -- seconds to flutter up, down and back to its line
 
-```cpp
-static_assert(pata_wave_amplitude <= despawn_margin,
-              "a Pata-Pata fluttering off screen must not be despawned before it comes back");
-```
+enemy {
+    width = 24, height = 24,
+    health = 1,
+    score = 200,
 
-## 3. Its creation function
+    spawn = function(self)
+        self.line = self.y
+        ecs.get(self.entity, "Velocity").x = -speed
+    end,
 
-An enemy is an entity with components. Pick them from this table; the first group is
-needed by every enemy:
-
-| Component | Why | Value |
-|---|---|---|
-| `Transform` | Where it is | the spawn position |
-| `Velocity` | It flies left | `{-tuning::pata_speed, 0}` |
-| `Sprite` | Its size on screen | `{.size = tuning::pata_size}` |
-| `Collider` | Hit by player missiles, hits players | `.layer = layer::enemy, .mask = mask::enemy` |
-| `Health` | Missiles can kill it | `tuning::pata_health` |
-| `ScoreValue` | Its killer gets points | `tuning::pata_score` |
-| `OffscreenDespawn` | Destroyed once it has crossed the screen | `tuning::despawn_margin` |
-| `NetworkId` | Clients can name it | `NetworkId::of(entity)` |
-| `Damage` (optional) | Ramming it costs the player a life | `{.amount = tuning::ram_damage, .consumed_on_hit = false}` |
-| `SineMotion` (optional) | It weaves around its line | amplitude and period |
-| `Weapon` + `AutoTrigger` (optional) | It fires on its own | cooldown, first shot; see `spawn_bydos_slave()` |
-
-Declare the function in `game/include/rtype/entities.hpp`, documented like the others:
-
-```cpp
-/// @brief Creates a Pata-Pata, a small enemy that flutters quickly and does not fire.
-/// @details It flies left at tuning::pata_speed while fluttering around its line
-/// (tuning::pata_wave_amplitude, every tuning::pata_wave_period seconds), dies from one
-/// missile, gives tuning::pata_score points to its killer, rams players and is destroyed
-/// once it has crossed the screen; it can be created beyond the right edge.
-/// @param registry World of the game.
-/// @param position Center of the Pata-Pata, on its line.
-/// @return The Pata-Pata.
-aegis2d::ecs::Entity spawn_pata_pata(aegis2d::ecs::Registry& registry, aegis2d::Vec2 position);
-```
-
-Then write it in `game/entities.cpp`, after `spawn_bydos_slave()`:
-
-```cpp
-ecs::Entity spawn_pata_pata(ecs::Registry& registry, Vec2 position) {
-    const ecs::Entity pata = registry.create();
-    registry.emplace<ecs::Transform>(pata, position);
-    registry.emplace<ecs::Velocity>(pata, Vec2{-tuning::pata_speed, 0.0F});
-    registry.emplace<ecs::SineMotion>(
-        pata, ecs::SineMotion{.amplitude = Vec2{0.0F, tuning::pata_wave_amplitude},
-                              .period = tuning::pata_wave_period});
-    registry.emplace<ecs::Sprite>(pata, ecs::Sprite{.size = tuning::pata_size});
-    registry.emplace<ecs::Collider>(
-        pata, ecs::Collider{.size = tuning::pata_size, .layer = layer::enemy, .mask = mask::enemy});
-    registry.emplace<ecs::Health>(pata, tuning::pata_health);
-    registry.emplace<ecs::Damage>(
-        pata, ecs::Damage{.amount = tuning::ram_damage, .consumed_on_hit = false});
-    registry.emplace<ecs::ScoreValue>(pata, tuning::pata_score);
-    registry.emplace<ecs::OffscreenDespawn>(pata, tuning::despawn_margin);
-    registry.emplace<ecs::NetworkId>(pata, ecs::NetworkId::of(pata));
-    return pata;
+    update = function(self, dt)
+        local offset = amplitude * math.sin(2 * math.pi * self.age / period)
+        ecs.get(self.entity, "Transform").y = self.line + offset
+    end,
 }
 ```
 
-No system needs to change: the server's systems work on components, not on enemy types.
-The `movement` and `sine_motion` systems move it, `collision`, `damage` and `score` make
-it die and pay, `despawn` removes it, and `enemy_fire` would make it fire if it had a
-`Weapon` and an `AutoTrigger`.
+The values, all optional:
 
-## 4. Its name in the waves files
+| Field | Default | What it is |
+|---|---|---|
+| `width`, `height` | 32, 32 | Size on screen and hit box |
+| `health` | 1 | Health points: 1 dies from one missile |
+| `score` | 100 | Points for its killer |
+| `fire_every` | 0 | Seconds between two shots to the left; 0 never fires |
+| `first_shot` | 1 | Seconds before its first shot, so that it fires once on screen |
 
-Waves files name enemies by type. Add the name to `rtype::enemy_types` in
-`game/include/rtype/waves.hpp`:
+The game gives every enemy what all enemies need: a Transform where it appears, a Velocity
+of zero, its Sprite and Collider on the enemy layer (player missiles hit it, it rams
+players), its Health, the points of its killer, a despawn once it has crossed the screen, a
+network id, and a weapon that fires on its own if `fire_every` is above 0. The script does
+the rest:
 
-```cpp
-inline constexpr std::array enemy_types{std::string_view{"bydos_slave"},
-                                        std::string_view{"pata_pata"}};
+- `spawn(self)` runs once, when the enemy appears: give it its speed there;
+- `update(self, dt)` runs at every tick, after the `movement` system: move it, turn it,
+  change its speed.
+
+`self` is the enemy's own table: `self.entity` is its id for the `ecs` functions,
+`self.x` and `self.y` where it appeared, `self.age` its seconds alive, and `self.random` a
+number from 0 to 1 the game draws for the random spawns (0 in the waves), to start
+enemies spawned together at different points of their pattern. The script may keep its
+own fields there, as `self.line` above. The components and their fields are in the
+engine's [scripting guide](https://github.com/Aegis2D-Dev/aegis2d/blob/develop/docs/scripting.md):
+`Transform.x`, `Velocity.y`, `Sprite.width`...
+
+An enemy whose path leaves the screen must come back within 64 px (`despawn_margin`), or it
+is destroyed as gone: keep its wave amplitude at or below it.
+
+Scripts run sandboxed: no files, no `require`, a budget of instructions and memory. A
+mistake in a script stops the server at start, with its file and line; here, the comma
+after the `end` of `spawn` is missing:
+
+```text
+r-type_server: .../assets/enemies/pata_pata.lua:18: '}' expected (to close '{' at line 8) near 'update'
 ```
 
-and its branch to `spawn_enemy()` in `game/entities.cpp`:
+An error while the game runs (a field that does not exist, a nil value), or a behavior that
+runs too long (an endless loop), is logged once, with its line, and stops that behavior: a
+failed `update` leaves the enemies of the type at their speed, a failed `spawn` means no
+more enemies of the type. The game goes on.
 
-```cpp
-    if (type == "pata_pata") {
-        return spawn_pata_pata(registry, position);
-    }
-```
+## 3. A wave that uses it
 
-A name in `enemy_types` without its branch in `spawn_enemy()` fails the test *every enemy
-type a waves file can name can be spawned*; a name in a waves file that is not in
-`enemy_types` stops the server at start.
-
-## 5. A wave that uses it
-
-Now the enemy can appear without touching the code again. Add a wave to
-`assets/waves/stage1.json` (the format is in [Add a wave](how-to.md#add-a-wave)), for
-instance a quick file of Pata-Pata after the V:
+Add a wave to `assets/waves/stage1.json` (the format is in [Add a
+wave](how-to.md#add-a-wave)), for instance a quick file of Pata-Pata after the V:
 
 ```json
 {
@@ -169,8 +127,10 @@ instance a quick file of Pata-Pata after the V:
 ```
 
 Keep the lines between `amplitude + half height` and `720 - amplitude - half height`
-(here 44 and 676) so that the enemy flutters on screen. Then build and let the server
-check the file:
+(here 44 and 676) so that the enemy flutters on screen. Then build, which only copies the
+new files next to the server, and let the server check them (the build copies, it never
+deletes: after renaming or removing a script, delete its old copy in
+`build/<preset>/assets/enemies` and `build/<preset>/tests/assets/enemies`):
 
 ```bash
 cmake --build build/linux-debug
@@ -179,86 +139,56 @@ cmake --build build/linux-debug
 
 ```text
 waves: .../assets/waves/stage1.json (5 waves, 37 enemies in 24.4 s, looping)
+enemies: bydos_slave pata_pata (.../assets/enemies)
 ```
 
-A mistake is reported with its place, e.g.
-`waves.4.spawns.0.type: unknown type "pata" (known: bydos_slave, pata_pata)`.
-To try a wave without changing the stage, put it in its own file and run
+A waves file naming a type that has no script is reported with its place, e.g.
+`waves.4.spawns.0.type: unknown type "pata" (known: bydos_slave, pata_pata)`. To try a
+wave without changing the stage, put it in its own file and run
 `./build/linux-debug/r-type_server --waves my_waves.json`.
 
-## 6. Tests
+## 4. Tests
 
-Test what makes your enemy different, reading every value from `rtype::tuning`. In
-`tests/entities_test.cpp`, its components:
-
-```cpp
-TEST_CASE("a Pata-Pata flutters left, fast, and does not fire", "[rtype][entities]") {
-    Registry registry;
-    const Entity pata = rtype::spawn_pata_pata(registry, Vec2{1296.0F, 360.0F});
-    CHECK(registry.get<Velocity>(pata).value == Vec2{-tuning::pata_speed, 0.0F});
-    CHECK(registry.get<SineMotion>(pata).period == tuning::pata_wave_period);
-    CHECK(registry.get<ScoreValue>(pata).points == tuning::pata_score);
-    CHECK(registry.get<Collider>(pata).layer == layer::enemy);
-    CHECK(registry.has<OffscreenDespawn>(pata));
-    CHECK(!registry.has<Weapon>(pata));
-}
-```
-
-and in `tests/waves_test.cpp`, that a waves file brings it into a game and that a missile
-kills it for its points (a `ServerGame` with a player, a wave written by the test):
+Test what makes your enemy different. A `ServerGame` loads the scripts of `assets/enemies`
+(copied next to the tests), so a test spawns your enemy by its name:
 
 ```cpp
-TEST_CASE("a Pata-Pata from a waves file can be shot down", "[rtype][waves]") {
-    const auto file = write_waves("pata.json", R"({"waves": [{"spawns": [
-        {"type": "pata_pata", "position": [700, 144]}
-    ]}]})");
-    ServerGame game;
-    const Entity ship = game.add_player();
-    game.play_waves(rtype::load_waves(file));
-    game.tick(step_from_rate(tuning::tick_rate));
-    REQUIRE(game.spawned().size() == 1);
-    const Entity pata = game.spawned().front();
-    // Hold it on the ship's line, so that the missile meets it.
-    game.registry().get<SineMotion>(pata).amplitude = Vec2{};
-    game.registry().get<Transform>(pata).position.y =
-        game.registry().get<Transform>(ship).position.y;
-    rtype::spawn_player_missile(game.registry(), ship);
-    for (int tick = 0; tick < 60 && game.registry().alive(pata); ++tick) {
+TEST_CASE("a Pata-Pata flutters left, fast, and does not fire", "[rtype][enemies]") {
+    rtype::ServerGame game;
+    const Entity pata = game.spawn_enemy("pata_pata", Vec2{1296.0F, 360.0F});
+    CHECK(game.registry().get<Velocity>(pata).value == Vec2{-200.0F, 0.0F});
+    CHECK(game.registry().get<aegis2d::ecs::ScoreValue>(pata).points == 200);
+    CHECK(!game.registry().has<aegis2d::shmup::Weapon>(pata));
+    for (int tick = 0; tick < 12; ++tick) {  // 0.2 s: a quarter of its flutter, at its lowest
         game.tick(step_from_rate(tuning::tick_rate));
     }
-    CHECK(!game.registry().alive(pata));
-    CHECK(game.registry().get<Score>(ship).points == tuning::pata_score);
-    std::filesystem::remove(file);
+    CHECK(game.registry().get<Transform>(pata).position.y == Approx(392.0F).margin(1.0));
 }
 ```
 
-Add the `using` lines the new names need at the top of each file (`Velocity`,
-`SineMotion`, `Score`...). The tests of `stage1.json` keep checking that every enemy of the
-file starts beyond the right edge and within the Bydos lanes; if your enemy needs other
-lanes, adapt that test to your type. Run everything:
+`tests/enemy_scripts_test.cpp` shows more: a type written by the test in a folder of its
+own (`ServerGame game{std::nullopt, folder}`), played by a waves file. The test *every
+enemy type a waves file can name can be spawned* checks every script of `assets/enemies`.
+Run everything:
 
 ```bash
 ctest --test-dir build/linux-debug --output-on-failure
-tools/format.sh && tools/lint.sh build/linux-debug
 ```
 
-## 7. Documentation and pull request
+## 5. Documentation and pull request
 
-- `docs/gameplay.md`: a row in the [entities table](gameplay.md#entities) (function and
-  components), its values in the [tuning table](gameplay.md#tuning), and a word in
+- `docs/gameplay.md`: its values in the [tuning table](gameplay.md#tuning), and a word in
   [Enemy waves](gameplay.md#enemy-waves) if it changes what the waves contain.
 - A changelog file in `changelogs/` and its row in `CHANGELOG.md` (see
   [CONTRIBUTING](https://github.com/Aegis2D-Dev/project-rtype/blob/develop/CONTRIBUTING.md)).
-- One pull request, in three commits: the code and assets, the tests, then the
+- One pull request: the sprite, the script and the waves, then the tests, then the
   documentation and changelogs.
 
 ## Checklist
 
 - [ ] `assets/sprites/<type>.png`, named after the type
-- [ ] Its values in `tuning.hpp`, and a `static_assert` if it weaves
-- [ ] `spawn_<type>()` declared, documented and written, with `OffscreenDespawn` and
-      `NetworkId`
-- [ ] Its name in `enemy_types` and its branch in `spawn_enemy()`
+- [ ] `assets/enemies/<type>.lua`, with `enemy { ... }`, its values and its behavior
+- [ ] A wave amplitude of at most 64 px if it weaves
 - [ ] A wave that uses it, checked by `r-type_server`
-- [ ] Tests of its components and of its behavior in a game
-- [ ] Entities and tuning tables, changelog
+- [ ] Tests of its values and of its behavior in a game
+- [ ] Tuning table, changelog

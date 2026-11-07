@@ -3,7 +3,6 @@
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
-#include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/shmup/components.hpp>
 
@@ -30,8 +29,6 @@ using aegis2d::Vec2;
 using aegis2d::core::ConfigError;
 using aegis2d::core::step_from_rate;
 using aegis2d::ecs::Entity;
-using aegis2d::ecs::Registry;
-using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::WaveSchedule;
 using aegis2d::shmup::AutoTrigger;
@@ -107,24 +104,26 @@ TEST_CASE("a new wave needs no recompilation", "[rtype][waves][146]") {
 }
 
 TEST_CASE("wave enemies are Bydos slaves, as dangerous as the others", "[rtype][waves][146]") {
-    Registry registry;
-    const Entity bydos = rtype::spawn_enemy(registry, "bydos_slave", Vec2{1296.0F, 300.0F});
-    CHECK(registry.get<Transform>(bydos).position == Vec2{1296.0F, 300.0F});
-    CHECK(registry.has<SineMotion>(bydos));
-    CHECK(registry.has<AutoTrigger>(bydos));
-    CHECK_THROWS_AS(rtype::spawn_enemy(registry, "boss", Vec2{}), std::invalid_argument);
+    ServerGame game;
+    const Entity bydos = game.spawn_enemy("bydos_slave", Vec2{1296.0F, 300.0F});
+    CHECK(game.registry().get<Transform>(bydos).position == Vec2{1296.0F, 300.0F});
+    CHECK(game.registry().has<AutoTrigger>(bydos));
+    CHECK_THROWS_AS(game.spawn_enemy("boss", Vec2{}), std::invalid_argument);
 }
 
-TEST_CASE("every enemy type a waves file can name can be spawned", "[rtype][waves][37]") {
-    Registry registry;
-    for (const std::string_view type : rtype::enemy_types) {
+TEST_CASE("every enemy type a waves file can name can be spawned", "[rtype][waves][37][356]") {
+    ServerGame game;
+    const std::vector<std::string> types = rtype::enemy_types();
+    CHECK(std::ranges::find(types, "bydos_slave") != types.end());
+    CHECK(game.enemies().types().size() == types.size());
+    for (const std::string& type : types) {
         INFO(type);
         Entity enemy{};
-        REQUIRE_NOTHROW(enemy = rtype::spawn_enemy(registry, type, Vec2{1296.0F, 360.0F}));
-        CHECK(registry.has<Transform>(enemy));
-        CHECK(registry.has<aegis2d::ecs::OffscreenDespawn>(enemy));
-        CHECK(registry.has<aegis2d::ecs::NetworkId>(enemy));
-        CHECK(registry.get<aegis2d::ecs::Collider>(enemy).layer == rtype::layer::enemy);
+        REQUIRE_NOTHROW(enemy = game.spawn_enemy(type, Vec2{1296.0F, 360.0F}));
+        CHECK(game.registry().has<Transform>(enemy));
+        CHECK(game.registry().has<aegis2d::ecs::OffscreenDespawn>(enemy));
+        CHECK(game.registry().has<aegis2d::ecs::NetworkId>(enemy));
+        CHECK(game.registry().get<aegis2d::ecs::Collider>(enemy).layer == rtype::layer::enemy);
     }
 }
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -28,8 +29,10 @@ std::filesystem::path default_waves_file() {
     return aegis2d::core::asset_path("waves/stage1.json");
 }
 
-aegis2d::ecs::WaveSchedule load_waves(const std::filesystem::path& path) {
-    return aegis2d::ecs::WaveSchedule::from_file(path, enemy_types);
+aegis2d::ecs::WaveSchedule load_waves(const std::filesystem::path& path,
+                                      const std::vector<std::string>& types) {
+    const std::vector<std::string_view> names{types.begin(), types.end()};
+    return aegis2d::ecs::WaveSchedule::from_file(path, names);
 }
 
 } // namespace rtype
