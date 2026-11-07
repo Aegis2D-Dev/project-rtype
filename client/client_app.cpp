@@ -29,10 +29,12 @@
 #include <rtype/connect_form.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
+#include <rtype/menu_keys.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
 #include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -347,7 +349,7 @@ bool ClientApp::chat_keys() {
 }
 
 void ClientApp::joining_screen() {
-    if (window_.keyboard().pressed(Key::Escape)) {
+    if (std::ranges::contains(menu_keys(window_.keyboard(), window_.gamepad()), Key::Escape)) {
         leave();
         message_ = {.text = "Joining cancelled.", .error = false};
         screen_ = ClientScreen::Connect;
@@ -356,7 +358,7 @@ void ClientApp::joining_screen() {
 
 void ClientApp::rooms_screen() {
     const platform::Keyboard& keyboard = window_.keyboard();
-    for (const Key key : keyboard.pressed_keys()) {
+    for (const Key key : menu_keys(keyboard, window_.gamepad())) {
         switch (key) {
         case Key::Escape:
             leave();
@@ -405,15 +407,16 @@ void ClientApp::rooms_screen() {
 }
 
 void ClientApp::room_screen() {
-    const platform::Keyboard& keyboard = window_.keyboard();
     if (!session_.has_value()) {
         return;
     }
-    if (keyboard.pressed(Key::Escape)) {
+    const std::vector<Key> keys = menu_keys(window_.keyboard(), window_.gamepad());
+    if (std::ranges::contains(keys, Key::Escape)) {
         session_->leave_room();
         message_ = {.text = "You left the room.", .error = false};
         screen_ = ClientScreen::Rooms;
-    } else if (keyboard.pressed(Key::Enter) || keyboard.pressed(Key::KeypadEnter)) {
+    } else if (std::ranges::contains(keys, Key::Enter) ||
+               std::ranges::contains(keys, Key::KeypadEnter)) {
         session_->set_ready(!session_->ready());
     }
 }
@@ -440,11 +443,11 @@ void ClientApp::game_screen() {
 }
 
 void ClientApp::lost_screen() {
-    const platform::Keyboard& keyboard = window_.keyboard();
-    if (keyboard.pressed(Key::Enter) || keyboard.pressed(Key::KeypadEnter)) {
+    const std::vector<Key> keys = menu_keys(window_.keyboard(), window_.gamepad());
+    if (std::ranges::contains(keys, Key::Enter) || std::ranges::contains(keys, Key::KeypadEnter)) {
         message_ = {.text = sentence(lost_reason_), .error = true};
         screen_ = ClientScreen::Connect;
-    } else if (keyboard.pressed(Key::Escape)) {
+    } else if (std::ranges::contains(keys, Key::Escape)) {
         quit_ = true;
     }
 }
@@ -713,6 +716,10 @@ void ClientApp::draw() {
     if (session_.has_value() && (screen_ == ClientScreen::Rooms || screen_ == ClientScreen::Room ||
                                  screen_ == ClientScreen::Game)) {
         session_->chat().prune(now);
+        // The line grows with the text size from its bottom-left corner, above the screen's
+        // bottom edge.
+        chat_tree_.set_scale(preferences_.text_size.scale(),
+                             {chat_box.x, chat_box.y + chat_box.height});
         draw_chat(renderer_, font_, session_->chat().shown(), chat_field_, chat_tree_, chatting_,
                   preferences_);
     }

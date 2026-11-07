@@ -56,23 +56,30 @@ render::Color color_of(LagGraph graph, double value, std::size_t vision) {
 void draw_lagometer(render::IRenderer& renderer, const render::BitmapFont& font,
                     const Lagometer& lagometer, const Preferences& preferences) {
     const std::size_t vision = preferences.vision;
-    const float row = font.line_height(label_scale) + 2.0F + graph_height + gap;
-    const float left = tuning::area_width - graph_width - (2.0F * padding) - margin;
+    // The labels follow the player's text size; the panel widens to the longest one.
+    const float label = label_scale * preferences.text_size.scale();
+    const LagSample latest = lagometer.latest();
+    float width = graph_width;
+    for (std::size_t index = 0; index < lag_graph_count; ++index) {
+        const auto graph = static_cast<LagGraph>(index);
+        width = std::max(width, font.measure(lag_label(graph, latest.value(graph)), label).x);
+    }
+    const float row = font.line_height(label) + 2.0F + graph_height + gap;
+    const float left = tuning::area_width - width - (2.0F * padding) - margin;
     renderer.draw({.position = {left, top},
-                   .size = {graph_width + (2.0F * padding),
+                   .size = {width + (2.0F * padding),
                             (row * static_cast<float>(lag_graph_count)) - gap + (2.0F * padding)},
                    .tint = render::Color{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.7F},
                    .layer = panel_layer});
-    const LagSample latest = lagometer.latest();
     for (std::size_t index = 0; index < lag_graph_count; ++index) {
         const auto graph = static_cast<LagGraph>(index);
         const float x = left + padding;
         const float y = top + padding + (row * static_cast<float>(index));
         font.draw(renderer, lag_label(graph, latest.value(graph)), {x, y},
-                  {.scale = label_scale,
+                  {.scale = label,
                    .color = color_of(graph, latest.value(graph), vision),
                    .layer = panel_layer + 1});
-        const float base = y + font.line_height(label_scale) + 2.0F + graph_height;
+        const float base = y + font.line_height(label) + 2.0F + graph_height;
         renderer.draw({.position = {x, base - 1.0F},
                        .size = {graph_width, 1.0F},
                        .tint = render::Color{.r = 1.0F, .g = 1.0F, .b = 1.0F, .a = 0.25F},

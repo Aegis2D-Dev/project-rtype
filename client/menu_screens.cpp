@@ -77,6 +77,9 @@ float centered_x(const render::BitmapFont& font, std::string_view text, float sc
     return (width - font.measure(text, scale).x) / 2.0F;
 }
 
+// Over the game's HUD (100) and the lagometer (110).
+constexpr std::int32_t chat_layer = 120;
+
 } // namespace
 
 void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
@@ -354,15 +357,16 @@ void draw_chat(render::IRenderer& renderer, const render::BitmapFont& font,
     // Above the line, newest at the bottom, each on a dark band so it reads over the game.
     const render::TextStyle line_style = style(1.5F, text_color, preferences);
     const float line_height = font.line_height(line_style.scale) + 8.0F;
-    float y = chat_box.y - line_height;
+    // Above the line as large as the tree's scale makes it.
+    float y = chat_box.y + chat_box.height - (chat_box.height * tree.scale()) - line_height;
     for (const PlayerNotice& line : std::views::reverse(lines)) {
         const Vec2 size = font.measure(line.text, line_style.scale);
         renderer.draw({.position = Vec2{chat_box.x - 6.0F, y - 4.0F},
                        .size = size + Vec2{12.0F, 8.0F},
                        .tint = render::Color{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.6F},
-                       .layer = 9});
+                       .layer = chat_layer});
         render::TextStyle sender = line_style;
-        sender.layer = 10;
+        sender.layer = chat_layer + 1;
         // The players in their slot's color, the server in the title's, the lobby dimmed.
         if (line.player < tuning::max_players) {
             sender.color = seen_as(render::player_style(line.player).color, preferences.vision);
@@ -375,7 +379,11 @@ void draw_chat(render::IRenderer& renderer, const render::BitmapFont& font,
     }
     if (typing) {
         aegis2d::ui::TextFieldStyle box;
-        box.layer = 10;
+        box.text = color(text_color, preferences);
+        box.placeholder = color(dim_color, preferences);
+        box.cursor = color(title_color, preferences);
+        box.outline = color(title_color, preferences);
+        box.layer = chat_layer;
         field.draw(renderer, tree, font, box);
     }
 }
