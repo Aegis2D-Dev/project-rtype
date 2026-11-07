@@ -36,7 +36,8 @@ board (#95) in a `ScoreList`. Thirteenth ticket of the *Network: multi-instance 
 - `7b217f9` feat(tests): added the best scores shown in the lobby
 - `38ec870` feat(docs): documented the best scores of the lobby and updated changelogs
 - Merge branch 'feat/server-scoreboard' into feat/client-lobby-scoreboard
-- feat(changelog): updated changelogs
+- `1f8f04e` feat(changelog): updated changelogs
+- feat(changelog): noted the windows failure of the draft
 
 ## Notes
 - Stacked on #95, which keeps the board; #95 was merged in once it had `develop`, without
@@ -50,3 +51,10 @@ board (#95) in a `ScoreList`. Thirteenth ticket of the *Network: multi-instance 
 - `ctest`: 297 of 298 tests pass; under ASan and UBSan, the test cases of the scores, the
   client and the logins pass. *a flooding address is cut off, and the players play on* fails
   on the machine used, as on `develop`, and passes in CI.
+- **Draft**: the *Build and test (Windows)* job of CI fails twice in a row on *the client's
+  entities mirror the server's* (SEGFAULT), a test this pull request does not change; the same
+  test crashed once on #95 since `develop` was merged in, and passed on its rerun. It passes
+  30 times out of 30 on the machine used, 10 out of 10 under ASan and UBSan, and under TSan; no
+  code of this pull request runs in it (no game ends there, no scores are asked). It needs a
+  Windows machine to debug before review.
+
