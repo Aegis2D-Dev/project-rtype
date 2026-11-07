@@ -112,7 +112,11 @@ change through a temporary file that then replaces it, so a crash never leaves h
 file that cannot be read or is not a board is logged and replaced by the next score: the
 server starts anyway. A client reads the board with `ListScores`, answered by `ScoreList`
 (RFC section 3.9); `ClientSession` asks for it with the rooms, at the login and at each
-refresh of the lobby (`scores()`), and the room list screen shows it. A bound player joins the
+refresh of the lobby (`scores()`), and the room list screen shows it. The administrator of `r-type_server` types commands on its standard input
+(`AdminConsole`, on the engine's `core::Commands`; `ConsoleInput` reads the lines on a thread
+of its own, and the network thread runs them between two updates): `rooms`, `players`,
+`say` (a `ChatMessage` of the server, `player` 254, to every session), `close` (each session
+of the room gets `Logout` with `RoomClosed`) and `stop`. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid

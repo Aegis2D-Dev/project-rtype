@@ -141,6 +141,25 @@ are acknowledged, the events of the game: each entity that appears (a shot is th
 of its missile) or disappears, and each life lost; a player who joins first gets every
 entity already there.
 
+#### Admin console
+
+While it runs, the server reads commands on its standard input, one per line, and prints
+their answer:
+
+| Command | Does |
+|---|---|
+| `rooms` | Lists the rooms in use: their number, name, players and whether they play |
+| `players` | Lists every player: its room and number, or the lobby, and the address it plays from |
+| `say <text>` | Sends a message of the server to every player, shown as the server's in their chat |
+| `close <room>` | Ends the sessions of a room: its players are told the administrator closed it |
+| `stop` | Stops the server, telling the players, as Ctrl+C does |
+| `help`, `help <command>` | Lists the commands, or tells how to use one |
+
+A wrong command, a missing argument or one that cannot be done (`close 3` for a room not in
+use, a text over 200 bytes) says why and changes nothing. The console is not on the
+network: using it takes access to the machine and the terminal of the server (or `tmux`
+for a server left running).
+
 The client opens a window on its connect screen, filled with `--host <address>` (a
 numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <tcp port>`
 (`4242`) and `--name <player name>` (`player`); Enter joins, and `--join` joins at once.

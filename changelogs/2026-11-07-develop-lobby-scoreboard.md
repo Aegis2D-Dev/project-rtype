@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) (opened 2026-11-07) |
 | Branch | `chore/client-lobby-scoreboard-to-develop` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`fc246e7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#313](https://github.com/Aegis2D-Dev/aegis2d/issues/313) feat(client): scoreboard in the lobby |
 
