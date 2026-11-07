@@ -13,6 +13,7 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace rtype {
 
@@ -83,6 +84,13 @@ struct LagSample {
 /// @param value Value, in the unit of the graph.
 /// @return The label, in capitals for the pixel font.
 [[nodiscard]] std::string lag_label(LagGraph graph, double value);
+
+/// @brief The figures of a sample as lines of the engine's metrics overlay, so that the
+/// frame metrics (F12) show the network too, with or without the lagometer (F6).
+/// @param sample Figures, such as Lagometer::latest().
+/// @return Three lines: `"RTT 42 MS  JITTER 3 MS  LOSS 0.0 %"`, `"IN 1.5 KB/S  OUT 0.8 KB/S"`
+/// and `"SNAPSHOTS 50 MS  CORRECTED 0/S"`.
+[[nodiscard]] std::vector<std::string> lag_lines(const LagSample& sample);
 
 /// @brief The last seconds of the network statistics, for the graphs of the lagometer.
 /// @details update() takes a sample every sample_interval and keeps the last length ones,

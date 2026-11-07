@@ -36,7 +36,7 @@ previous wave, then spawns its groups:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `type` | required | Enemy type, one of `rtype::enemy_types` ([add one](add-an-enemy.md)) |
+| `type` | required | Enemy type, a script of `assets/enemies` ([add one](add-an-enemy.md)) |
 | `position` | required | `[x, y]` of the first enemy; x = 1296 is just beyond the right edge |
 | `at` | 0 | Seconds from the start of the wave |
 | `count` | 1 | Enemies in the group |
@@ -50,9 +50,8 @@ file: it prints the number of waves and enemies, or the place of the first mista
 
 ## Add an enemy type
 
-A new enemy goes from its sprite to its values, its creation function, its name in the
-waves files, a wave that uses it, tests and documentation. [Add an enemy type](add-an-enemy.md)
-walks through all of it with a complete example.
+A new enemy is a sprite, a Lua script and a wave that uses it, with no recompilation.
+[Add an enemy type](add-an-enemy.md) walks through all of it with a complete example.
 
 ## Add a system
 
