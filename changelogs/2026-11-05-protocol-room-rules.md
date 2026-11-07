@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#80](https://github.com/Aegis2D-Dev/project-rtype/pull/80) (opened 2026-11-05) |
 | Branch | `feat/protocol-room-rules` → `develop` (stacked on `feat/client-room-screen`, #79) |
-| Status | Open |
+| Status | Merged on 2026-11-05 (`ce5d219`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#306](https://github.com/Aegis2D-Dev/aegis2d/issues/306) feat(protocol): room rules |
 
