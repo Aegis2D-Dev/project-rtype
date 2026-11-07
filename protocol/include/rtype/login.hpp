@@ -90,6 +90,8 @@ enum class LogoutReason : std::uint8_t {
     TimedOut = 2,
     /// @brief The client sent something invalid over UDP.
     ProtocolError = 3,
+    /// @brief The administrator of the server closed the player's room.
+    RoomClosed = 4,
 };
 
 /// @brief Content of a `LoginRequest`.

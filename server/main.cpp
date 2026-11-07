@@ -1,3 +1,4 @@
+#include <aegis2d/core/commands.hpp>
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/log.hpp>
 #include <aegis2d/core/module.hpp>
@@ -7,6 +8,7 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
+#include <rtype/admin_console.hpp>
 #include <rtype/enemy_scripts.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/rate_limit.hpp>
@@ -135,8 +137,19 @@ int main(int argc, char** argv) {
                 aegis2d::core::log_error("server: {}", error.what());
             }
         };
+        // The admin console: each line typed is a command (`help` lists them), run between two
+        // updates on this thread, which owns the sessions.
+        rtype::AdminConsole console{network, rtype::request_stop};
+        rtype::ConsoleInput typed{std::cin};
+        std::cout << "admin console: type help for the commands\n" << std::flush;
         while (!rtype::stop_requested()) {
             run_network();
+            for (const std::string& line : typed.take()) {
+                const aegis2d::core::CommandResult result = console.run(line);
+                if (!result.text.empty()) {
+                    std::cout << result.text << '\n' << std::flush;
+                }
+            }
         }
 
         // Ctrl+C or SIGTERM: every player gets Logout(Shutdown), then the connections close

@@ -17,6 +17,13 @@ inline constexpr std::size_t max_chat_size = 200;
 /// @brief `player` of a `ChatMessage` whose sender is in the lobby, with no player number.
 inline constexpr std::uint8_t lobby_player = 255;
 
+/// @brief `player` of a `ChatMessage` of the server itself, such as its administrator's
+/// `say`: no player has it (RFC section 3.8).
+inline constexpr std::uint8_t server_player = 254;
+
+/// @brief `name` of a `ChatMessage` of the server itself.
+inline constexpr std::string_view server_name = "server";
+
 /// @brief Why a chat message is not relayed, the `reason` of `ChatRejected`.
 enum class ChatRejection : std::uint8_t {
     /// @brief The text is longer than max_chat_size bytes.

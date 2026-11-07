@@ -20,4 +20,8 @@ inline constexpr int forced_exit_status = 130;
 /// @return `true` once SIGINT or SIGTERM was received.
 [[nodiscard]] bool stop_requested() noexcept;
 
+/// @brief Asks the server to stop, as a first Ctrl+C does: stop_requested() becomes `true`.
+/// @details Thread-safe; the admin console's `stop` calls it.
+void request_stop() noexcept;
+
 } // namespace rtype
