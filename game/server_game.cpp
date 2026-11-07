@@ -1,3 +1,4 @@
+#include <aegis2d/core/config.hpp>
 #include <aegis2d/ecs/despawn.hpp>
 #include <aegis2d/ecs/movement.hpp>
 #include <aegis2d/shmup/weapons.hpp>
@@ -10,9 +11,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <format>
 #include <iterator>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace rtype {
@@ -30,6 +34,13 @@ ecs::SpawnSettings bydos_spawns(float scale) noexcept {
                               .max_interval = tuning::bydos_spawn_max_interval * scale};
 }
 
+// The health an enemy's script gave it, times the factor of the room's rules.
+void scale_health(ecs::Registry& world, ecs::Entity enemy, std::int32_t factor) {
+    if (const auto health = world.try_get<ecs::Health>(enemy)) {
+        health->get().points *= factor;
+    }
+}
+
 bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
     const Vec2 center = world.get<ecs::Transform>(entity).position;
     const ecs::Aabb area = ServerGame::play_area();
@@ -39,18 +50,27 @@ bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
 
 } // namespace
 
-ServerGame::ServerGame(std::optional<std::uint64_t> seed, GameRules rules)
-    : grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
+ServerGame::ServerGame(std::optional<std::uint64_t> seed, const std::filesystem::path& enemies,
+                       bool hot_reload, GameRules rules)
+    : enemies_{registry_, enemies}, hot_{hot_reload},
+      grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
       rules_{rules}, spawner_{bydos_spawns(rules.spawn_interval_scale), seed.value_or(0)} {
+    if (seed_ && enemies_.find(tuning::random_enemy) == nullptr) {
+        throw aegis2d::core::ConfigError{std::format("{}: no script gives {}, the random enemy",
+                                                     enemies.string(), tuning::random_enemy)};
+    }
     register_systems();
     systems_.set_enabled("spawn", seed_.has_value());
+    enemies_.watch(hot_);
 }
 
 void ServerGame::register_systems() {
     // A player ship moves as step_ship() says: steering, movement, then play_area.
     systems_.add("steering", steer_ships);
     systems_.add("movement", ecs::apply_velocity);
-    systems_.add("sine_motion", ecs::apply_sine_motion);
+    systems_.add("behaviors", [this](ecs::Registry& /*world*/, const ecs::Tick& tick) {
+        enemies_.update(tick.delta());
+    });
     systems_.add("play_area", keep_ships_in_area);
     systems_.add("weapons", [this](ecs::Registry& world, const ecs::Tick& tick) {
         shmup::trigger_weapons(world, tick, shooters_);
@@ -72,21 +92,28 @@ void ServerGame::register_systems() {
             }
         }
     });
-    systems_.add("spawn", [this](ecs::Registry& world, const ecs::Tick& tick) {
+    systems_.add("spawn", [this](ecs::Registry& /*world*/, const ecs::Tick& tick) {
         spawner_.update(tick, spawn_points_);
+        const float fire_every = enemies_.find(tuning::random_enemy)->fire_every;
         for (const Vec2 line : spawn_points_) {
-            const float phase = spawner_.random().uniform(0.0F, tuning::bydos_wave_period);
-            const float first_shot = tuning::bydos_first_shot +
-                                     spawner_.random().uniform(0.0F, tuning::bydos_fire_cooldown);
-            spawned_.push_back(spawn_bydos_slave(world, line, phase, first_shot));
-            world.emplace_or_replace<ecs::Health>(spawned_.back(), rules_.enemy_health);
+            const float random = spawner_.random().uniform(0.0F, 1.0F);
+            const float shot_delay = spawner_.random().uniform(0.0F, fire_every);
+            const ecs::Entity enemy =
+                enemies_.spawn(tuning::random_enemy, line, random, shot_delay);
+            if (registry_.alive(enemy)) {
+                scale_health(registry_, enemy, rules_.enemy_health_factor);
+                spawned_.push_back(enemy);
+            }
         }
     });
-    systems_.add("waves", [this](ecs::Registry& world, const ecs::Tick& tick) {
+    systems_.add("waves", [this](ecs::Registry& /*world*/, const ecs::Tick& tick) {
         waves_.update(tick, due_);
         for (const ecs::WaveSpawn& spawn : due_) {
-            spawned_.push_back(spawn_enemy(world, spawn.type, spawn.position));
-            world.emplace_or_replace<ecs::Health>(spawned_.back(), rules_.enemy_health);
+            const ecs::Entity enemy = enemies_.spawn(spawn.type, spawn.position);
+            if (registry_.alive(enemy)) {
+                scale_health(registry_, enemy, rules_.enemy_health_factor);
+                spawned_.push_back(enemy);
+            }
         }
     });
     systems_.add("collision", [this](ecs::Registry& world, const ecs::Tick& tick) {
@@ -173,9 +200,18 @@ bool ServerGame::set_input(ecs::Entity player, ecs::PlayerInput input) {
 }
 
 void ServerGame::tick(aegis2d::core::Duration step) {
+    hot_.update();
     spawned_.clear();
     systems_.update(registry_, step);
     history_.record(ticks(), registry_);
+}
+
+ecs::Entity ServerGame::spawn_enemy(std::string_view type, Vec2 position) {
+    return enemies_.spawn(type, position);
+}
+
+EnemyScripts& ServerGame::enemies() noexcept {
+    return enemies_;
 }
 
 void ServerGame::play_waves(ecs::WaveSchedule waves) {
@@ -218,6 +254,10 @@ ecs::Registry& ServerGame::registry() noexcept {
 
 const ecs::Registry& ServerGame::registry() const noexcept {
     return registry_;
+}
+
+void ServerGame::set_profiler(aegis2d::core::Profiler* profiler) noexcept {
+    systems_.set_profiler(profiler);
 }
 
 const ecs::Scheduler& ServerGame::systems() const noexcept {

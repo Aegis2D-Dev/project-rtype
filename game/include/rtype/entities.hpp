@@ -8,7 +8,6 @@
 #include <rtype/tuning.hpp>
 
 #include <cstddef>
-#include <string_view>
 
 /// @brief R-Type game code, built on the Aegis2D engine.
 namespace rtype {
@@ -42,25 +41,6 @@ aegis2d::ecs::Entity spawn_player(aegis2d::ecs::Registry& registry, std::size_t 
 aegis2d::ecs::Entity spawn_player_missile(aegis2d::ecs::Registry& registry,
                                           aegis2d::ecs::Entity shooter);
 
-/// @brief Creates a Bydos slave, the first enemy type.
-/// @details It flies left while weaving up and down around its line
-/// (tuning::bydos_wave_amplitude, every tuning::bydos_wave_period seconds, `ecs::SineMotion`),
-/// fires on its own every tuning::bydos_fire_cooldown seconds (`shmup::Weapon` and
-/// `shmup::AutoTrigger`; see fire_enemy_missile()), dies from one missile, gives
-/// tuning::bydos_score points to its killer, rams players, ignores the other enemies and is
-/// destroyed once it has crossed the screen; it can be created beyond the right edge.
-/// @param registry World of the game.
-/// @param line Point of the line it weaves around; with no @p phase, its center, and it
-/// first rises (towards y = 0) and comes back to it.
-/// @param phase Seconds into its wave, from 0 to tuning::bydos_wave_period, so that Bydos
-/// spawned together do not move in step; the Bydos is placed where its wave is at that
-/// time.
-/// @param first_shot Seconds before its first shot.
-/// @return The Bydos.
-aegis2d::ecs::Entity spawn_bydos_slave(aegis2d::ecs::Registry& registry, aegis2d::Vec2 line,
-                                       float phase = 0.0F,
-                                       float first_shot = tuning::bydos_first_shot);
-
 /// @brief Creates a missile fired by an enemy.
 /// @details It flies left, hits only players, is consumed by its first hit and is destroyed
 /// once past the left edge.
@@ -78,15 +58,5 @@ aegis2d::ecs::Entity spawn_enemy_missile(aegis2d::ecs::Registry& registry, aegis
 /// @throws std::out_of_range If @p shooter has no Transform.
 aegis2d::ecs::Entity fire_enemy_missile(aegis2d::ecs::Registry& registry,
                                         aegis2d::ecs::Entity shooter);
-
-/// @brief Creates an enemy by the name a waves file gives it (see enemy_types).
-/// @details `"bydos_slave"` is spawn_bydos_slave() with @p position on its line.
-/// @param registry World of the game.
-/// @param type Name of the enemy type.
-/// @param position Where it appears.
-/// @return The enemy.
-/// @throws std::invalid_argument If @p type is not one of enemy_types.
-aegis2d::ecs::Entity spawn_enemy(aegis2d::ecs::Registry& registry, std::string_view type,
-                                 aegis2d::Vec2 position);
 
 } // namespace rtype

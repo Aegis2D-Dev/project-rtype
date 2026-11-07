@@ -101,7 +101,7 @@ TEST_CASE("velocities are sent in whole pixels per second", "[compact]") {
     STATIC_REQUIRE(rtype::velocity_min == -2048.0F);
     STATIC_REQUIRE(rtype::velocity_max == 2047.0F);
     for (const float speed : {tuning::player_speed, tuning::player_missile_speed,
-                              tuning::bydos_speed, tuning::enemy_missile_speed}) {
+                              120.0F /* a Bydos */, tuning::enemy_missile_speed}) {
         CHECK(velocity_round_trip(speed) == speed);
         CHECK(velocity_round_trip(-speed) == -speed);
     }

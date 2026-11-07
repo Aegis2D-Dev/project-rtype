@@ -14,6 +14,7 @@
 #include <aegis2d/render/letterbox.hpp>
 #include <aegis2d/render/opengl/renderer.hpp>
 
+#include "editor_view.hpp"
 #include "game_art.hpp"
 #include "game_sounds.hpp"
 #include "game_view.hpp"
@@ -35,7 +36,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -101,6 +104,16 @@ ClientApp::ClientApp(const ClientOptions& options)
     metrics_overlay_.set_visible(options.metrics);
     core::log_info("settings: {}", preferences_.file.string());
     select(static_cast<std::size_t>(ConnectField::Name));
+    // --edit opens a waves file in the level editor, or says why it cannot.
+    if (options.edit.has_value()) {
+        try {
+            editor_.emplace(LevelDraft::from_file(*options.edit));
+            screen_ = ClientScreen::Editor;
+            core::log_info("level editor: {}", options.edit->string());
+        } catch (const core::ConfigError& error) {
+            message_ = {.text = error.what(), .error = true};
+        }
+    }
     // --join joins with the fields as shown, so a rejoin from this screen is the same.
     if (options.join) {
         if (const auto settings = fields_.form().submit();
@@ -155,6 +168,12 @@ bool ClientApp::frame() {
         break;
     case ClientScreen::Lost:
         lost_screen();
+        break;
+    case ClientScreen::Editor:
+        editor_screen();
+        break;
+    case ClientScreen::Playtest:
+        playtest_screen();
         break;
     }
     // The fields take typed text while one is selected on the connect screen; the game's
@@ -382,6 +401,90 @@ void ClientApp::lost_screen() {
     }
 }
 
+// The level editor: the mouse places, moves and removes the enemies of the wave shown (#369).
+void ClientApp::editor_screen() {
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (keyboard.pressed(Key::Escape) || !editor_.has_value()) {
+        editor_.reset();
+        screen_ = ClientScreen::Connect;
+        return;
+    }
+    if (keyboard.pressed(Key::PageDown)) {
+        editor_->next_wave();
+    }
+    if (keyboard.pressed(Key::PageUp)) {
+        editor_->previous_wave();
+    }
+    // The wave in time (#370): Left and Right change its delay, Up and Down its order.
+    if (keyboard.pressed(Key::Left)) {
+        editor_->shift_delay(-0.1F);
+    }
+    if (keyboard.pressed(Key::Right)) {
+        editor_->shift_delay(0.1F);
+    }
+    if (keyboard.pressed(Key::Up)) {
+        editor_->move_wave(false);
+    }
+    if (keyboard.pressed(Key::Down)) {
+        editor_->move_wave(true);
+    }
+    // N adds a wave, S saves the file, P plays the waves from the one edited (#371).
+    if (keyboard.pressed(Key::N)) {
+        editor_->add_wave();
+    }
+    const std::filesystem::path file = options_.edit.value_or("waves.json");
+    if (keyboard.pressed(Key::S)) {
+        try {
+            editor_->draft().save(file);
+            editor_->mark_saved();
+            editor_message_ = {.text = std::format("Saved to {}.", file.string()), .error = false};
+            core::log_info("level editor: saved {}", file.string());
+        } catch (const core::ConfigError& error) {
+            editor_message_ = {.text = error.what(), .error = true};
+        }
+    }
+    if (keyboard.pressed(Key::P)) {
+        try {
+            auto game = std::make_unique<ServerGame>();
+            game->play_waves(editor_->draft().schedule(editor_->wave()));
+            playtest_ship_ = game->add_player(0);
+            playtest_ = std::move(game);
+            playtest_wave_ = editor_->wave();
+            playtest_lag_ = 0.0F;
+            editor_message_ = {};
+            screen_ = ClientScreen::Playtest;
+            return;
+        } catch (const core::ConfigError& error) {
+            editor_message_ = {.text = error.what(), .error = true};
+        }
+    }
+    const platform::Mouse& mouse = window_.mouse();
+    editor_->update({.position = renderer_.to_logical(mouse.position()),
+                     .pressed = mouse.pressed(platform::MouseButton::Left),
+                     .held = mouse.held(platform::MouseButton::Left),
+                     .remove = mouse.pressed(platform::MouseButton::Right)},
+                    editor_view_);
+}
+
+// The waves of the editor played on the client: the server's game, ticked here (#371).
+void ClientApp::playtest_screen() {
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (keyboard.pressed(Key::Escape) || !playtest_) {
+        playtest_.reset();
+        screen_ = ClientScreen::Editor;
+        return;
+    }
+    aegis2d::ecs::PlayerInput input;
+    input.held = preferences_.controls.update(keyboard, window_.gamepad());
+    playtest_->set_input(playtest_ship_, input);
+    const float step = 1.0F / static_cast<float>(tuning::tick_rate);
+    playtest_lag_ += frame_seconds_;
+    while (playtest_lag_ >= step) {
+        playtest_->tick(core::step_from_rate(tuning::tick_rate));
+        playtest_lag_ -= step;
+    }
+}
+
 void ClientApp::join(const ClientSettings& settings) {
     message_ = {};
     joined_ = settings;
@@ -517,6 +620,22 @@ void ClientApp::draw() {
             draw_status(renderer_, font_, "CONNECTION LOST", sentence(lost_reason_),
                         "ENTER: BACK TO THE MENU    ESCAPE: QUIT", preferences_);
             break;
+        case ClientScreen::Editor:
+            if (editor_.has_value()) {
+                draw_editor(renderer_, font_, art_, *editor_, editor_view_,
+                            renderer_.to_logical(window_.mouse().position()),
+                            options_.edit.value_or("").filename().string(), preferences_);
+                if (!editor_message_.text.empty()) {
+                    draw_editor_message(renderer_, font_, editor_message_, preferences_);
+                }
+            }
+            break;
+        case ClientScreen::Playtest:
+            if (playtest_) {
+                draw_playtest(renderer_, font_, art_, *playtest_, playtest_ship_, playtest_wave_,
+                              preferences_);
+            }
+            break;
         case ClientScreen::Rooms:
             draw_rooms(renderer_, font_, room_list_, message_,
                        std::chrono::duration<double>{now - started_}.count(), preferences_);
@@ -546,7 +665,12 @@ void ClientApp::draw() {
         screen_ == ClientScreen::Game && session_.has_value()
             ? std::optional{session_->world().registry().size()}
             : std::nullopt;
-    metrics_overlay_.draw(renderer_, font_, metrics_, entities);
+    // The network numbers while connected to a game.
+    const std::vector<std::string> network =
+        screen_ == ClientScreen::Game && session_.has_value() && !lagometer_.samples().empty()
+            ? lag_lines(lagometer_.latest())
+            : std::vector<std::string>{};
+    metrics_overlay_.draw(renderer_, font_, metrics_, entities, network);
     renderer_.end_frame();
     if (capture && renderer_.captured().has_value()) {
         renderer_.captured()->save_png(*options_.screenshot);

@@ -1,8 +1,10 @@
+#include <aegis2d/core/hot_reload.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/entity.hpp>
 #include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/server_game.hpp>
 
@@ -36,7 +38,8 @@ GameInstance::GameInstance(std::optional<std::uint64_t> seed, ecs::WaveSchedule 
 }
 
 void GameInstance::start() {
-    game_ = std::make_unique<ServerGame>(seed_, rules_);
+    game_ = std::make_unique<ServerGame>(seed_, default_enemies_directory(),
+                                         aegis2d::core::hot_reload_by_default, rules_);
     game_->play_waves(waves_);
     ships_.fill(std::nullopt);
     scores_.fill(0);

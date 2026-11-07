@@ -89,6 +89,7 @@ Both binaries accept `--version`, which prints the version and exits. The server
 | `--max-packet-rate <n>` | `300` | UDP datagrams accepted per second from one IP address (1 to 100000) |
 | `--compress <bytes>` | off | Sends the snapshots and events of at least that many bytes (1 to 1182) compressed with LZ4 when that makes them smaller |
 | `--max-rooms <count>` | `4` | Games played at once, 4 players in each (1 to 64): a room opens with its first player and closes with its last |
+| `--trace <file.json>` | off | Times every tick of every room, its systems and the sending of its snapshots and events, and writes them to the file when the server stops, in the Chrome trace format: open it in [Perfetto](https://ui.perfetto.dev) to see the ticks on a timeline, a track per room |
 | `--help` | | Prints the usage and exits |
 
 A port is a number from 0 to 65535; 0 lets the system pick a free one, printed at start. A
