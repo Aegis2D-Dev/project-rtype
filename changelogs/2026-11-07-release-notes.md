@@ -40,6 +40,11 @@ first release lists every pull request, and a changelog with nothing new stops t
   delivered to `master` and the final delivery is tagged there. The first delivery was
   tagged `v0.2.0` (the version in `project()`), so the final one needs `project()` bumped
   first, to `0.3.0` for instance: to settle with the team.
+- Draft: the *Package* jobs of this pull request fail, as on any pull request touching the
+  workflow since the engine's first delivery (#53 already): they build the game with the
+  engine's `master`, delivered on 2026-10-17, which lacks `aegis2d::script` and
+  `aegis2d::shmup` (`CMake Error at game/CMakeLists.txt:13`). They pass once the engine's
+  `develop` is delivered to `master`; rerun them then, before merging.
 - The notes of the final delivery were generated locally from `v0.2.0`'s changelog: 53 pull
   requests.
 - Verified on macOS (AppleClang 21): build without warnings; 324 of 326 tests pass (ctest;
