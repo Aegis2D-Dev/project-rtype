@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#49](https://github.com/Aegis2D-Dev/project-rtype/pull/49) (opened 2026-10-27) |
 | Branch | `refactor/shmup-ship-controls` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-27 (`e3d3317`) |
 | Author | @Loic-ally |
 | Ticket | [Aegis2D-Dev/aegis2d#318](https://github.com/Aegis2D-Dev/aegis2d/issues/318) ship controls and player styles in the shmup module |
 
