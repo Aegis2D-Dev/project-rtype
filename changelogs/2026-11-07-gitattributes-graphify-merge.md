@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#91](https://github.com/Aegis2D-Dev/project-rtype/pull/91) (opened 2026-11-07) |
 | Branch | `feat/gitattributes-graphify-merge` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`7d37054`) |
 | Author | @vmbr068 |
 | Ticket | None: graphify tooling |
 

@@ -94,7 +94,13 @@ of the room, until `GameStart`; `RoomListForm` is the room list screen of `r-typ
 apart from its drawing. A room opens when its first player joins, its game on a new thread,
 and closes when its last player leaves: its thread is stopped and joined, and the next player
 of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
-default); once they are all full, a login is refused as `ServerFull`. A bound player joins the
+default); once they are all full, a login is refused as `ServerFull`. When the game of a room
+is over (`GameInstance::take_game_over()`, once per game), the score of each of its players
+goes to the `Scoreboard` of the server (`GameServer::keep_scores()`, `--scores`): the 10 best,
+best first, in a JSON file (`{"scores": [{"name": "R9", "score": 1200}]}`) written at each
+change through a temporary file that then replaces it, so a crash never leaves half a file. A
+file that cannot be read or is not a board is logged and replaced by the next score: the
+server starts anyway. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid
