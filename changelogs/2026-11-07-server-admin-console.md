@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#99](https://github.com/Aegis2D-Dev/project-rtype/pull/99) (opened 2026-11-07) |
 | Branch | `feat/server-admin-console` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`1e595c7`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#310](https://github.com/Aegis2D-Dev/aegis2d/issues/310) feat(server): admin console |
 
