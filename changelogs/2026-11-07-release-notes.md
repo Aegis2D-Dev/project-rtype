@@ -35,6 +35,8 @@ first release lists every pull request, and a changelog with nothing new stops t
 - `3190398` feat(tests): added release notes since the previous release
 - `c352427` feat(docs): documented the release notes and updated changelogs
 - `5968eff` feat(changelog): updated changelogs
+- `dea933e` feat(changelog): updated changelogs
+- `386e0ff` feat(ci): fixed release notes with cmake 3.31 in script mode
 - feat(changelog): updated changelogs
 
 ## Notes
@@ -46,6 +48,9 @@ first release lists every pull request, and a changelog with nothing new stops t
   engine's `master`, delivered on 2026-10-17, which lacks the `script` and `shmup`
   modules the game now links (`CMake Error at game/CMakeLists.txt:13`, `aegis2d::script`). They pass once the engine's
   `develop` is delivered to `master`; rerun them then, before merging.
+- `tools/release_notes.cmake` sets `cmake_minimum_required()`: run with `cmake -P`, CMake
+  3.31 (CI's) leaves `IN_LIST` to its old policy otherwise, and the test failed there while
+  CMake 4.4 passed it. Checked with both.
 - The notes of the final delivery were generated locally from `v0.2.0`'s changelog: 53 pull
   requests.
 - Verified on macOS (AppleClang 21): build without warnings; 324 of 326 tests pass (ctest;
