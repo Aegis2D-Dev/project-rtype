@@ -34,16 +34,19 @@ board (#95) in a `ScoreList`. Thirteenth ticket of the *Network: multi-instance 
 ## Commits
 - `5a971a8` feat(client): showed the best scores of the server in the lobby
 - `7b217f9` feat(tests): added the best scores shown in the lobby
-- feat(docs): documented the best scores of the lobby and updated changelogs
+- `38ec870` feat(docs): documented the best scores of the lobby and updated changelogs
+- Merge branch 'feat/server-scoreboard' into feat/client-lobby-scoreboard
+- feat(changelog): updated changelogs
 
 ## Notes
-- Stacked on #95, which keeps the board. The RFC part is Aegis2D-Dev/aegis2d#478: the
+- Stacked on #95, which keeps the board; #95 was merged in once it had `develop`, without
+  conflict. The RFC part is Aegis2D-Dev/aegis2d#478: the
   scoreboard takes kinds 20 and 21 after the chat's 17 to 19 (Aegis2D-Dev/aegis2d#476). Merging
   with #93 will conflict in `tcp_kind()` and `TcpKind`: both ranges are kept.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too (`-DSDL_UNIX_CONSOLE_BUILD=ON`): clang-format, clang-tidy 22 (75 files, and
   86 with the client), `mkdocs build --strict`, Doxygen. The screen was not checked on a
   window: the machine used has no display.
-- `ctest`: 267 of 268 tests pass; under ASan and UBSan, the test cases of the scores, the
+- `ctest`: 297 of 298 tests pass; under ASan and UBSan, the test cases of the scores, the
   client and the logins pass. *a flooding address is cut off, and the players play on* fails
   on the machine used, as on `develop`, and passes in CI.
