@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#105](https://github.com/Aegis2D-Dev/project-rtype/pull/105) (opened 2026-11-07) |
 | Branch | `fix/tests-reconciliation-pending` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`52b093a`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#486](https://github.com/Aegis2D-Dev/aegis2d/issues/486) fix(tests): reconciliation test fails under load on its pending inputs |
 
