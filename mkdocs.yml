@@ -65,6 +65,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Play: play.md
+  - Cross-play Linux and Windows: cross-play.md
   - Architecture: architecture.md
   - Gameplay: gameplay.md
   - Network benchmark: network-benchmark.md

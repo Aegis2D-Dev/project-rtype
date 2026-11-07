@@ -14,6 +14,9 @@ network (build first, see [Getting started](getting-started.md)):
 ./build/linux-debug/r-type_client
 ```
 
+A Linux server takes Windows clients and the other way round: see
+[Cross-play Linux and Windows](cross-play.md) for the ports to open and the test procedure.
+
 The client opens on the **connect screen**: the server's address, its TCP port and the
 player's name, filled with the command line's values (`127.0.0.1`, `4242`, `player` by
 default). Type over them, then press Enter to join:
