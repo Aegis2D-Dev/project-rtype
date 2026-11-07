@@ -410,6 +410,19 @@ void ClientApp::editor_screen() {
     if (keyboard.pressed(Key::PageUp)) {
         editor_->previous_wave();
     }
+    // The wave in time (#370): Left and Right change its delay, Up and Down its order.
+    if (keyboard.pressed(Key::Left)) {
+        editor_->shift_delay(-0.1F);
+    }
+    if (keyboard.pressed(Key::Right)) {
+        editor_->shift_delay(0.1F);
+    }
+    if (keyboard.pressed(Key::Up)) {
+        editor_->move_wave(false);
+    }
+    if (keyboard.pressed(Key::Down)) {
+        editor_->move_wave(true);
+    }
     const platform::Mouse& mouse = window_.mouse();
     editor_->update({.position = renderer_.to_logical(mouse.position()),
                      .pressed = mouse.pressed(platform::MouseButton::Left),

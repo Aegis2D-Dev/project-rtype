@@ -6,6 +6,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
 | [#91](https://github.com/Aegis2D-Dev/project-rtype/pull/91) | Graphify merge driver for the graph output | `feat/gitattributes-graphify-merge` | Open | 2026-11-07 | [2026-11-07-gitattributes-graphify-merge](changelogs/2026-11-07-gitattributes-graphify-merge.md) |
+| [#89](https://github.com/Aegis2D-Dev/project-rtype/pull/89) | Level editor timeline: the waves moved in time | `feat/client-editor-timeline` | Open | 2026-11-06 | [2026-11-06-client-editor-timeline](changelogs/2026-11-06-client-editor-timeline.md) |
 | [#88](https://github.com/Aegis2D-Dev/project-rtype/pull/88) | Level editor: the enemies of a wave placed with the mouse | `feat/client-level-editor` | Open | 2026-11-06 | [2026-11-06-client-level-editor](changelogs/2026-11-06-client-level-editor.md) |
 | [#85](https://github.com/Aegis2D-Dev/project-rtype/pull/85) | Enemy scripts reloaded while the game runs | `feat/game-reload-behaviors` | Open | 2026-11-06 | [2026-11-06-game-reload-behaviors](changelogs/2026-11-06-game-reload-behaviors.md) |
 | [#84](https://github.com/Aegis2D-Dev/project-rtype/pull/84) | Enemy types and behaviors in Lua scripts | `feat/game-scripted-enemies` | Open | 2026-11-06 | [2026-11-06-game-scripted-enemies](changelogs/2026-11-06-game-scripted-enemies.md) |

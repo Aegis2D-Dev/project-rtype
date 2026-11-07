@@ -203,7 +203,16 @@ second it appears in its wave under it.
 | Move an enemy | Left click on it and drag |
 | Remove an enemy | Right click on it |
 | Next / previous wave | Page Down / Page Up |
+| Edit a wave and move it in time | Left click on it in the timeline and drag |
+| The wave's delay, 0.1 s shorter / longer | Left / Right |
+| The wave before / after the one before or after it | Up / Down |
 | Leave the editor | Escape |
+
+Under the play area, the timeline shows when each wave plays, as the server plays them: a
+block per wave, from the end of its delay to its last enemy, the wave edited in yellow, a
+mark every 5 seconds. A wave starts its delay after the last enemy of the wave before it, so
+moving a wave in time moves the waves after it too; its delay, start and end are written
+above the timeline.
 
 Each group of the file (`count`, `every`, `step`) shows as one enemy per member, so each can
 be moved on its own. Positions are whole logical pixels, kept within the play area and the

@@ -157,3 +157,83 @@ TEST_CASE("the editor goes from wave to wave", "[client][editor][369]") {
     empty.previous_wave();
     CHECK(empty.wave() == 0);
 }
+
+namespace {
+
+// Two waves: one enemy at once, then two over a second, two seconds after.
+LevelDraft two_waves() {
+    return LevelDraft{
+        .loop = false,
+        .waves = {
+            {.delay = 1.0F, .enemies = {{.type = "bydos_slave", .position = {300.0F, 200.0F}}}},
+            {.delay = 2.0F,
+             .enemies = {{.type = "bydos_slave", .position = {600.0F, 200.0F}, .at = 0.0F},
+                         {.type = "bydos_slave", .position = {600.0F, 300.0F}, .at = 1.0F}}}}};
+}
+
+// The mouse on the timeline, at a time of the waves.
+EditorPointer on_timeline(const LevelEditor& editor, float time, bool pressed, bool held) {
+    const EditorView view;
+    const float seconds = EditorView::timeline_seconds(editor.timeline().back().end);
+    const Vec2 at =
+        view.timeline + Vec2{time / seconds * view.timeline_size.x, view.timeline_size.y / 2.0F};
+    return {.position = at, .pressed = pressed, .held = held, .remove = false};
+}
+
+} // namespace
+
+TEST_CASE("the timeline tells when each wave plays", "[client][editor][370]") {
+    const LevelEditor editor{two_waves()};
+    const std::vector<rtype::WaveSpan> spans = editor.timeline();
+    REQUIRE(spans.size() == 2);
+    CHECK(spans.at(0).start == 1.0F);
+    CHECK(spans.at(0).end == 1.0F);
+    CHECK(spans.at(1).start == 3.0F);
+    CHECK(spans.at(1).end == 4.0F);
+    CHECK(EditorView::timeline_seconds(4.0F) == 10.0F);
+    CHECK(EditorView::timeline_seconds(50.0F) == Approx(60.0F));
+}
+
+TEST_CASE("a wave is moved in time from the editor", "[client][editor][370]") {
+    LevelEditor editor{two_waves()};
+    // Taken on the timeline where it starts, the second wave is edited and follows the mouse.
+    editor.update(on_timeline(editor, 3.2F, true, true));
+    CHECK(editor.wave() == 1);
+    CHECK(editor.dragging_wave());
+    editor.update(on_timeline(editor, 4.7F, false, true));
+    CHECK(editor.draft().waves.at(1).delay == Approx(3.5F));
+    CHECK(editor.timeline().at(1).start == Approx(4.5F));
+    editor.update(on_timeline(editor, 4.7F, false, false));
+    CHECK_FALSE(editor.dragging_wave());
+    CHECK(editor.changed());
+    // No enemy placed by a click on the timeline.
+    CHECK(editor.enemies().size() == 2);
+
+    // Dragged before the start, its delay stops at 0.
+    editor.update(on_timeline(editor, 4.6F, true, true));
+    editor.update(on_timeline(editor, 0.0F, false, true));
+    CHECK(editor.draft().waves.at(1).delay == 0.0F);
+
+    // A click before every wave edits the first.
+    editor.update(on_timeline(editor, 0.1F, true, false));
+    CHECK(editor.wave() == 0);
+}
+
+TEST_CASE("the keys change the delay and the order of the waves", "[client][editor][370]") {
+    LevelEditor editor{two_waves()};
+    editor.shift_delay(0.25F);
+    CHECK(editor.draft().waves.at(0).delay == Approx(1.3F));
+    editor.shift_delay(-5.0F);
+    CHECK(editor.draft().waves.at(0).delay == 0.0F);
+    CHECK(editor.timeline().at(1).start == Approx(2.0F));
+
+    editor.move_wave(false);
+    CHECK(editor.wave() == 0);
+    editor.move_wave(true);
+    CHECK(editor.wave() == 1);
+    CHECK(editor.draft().waves.at(0).enemies.size() == 2);
+    CHECK(editor.draft().waves.at(1).enemies.size() == 1);
+    editor.move_wave(true);
+    CHECK(editor.wave() == 1);
+    CHECK(editor.changed());
+}
