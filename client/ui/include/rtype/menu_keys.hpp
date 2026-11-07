@@ -18,7 +18,6 @@ namespace rtype {
 /// @param gamepad Gamepad of the frame.
 /// @return The keys to apply, in that order.
 [[nodiscard]] std::vector<aegis2d::platform::Key>
-menu_keys(const aegis2d::platform::Keyboard& keyboard,
-          const aegis2d::platform::Gamepad& gamepad);
+menu_keys(const aegis2d::platform::Keyboard& keyboard, const aegis2d::platform::Gamepad& gamepad);
 
 } // namespace rtype

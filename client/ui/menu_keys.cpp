@@ -1,7 +1,7 @@
-#include <rtype/menu_keys.hpp>
-
 #include <aegis2d/platform/gamepad.hpp>
 #include <aegis2d/platform/keyboard.hpp>
+
+#include <rtype/menu_keys.hpp>
 
 #include <algorithm>
 #include <array>

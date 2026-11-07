@@ -41,8 +41,7 @@ TEST_CASE("the lobby takes a gamepad's D-pad, stick, A and B as its keys", "[cli
     CHECK(rtype::menu_keys(keyboard, gamepad).empty());
 }
 
-TEST_CASE("the keyboard's keys come first, and a key and its button count once",
-          "[client][a11y]") {
+TEST_CASE("the keyboard's keys come first, and a key and its button count once", "[client][a11y]") {
     Keyboard keyboard;
     Gamepad gamepad;
     gamepad.connect(aegis2d::platform::GamepadStyle::Xbox);
