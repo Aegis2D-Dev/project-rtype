@@ -11,6 +11,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/chat.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
@@ -54,6 +55,7 @@ using aegis2d::net::TcpCloseReason;
 using aegis2d::net::TcpConnection;
 using aegis2d::net::TcpListener;
 using aegis2d::net::UdpSocket;
+using rtype::ChatRejection;
 using rtype::LoginAccepted;
 using rtype::LoginRejection;
 using rtype::LoginRequest;
@@ -495,6 +497,89 @@ TEST_CASE("a client lists and creates rooms with these messages only", "[server]
     REQUIRE(pump(context, server, [&] { return player.closed; }));
     CHECK(player.received.size() == answers);
     CHECK(server.sessions().size() == 0);
+}
+
+TEST_CASE("the chat stays in its room, a long message is refused and a flood is cut",
+          "[server][chat]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{23};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    // Four players log in to room 0; the third moves to room 1, the fourth to the lobby.
+    std::vector<std::unique_ptr<Player>> players;
+    for (const std::string name : {"A", "B", "C", "D"}) {
+        players.push_back(std::make_unique<Player>(context, server));
+        static_cast<void>(log_in(context, server, *players.back(), name));
+    }
+    Player& first = *players.at(0);
+    Player& second = *players.at(1);
+    Player& other_room = *players.at(2);
+    Player& lobby = *players.at(3);
+    const auto chats = [](const Player& player) {
+        std::vector<rtype::ChatMessage> messages;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                messages.push_back(std::move(*chat));
+            }
+        }
+        return messages;
+    };
+    const auto rejections = [](const Player& player, ChatRejection reason) {
+        return std::ranges::count_if(
+            player.received, [reason](const std::vector<std::byte>& message) {
+                return rtype::read_chat_rejected(message) == static_cast<std::uint8_t>(reason);
+            });
+    };
+    other_room.send(rtype::write_create_room({.name = "Bees", .max_players = 4}));
+    other_room.send(rtype::write_join_room(1));
+    lobby.send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] {
+        return server.sessions().members(1).size() == 1 && server.sessions().members(0).size() == 2;
+    }));
+
+    // A message reaches the players of the room, the sender too, and no one else.
+    first.send(rtype::write_chat_send("hi"));
+    other_room.send(rtype::write_chat_send("yo"));
+    lobby.send(rtype::write_chat_send("anyone?"));
+    const rtype::ChatMessage hi{.player = 0, .name = "A", .text = "hi"};
+    REQUIRE(pump(context, server, [&] {
+        return !chats(second).empty() && !chats(other_room).empty() && !chats(lobby).empty();
+    }));
+    context.run_for(std::chrono::milliseconds{100});
+    CHECK(chats(first) == std::vector{hi});
+    CHECK(chats(second) == std::vector{hi});
+    CHECK(chats(other_room) ==
+          std::vector{rtype::ChatMessage{.player = 0, .name = "C", .text = "yo"}});
+    CHECK(chats(lobby) == std::vector{rtype::ChatMessage{
+                              .player = rtype::lobby_player, .name = "D", .text = "anyone?"}});
+
+    // A long message is refused, and only its sender learns it; the session goes on.
+    first.send(rtype::write_chat_send(std::string(rtype::max_chat_size + 1, 'a')));
+    first.send(rtype::write_chat_send("a\tb"));
+    REQUIRE(pump(context, server, [&] { return rejections(first, ChatRejection::BadText) == 1; }));
+    CHECK(rejections(first, ChatRejection::TooLong) == 1);
+    CHECK(chats(second).size() == 1);
+    CHECK(!first.closed);
+
+    // A flood: the 4 messages left of the first 5 go out, the others are refused.
+    constexpr std::size_t flood = 12;
+    for (std::size_t message = 0; message < flood; ++message) {
+        first.send(rtype::write_chat_send("spam"));
+    }
+    const auto answered = [&] {
+        return chats(first).size() - 1 +
+               static_cast<std::size_t>(rejections(first, ChatRejection::TooFast));
+    };
+    REQUIRE(pump(context, server, [&] { return answered() == flood; }));
+    context.run_for(std::chrono::milliseconds{100});
+    // A slow machine may get a message back during the flood, rarely more.
+    const std::size_t relayed = chats(first).size() - 1;
+    CHECK(relayed >= rtype::ChatRate::burst - 1);
+    CHECK(relayed <= rtype::ChatRate::burst + 1);
+    CHECK(chats(second).size() == relayed + 1);
+    CHECK(chats(other_room).size() == 1);
+    CHECK(!first.closed);
+    CHECK(server.sessions().size() == 4);
 }
 
 TEST_CASE("four clients join one room and start it with these messages", "[server][rooms]") {
