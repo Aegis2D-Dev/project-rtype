@@ -11,11 +11,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <ios>
 #include <iterator>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -70,6 +73,61 @@ LevelDraft LevelDraft::from_file(const std::filesystem::path& path) {
         }
     }
     return draft;
+}
+
+std::string LevelDraft::to_json(std::size_t first_wave) const {
+    std::string json =
+        std::format("{{\n    \"loop\": {},\n    \"waves\": [", loop ? "true" : "false");
+    for (std::size_t wave = first_wave; wave < waves.size(); ++wave) {
+        const DraftWave& written = waves.at(wave);
+        json += std::format("{}\n        {{\n            \"delay\": {},\n            \"spawns\": [",
+                            wave == first_wave ? "" : ",", written.delay);
+        for (std::size_t enemy = 0; enemy < written.enemies.size(); ++enemy) {
+            const DraftEnemy& spawn = written.enemies.at(enemy);
+            std::string escaped;
+            for (const char character : spawn.type) {
+                if (character == '"' || character == '\\') {
+                    escaped += '\\';
+                }
+                escaped += character;
+            }
+            json +=
+                std::format("{}\n                {{\"type\": \"{}\", \"position\": [{}, {}]{}}}",
+                            enemy == 0 ? "" : ",", escaped, spawn.position.x, spawn.position.y,
+                            spawn.at != 0.0F ? std::format(", \"at\": {}", spawn.at) : "");
+        }
+        json += "\n            ]\n        }";
+    }
+    json += "\n    ]\n}\n";
+    return json;
+}
+
+void LevelDraft::save(const std::filesystem::path& path) const {
+    std::filesystem::path written = path;
+    written += ".saving";
+    {
+        std::ofstream out{written, std::ios::binary | std::ios::trunc};
+        out << to_json();
+        if (!out.flush()) {
+            throw core::ConfigError{std::format("{}: cannot be written", written.string())};
+        }
+    }
+    std::error_code error;
+    try {
+        static_cast<void>(load_waves(written));
+    } catch (const core::ConfigError&) {
+        std::filesystem::remove(written, error);
+        throw;
+    }
+    std::filesystem::rename(written, path, error);
+    if (error) {
+        std::filesystem::remove(written, error);
+        throw core::ConfigError{std::format("{}: cannot be written", path.string())};
+    }
+}
+
+aegis2d::ecs::WaveSchedule LevelDraft::schedule(std::size_t first_wave) const {
+    return aegis2d::ecs::WaveSchedule::from_string(to_json(first_wave));
 }
 
 Vec2 EditorView::to_screen(Vec2 level) const noexcept {
@@ -129,6 +187,15 @@ std::vector<WaveSpan> LevelEditor::timeline() const {
         last = end;
     }
     return spans;
+}
+
+void LevelEditor::add_wave() {
+    const auto after = draft_.waves.begin() + static_cast<std::ptrdiff_t>(wave_) + 1;
+    draft_.waves.insert(after, DraftWave{.delay = 2.0F, .enemies = {}});
+    ++wave_;
+    hovered_.reset();
+    dragged_.reset();
+    changed_ = true;
 }
 
 void LevelEditor::shift_delay(float seconds) {
@@ -249,6 +316,10 @@ std::optional<std::size_t> LevelEditor::dragged() const noexcept {
 
 bool LevelEditor::changed() const noexcept {
     return changed_;
+}
+
+void LevelEditor::mark_saved() noexcept {
+    changed_ = false;
 }
 
 } // namespace rtype

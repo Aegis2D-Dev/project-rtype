@@ -206,6 +206,9 @@ second it appears in its wave under it.
 | Edit a wave and move it in time | Left click on it in the timeline and drag |
 | The wave's delay, 0.1 s shorter / longer | Left / Right |
 | The wave before / after the one before or after it | Up / Down |
+| Add an empty wave after the one shown, 2 s after it | N |
+| Save the waves to the file | S |
+| Play the waves from the one shown, on the client | P (Escape comes back) |
 | Leave the editor | Escape |
 
 Under the play area, the timeline shows when each wave plays, as the server plays them: a
@@ -213,6 +216,14 @@ block per wave, from the end of its delay to its last enemy, the wave edited in 
 mark every 5 seconds. A wave starts its delay after the last enemy of the wave before it, so
 moving a wave in time moves the waves after it too; its delay, start and end are written
 above the timeline.
+
+S writes the waves to the file opened, each enemy a spawn of its own, once the server
+would read them: a draft it would refuse (a wave with no enemy...) is not saved, and the
+reason is shown above the controls. P plays the waves from the one shown, on the client
+with no server: your ship (the keys of the game), the enemies of the waves as the server
+makes them appear, the score and the lives; Escape comes back to the editor, as it was. To
+play the saved waves with others, start the server on the file: `r-type_server --waves
+assets/waves/stage1.json`.
 
 Each group of the file (`count`, `every`, `step`) shows as one enemy per member, so each can
 be moved on its own. Positions are whole logical pixels, kept within the play area and the

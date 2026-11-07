@@ -1,13 +1,18 @@
 #include "editor_view.hpp"
 
 #include <aegis2d/core/math.hpp>
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/lives.hpp>
+#include <aegis2d/ecs/score.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/color.hpp>
 #include <aegis2d/render/renderer.hpp>
 
 #include "game_art.hpp"
 #include "preferences.hpp"
+#include <rtype/layers.hpp>
 #include <rtype/level_editor.hpp>
+#include <rtype/server_game.hpp>
 #include <rtype/tuning.hpp>
 
 #include <algorithm>
@@ -21,6 +26,7 @@
 
 namespace rtype {
 
+namespace ecs = aegis2d::ecs;
 namespace render = aegis2d::render;
 using aegis2d::Vec2;
 
@@ -32,6 +38,8 @@ constexpr std::uint32_t strip_color = 0x24243F;
 constexpr std::uint32_t text_color = 0xFFFFFF;
 constexpr std::uint32_t dim_color = 0x9090A0;
 constexpr std::uint32_t picked_color = 0xF0E442;
+constexpr std::uint32_t error_color = 0xD55E00;
+constexpr std::uint32_t saved_color = 0x009E73;
 constexpr std::int32_t area_layer = 0;
 constexpr std::int32_t enemy_layer = 10;
 constexpr std::int32_t text_layer = 20;
@@ -136,8 +144,61 @@ void draw_editor(render::IRenderer& renderer, const render::BitmapFont& font, co
     font.draw(renderer, title, {16.0F, 16.0F},
               {.scale = text, .color = color(text_color, vision), .layer = text_layer});
     const std::string help = "CLICK: PLACE, MOVE  RIGHT CLICK: REMOVE  PAGE UP/DOWN: WAVE  "
-                             "LEFT/RIGHT: DELAY  UP/DOWN: ORDER  ESC: QUIT";
-    font.draw(renderer, help, {16.0F, tuning::area_height - 16.0F - font.line_height(text)},
+                             "LEFT/RIGHT: DELAY  UP/DOWN: ORDER\n"
+                             "N: NEW WAVE  S: SAVE  P: PLAY FROM THIS WAVE  ESCAPE: QUIT";
+    font.draw(renderer, help,
+              {16.0F, tuning::area_height - 16.0F - (2.0F * font.line_height(text))},
+              {.scale = text, .color = color(dim_color, vision), .layer = text_layer});
+}
+
+void draw_editor_message(render::IRenderer& renderer, const render::BitmapFont& font,
+                         const ScreenMessage& message, const Preferences& preferences) {
+    const float text = 2.0F * preferences.text_size.scale();
+    font.draw(renderer, message.text,
+              {16.0F, tuning::area_height - 16.0F - (3.0F * font.line_height(text))},
+              {.scale = text,
+               .color = color(message.error ? error_color : saved_color, preferences.vision),
+               .layer = text_layer});
+}
+
+void draw_playtest(render::IRenderer& renderer, const render::BitmapFont& font, const GameArt& art,
+                   ServerGame& game, ecs::Entity ship, std::size_t wave,
+                   const Preferences& preferences) {
+    const std::size_t vision = preferences.vision;
+    const float text = 2.0F * preferences.text_size.scale();
+    const auto sprite = [&](Art kind, Vec2 at) {
+        const Vec2 size = art.frame_size(kind) * art_scale;
+        renderer.draw({.texture = art.texture(kind, vision),
+                       .position = at - (size / 2.0F),
+                       .size = size,
+                       .source = art.source(kind, 0),
+                       .tint = color(text_color, vision),
+                       .layer = enemy_layer});
+    };
+    game.registry().view<ecs::Transform, ecs::Collider>().each(
+        [&](const ecs::Transform& transform, const ecs::Collider& collider) {
+            if (collider.layer == layer::player) {
+                sprite(Art::Ship, transform.position);
+            } else if (collider.layer == layer::enemy) {
+                sprite(Art::Bydos, transform.position);
+            } else {
+                const bool mine = collider.layer == layer::player_missile;
+                renderer.draw({.position = transform.position - (collider.size / 2.0F),
+                               .size = collider.size,
+                               .tint = color(mine ? picked_color : error_color, vision),
+                               .layer = enemy_layer + 1});
+            }
+        });
+    const ecs::Registry& world = game.registry();
+    const std::uint32_t score = world.alive(ship) ? world.get<ecs::Score>(ship).points : 0;
+    const std::uint32_t lives = world.alive(ship) ? world.get<ecs::Lives>(ship).count : 0;
+    font.draw(renderer,
+              std::format("PLAYTEST FROM WAVE {}  SCORE {}  LIVES {}{}", wave + 1, score, lives,
+                          game.game_over() ? "  GAME OVER" : ""),
+              {16.0F, 16.0F},
+              {.scale = text, .color = color(text_color, vision), .layer = text_layer});
+    font.draw(renderer, "ESCAPE: BACK TO THE EDITOR",
+              {16.0F, tuning::area_height - 16.0F - font.line_height(text)},
               {.scale = text, .color = color(dim_color, vision), .layer = text_layer});
 }
 

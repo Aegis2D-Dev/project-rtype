@@ -2,6 +2,7 @@
 /// @brief The level editor's logic: the waves of a file as enemies to place with the mouse.
 #pragma once
 #include <aegis2d/core/math.hpp>
+#include <aegis2d/ecs/waves.hpp>
 
 #include <cstddef>
 #include <filesystem>
@@ -49,6 +50,28 @@ struct LevelDraft {
     /// @return The draft.
     /// @throws aegis2d::core::ConfigError If the file cannot be read or is not valid waves.
     [[nodiscard]] static LevelDraft from_file(const std::filesystem::path& path);
+
+    /// @brief The draft as a waves file, from one of its waves on.
+    /// @details Each enemy is a spawn of its own, `at` written when not 0; the waves before
+    /// @p first_wave are left out.
+    /// @param first_wave Index of the first wave written.
+    /// @return JSON in the format of `ecs::WaveSchedule`.
+    [[nodiscard]] std::string to_json(std::size_t first_wave = 0) const;
+
+    /// @brief Writes the draft to a waves file, once the server would read it.
+    /// @details Written next to @p path first and checked as the server reads it
+    /// (load_waves()): a draft the server would refuse, such as a wave with no enemy, leaves
+    /// the file as it was.
+    /// @param path Waves file, created or replaced.
+    /// @throws aegis2d::core::ConfigError If the server would refuse it, or the file cannot be
+    /// written; the message says why.
+    void save(const std::filesystem::path& path) const;
+
+    /// @brief The draft as the server plays it, from one of its waves on, for a playtest.
+    /// @param first_wave Index of the first wave played.
+    /// @return The schedule, at its start.
+    /// @throws aegis2d::core::ConfigError If it is not valid waves (a wave with no enemy...).
+    [[nodiscard]] aegis2d::ecs::WaveSchedule schedule(std::size_t first_wave = 0) const;
 };
 
 /// @brief The mouse of a frame, in logical pixels of the screen.
@@ -77,13 +100,13 @@ struct EditorView {
     /// @brief Width of the strip beyond the right edge of the play area that is shown.
     static constexpr float strip = 96.0F;
     /// @brief Size of a logical pixel of the play area on screen.
-    float scale = 0.78F;
+    float scale = 0.74F;
     /// @brief Where the top-left corner of the play area is on screen.
-    aegis2d::Vec2 origin{103.0F, 56.0F};
+    aegis2d::Vec2 origin{131.0F, 48.0F};
     /// @brief Where the timeline of the waves is on screen: its top-left corner.
-    aegis2d::Vec2 timeline{103.0F, 644.0F};
+    aegis2d::Vec2 timeline{131.0F, 608.0F};
     /// @brief Size of the timeline on screen.
-    aegis2d::Vec2 timeline_size{1074.0F, 28.0F};
+    aegis2d::Vec2 timeline_size{1018.0F, 28.0F};
 
     /// @brief Seconds of the waves the timeline shows across its width.
     /// @param end When the last wave ends (the last WaveSpan::end).
@@ -143,6 +166,9 @@ public:
     /// @return One span per wave, in order.
     [[nodiscard]] std::vector<WaveSpan> timeline() const;
 
+    /// @brief Adds an empty wave after the one edited, 2 seconds after it, and edits it.
+    void add_wave();
+
     /// @brief Moves the wave edited in time: changes its delay, and so moves the waves after.
     /// @param seconds Seconds later (positive) or earlier (negative); the delay stays at least
     /// 0 and is rounded to a tenth of a second.
@@ -175,9 +201,12 @@ public:
     /// @return Its index in enemies(), or nothing while the left button is up.
     [[nodiscard]] std::optional<std::size_t> dragged() const noexcept;
 
-    /// @brief Tells whether an enemy was placed, moved or removed since the editor opened.
-    /// @return `true` once something changed.
+    /// @brief Tells whether the waves changed since the editor opened or they were saved.
+    /// @return `true` once an enemy or a wave changed.
     [[nodiscard]] bool changed() const noexcept;
+
+    /// @brief Tells the editor that its waves were saved: changed() is `false` again.
+    void mark_saved() noexcept;
 
 private:
     [[nodiscard]] std::vector<DraftEnemy>& wave_enemies();

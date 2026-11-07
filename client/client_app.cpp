@@ -36,7 +36,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -169,6 +171,9 @@ bool ClientApp::frame() {
         break;
     case ClientScreen::Editor:
         editor_screen();
+        break;
+    case ClientScreen::Playtest:
+        playtest_screen();
         break;
     }
     // The fields take typed text while one is selected on the connect screen; the game's
@@ -423,12 +428,61 @@ void ClientApp::editor_screen() {
     if (keyboard.pressed(Key::Down)) {
         editor_->move_wave(true);
     }
+    // N adds a wave, S saves the file, P plays the waves from the one edited (#371).
+    if (keyboard.pressed(Key::N)) {
+        editor_->add_wave();
+    }
+    const std::filesystem::path file = options_.edit.value_or("waves.json");
+    if (keyboard.pressed(Key::S)) {
+        try {
+            editor_->draft().save(file);
+            editor_->mark_saved();
+            editor_message_ = {.text = std::format("Saved to {}.", file.string()), .error = false};
+            core::log_info("level editor: saved {}", file.string());
+        } catch (const core::ConfigError& error) {
+            editor_message_ = {.text = error.what(), .error = true};
+        }
+    }
+    if (keyboard.pressed(Key::P)) {
+        try {
+            auto game = std::make_unique<ServerGame>();
+            game->play_waves(editor_->draft().schedule(editor_->wave()));
+            playtest_ship_ = game->add_player(0);
+            playtest_ = std::move(game);
+            playtest_wave_ = editor_->wave();
+            playtest_lag_ = 0.0F;
+            editor_message_ = {};
+            screen_ = ClientScreen::Playtest;
+            return;
+        } catch (const core::ConfigError& error) {
+            editor_message_ = {.text = error.what(), .error = true};
+        }
+    }
     const platform::Mouse& mouse = window_.mouse();
     editor_->update({.position = renderer_.to_logical(mouse.position()),
                      .pressed = mouse.pressed(platform::MouseButton::Left),
                      .held = mouse.held(platform::MouseButton::Left),
                      .remove = mouse.pressed(platform::MouseButton::Right)},
                     editor_view_);
+}
+
+// The waves of the editor played on the client: the server's game, ticked here (#371).
+void ClientApp::playtest_screen() {
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (keyboard.pressed(Key::Escape) || !playtest_) {
+        playtest_.reset();
+        screen_ = ClientScreen::Editor;
+        return;
+    }
+    aegis2d::ecs::PlayerInput input;
+    input.held = preferences_.controls.update(keyboard, window_.gamepad());
+    playtest_->set_input(playtest_ship_, input);
+    const float step = 1.0F / static_cast<float>(tuning::tick_rate);
+    playtest_lag_ += frame_seconds_;
+    while (playtest_lag_ >= step) {
+        playtest_->tick(core::step_from_rate(tuning::tick_rate));
+        playtest_lag_ -= step;
+    }
 }
 
 void ClientApp::join(const ClientSettings& settings) {
@@ -571,6 +625,15 @@ void ClientApp::draw() {
                 draw_editor(renderer_, font_, art_, *editor_, editor_view_,
                             renderer_.to_logical(window_.mouse().position()),
                             options_.edit.value_or("").filename().string(), preferences_);
+                if (!editor_message_.text.empty()) {
+                    draw_editor_message(renderer_, font_, editor_message_, preferences_);
+                }
+            }
+            break;
+        case ClientScreen::Playtest:
+            if (playtest_) {
+                draw_playtest(renderer_, font_, art_, *playtest_, playtest_ship_, playtest_wave_,
+                              preferences_);
             }
             break;
         case ClientScreen::Rooms:

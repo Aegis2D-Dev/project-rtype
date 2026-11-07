@@ -1,16 +1,23 @@
+#include <aegis2d/core/clock.hpp>
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/math.hpp>
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/entity.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <rtype/level_editor.hpp>
+#include <rtype/server_game.hpp>
 #include <rtype/tuning.hpp>
+#include <rtype/waves.hpp>
 
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -235,5 +242,79 @@ TEST_CASE("the keys change the delay and the order of the waves", "[client][edit
     CHECK(editor.draft().waves.at(1).enemies.size() == 1);
     editor.move_wave(true);
     CHECK(editor.wave() == 1);
+    CHECK(editor.changed());
+}
+
+TEST_CASE("a draft is saved as a waves file the server reads", "[client][editor][371]") {
+    const LevelDraft draft = two_waves();
+    const auto file = write_waves("saved.json", "");
+    draft.save(file);
+    const LevelDraft read = LevelDraft::from_file(file);
+    CHECK(read.loop == draft.loop);
+    REQUIRE(read.waves.size() == 2);
+    CHECK(read.waves.at(1).delay == 2.0F);
+    CHECK(read.waves.at(1).enemies == draft.waves.at(1).enemies);
+    CHECK(rtype::load_waves(file).spawns().size() == 3);
+    CHECK_FALSE(std::filesystem::exists(file.string() + ".saving"));
+
+    // From the second wave on: the first one is left out.
+    CHECK(draft.schedule(1).waves() == 1);
+    CHECK(draft.schedule(1).spawns().size() == 2);
+    CHECK(draft.to_json(1).find("\"position\": [300, 200]") == std::string::npos);
+}
+
+TEST_CASE("a draft the server would refuse leaves the file as it was", "[client][editor][371]") {
+    LevelDraft draft = two_waves();
+    const auto file = write_waves("kept.json", "");
+    draft.save(file);
+    draft.waves.push_back({.delay = 1.0F, .enemies = {}});
+    CHECK_THROWS_WITH(draft.save(file), Catch::Matchers::ContainsSubstring("waves.2.spawns"));
+    CHECK(LevelDraft::from_file(file).waves.size() == 2);
+    CHECK_FALSE(std::filesystem::exists(file.string() + ".saving"));
+    CHECK_THROWS_AS(static_cast<void>(draft.schedule()), aegis2d::core::ConfigError);
+}
+
+TEST_CASE("a new wave is made and played without editing JSON by hand", "[client][editor][371]") {
+    // The stage as it is, copied, and a wave added after its last one with the mouse.
+    const auto file = write_waves("new_wave.json", "");
+    std::filesystem::copy_file(std::filesystem::path{RTYPE_ASSET_DIR} / "waves" / "stage1.json",
+                               file, std::filesystem::copy_options::overwrite_existing);
+    LevelEditor editor{LevelDraft::from_file(file)};
+    editor.previous_wave();
+    editor.add_wave();
+    CHECK(editor.wave() == 4);
+    CHECK(editor.enemies().empty());
+    for (const float y : {200.0F, 360.0F, 520.0F}) {
+        editor.update(over({1000.0F, y}, true, true));
+        editor.update(over({1000.0F, y}));
+    }
+    editor.draft().save(file);
+    editor.mark_saved();
+    CHECK_FALSE(editor.changed());
+    CHECK(rtype::load_waves(file).waves() == 5);
+
+    // Played from that wave, on the client: its three enemies appear where they were placed.
+    rtype::ServerGame game;
+    game.play_waves(LevelDraft::from_file(file).schedule(editor.wave()));
+    std::vector<Vec2> appeared;
+    for (int tick = 0; tick < 5 * 60 && appeared.size() < 3; ++tick) {
+        game.tick(aegis2d::core::step_from_rate(tuning::tick_rate));
+        for (const aegis2d::ecs::Entity enemy : game.spawned()) {
+            appeared.push_back(game.registry().get<aegis2d::ecs::Transform>(enemy).position);
+        }
+    }
+    REQUIRE(appeared.size() == 3);
+    CHECK(appeared.at(0).x == Approx(1000.0F).margin(5.0));
+    CHECK(appeared.at(1).y == Approx(360.0F).margin(50.0));
+}
+
+TEST_CASE("a wave is added after the one edited", "[client][editor][371]") {
+    LevelEditor editor{two_waves()};
+    editor.add_wave();
+    CHECK(editor.wave() == 1);
+    CHECK(editor.draft().waves.size() == 3);
+    CHECK(editor.draft().waves.at(1).enemies.empty());
+    CHECK(editor.draft().waves.at(1).delay == 2.0F);
+    CHECK(editor.draft().waves.at(2).enemies.size() == 2);
     CHECK(editor.changed());
 }
