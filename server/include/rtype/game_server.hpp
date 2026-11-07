@@ -2,6 +2,7 @@
 /// @brief The whole R-Type server: its sockets, the games of its rooms, each on its own
 /// thread, and what goes between them.
 #pragma once
+#include <aegis2d/core/profiler.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
 
@@ -13,11 +14,14 @@
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace rtype {
@@ -102,6 +106,18 @@ public:
     /// @return The rate given to the constructor.
     [[nodiscard]] std::uint32_t rate() const noexcept;
 
+    /// @brief Records the timings of the ticks of every room opened from now on.
+    /// @details Each room's thread keeps its own (Simulation::profiler()); a room that closes
+    /// leaves its timings for save_trace().
+    void start_trace() noexcept;
+
+    /// @brief Closes every room, then writes the timings recorded in the Chrome trace format,
+    /// which Perfetto (ui.perfetto.dev) opens: a thread per room opened, named after it.
+    /// @param file File to write, created or replaced.
+    /// @return Number of events written.
+    /// @throws std::runtime_error If the file cannot be written.
+    std::size_t save_trace(const std::filesystem::path& file);
+
     /// @brief The thread running the game of the first room, `room().simulation()`.
     /// @return The simulation.
     /// @throws std::out_of_range If the first room is not open.
@@ -131,6 +147,9 @@ private:
     std::optional<Scoreboard> scores_;
     // The players in a game, by token; used by the network thread only.
     std::unordered_map<std::uint32_t, Seat> seats_;
+    // With start_trace(), the timings of the rooms closed, named after them.
+    bool trace_ = false;
+    std::vector<std::pair<std::string, std::vector<aegis2d::core::TraceEvent>>> traces_;
     // One slot per room, empty while it is closed; used by the network thread only. Last:
     // their threads start once the rest is ready, and stop first.
     std::vector<std::unique_ptr<Room>> rooms_;

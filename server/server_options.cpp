@@ -53,7 +53,7 @@ parse_server_options(std::span<const std::string_view> args) {
         }
         if (arg != "--tcp-port" && arg != "--udp-port" && arg != "--waves" &&
             arg != "--max-packet-rate" && arg != "--compress" && arg != "--max-rooms" &&
-            arg != "--scores") {
+            arg != "--scores" && arg != "--trace") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -66,6 +66,10 @@ parse_server_options(std::span<const std::string_view> args) {
         }
         if (arg == "--scores") {
             options.scores = value;
+            continue;
+        }
+        if (arg == "--trace") {
+            options.trace = value;
             continue;
         }
         if (arg == "--max-packet-rate") {

@@ -12,6 +12,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace rtype {
 
@@ -92,6 +93,14 @@ std::string lag_label(LagGraph graph, double value) {
         return std::format("CORRECTED {:.0f}/S", value);
     }
     return {};
+}
+
+std::vector<std::string> lag_lines(const LagSample& sample) {
+    const auto label = [&sample](LagGraph graph) { return lag_label(graph, sample.value(graph)); };
+    return {std::format("{}  {}  {}", label(LagGraph::Rtt), label(LagGraph::Jitter),
+                        label(LagGraph::Loss)),
+            std::format("{}  {}", label(LagGraph::BytesIn), label(LagGraph::BytesOut)),
+            std::format("{}  {}", label(LagGraph::Interval), label(LagGraph::Corrections))};
 }
 
 void Lagometer::update(const net::RttEstimator& rtt, const net::TrafficCounters& traffic,

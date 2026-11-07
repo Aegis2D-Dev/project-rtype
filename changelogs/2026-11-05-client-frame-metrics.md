@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#83](https://github.com/Aegis2D-Dev/project-rtype/pull/83) (opened 2026-11-05) |
 | Branch | `feat/client-frame-metrics` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-06 (`4c7e3f1`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#365](https://github.com/Aegis2D-Dev/aegis2d/issues/365) feat(tools): frame metrics overlay |
 

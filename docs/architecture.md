@@ -186,14 +186,17 @@ draws as graphs over the game when the player presses F6.
 game/
   include/rtype/
     server_game.hpp   ServerGame: the world, its systems in tick order, the players
-    entities.hpp      spawn_player, spawn_player_missile, spawn_bydos_slave...
+    entities.hpp      spawn_player, spawn_player_missile, fire_enemy_missile...
+    enemy_scripts.hpp EnemyScripts: the enemy types of assets/enemies and their behaviors
     layers.hpp        collision layers and masks
     tuning.hpp        every gameplay value (speeds, sizes, health, lives, scores)
-    waves.hpp         enemy types of the waves files, load_waves
+    waves.hpp         waves files, load_waves
   server_game.cpp
+  enemy_scripts.cpp
   entities.cpp
   waves.cpp
 assets/waves/         enemy waves (JSON), copied next to r-type_server
+assets/enemies/       enemy types (Lua), copied next to r-type_server
 server/main.cpp       r-type_server
 client/
   network/            rtype_client_net, built and tested by every preset

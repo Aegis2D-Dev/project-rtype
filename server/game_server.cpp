@@ -1,4 +1,5 @@
 #include <aegis2d/core/log.hpp>
+#include <aegis2d/core/profiler.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/context.hpp>
@@ -189,7 +190,7 @@ Room& GameServer::open_room(std::uint32_t id) {
     if (!slot) {
         slot = std::make_unique<Room>(
             id, seed_, waves_, rate_,
-            [this](Room& room, GameInstance& game) { after_tick(room, game); });
+            [this](Room& room, GameInstance& game) { after_tick(room, game); }, trace_);
         aegis2d::core::log_info("server: room {} opened ({} of {} open)", id, open_rooms(),
                                 max_rooms());
     }
@@ -207,6 +208,29 @@ void GameServer::close_room(std::uint32_t id) {
     closed->simulation().stop();
     aegis2d::core::log_info("server: room {} closed after {} ticks ({} of {} open)", id,
                             closed->simulation().ticks(), open_rooms(), max_rooms());
+    if (trace_) {
+        const auto events = closed->simulation().profiler().trace();
+        traces_.emplace_back(std::format("room {} ({} ticks)", id, closed->simulation().ticks()),
+                             std::vector<aegis2d::core::TraceEvent>{events.begin(), events.end()});
+    }
+}
+
+void GameServer::start_trace() noexcept {
+    trace_ = true;
+}
+
+std::size_t GameServer::save_trace(const std::filesystem::path& file) {
+    for (std::uint32_t id = 0; id < rooms_.size(); ++id) {
+        close_room(id);
+    }
+    std::vector<aegis2d::core::TraceThread> threads;
+    std::size_t events = 0;
+    for (const auto& [name, trace] : traces_) {
+        threads.push_back({.name = name, .events = trace});
+        events += trace.size();
+    }
+    aegis2d::core::save_chrome_trace(file, threads, "r-type_server");
+    return events;
 }
 
 void GameServer::keep_scores(std::filesystem::path file) {

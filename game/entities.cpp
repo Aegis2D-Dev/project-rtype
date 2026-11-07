@@ -1,5 +1,4 @@
 #include <aegis2d/ecs/components.hpp>
-#include <aegis2d/ecs/movement.hpp>
 #include <aegis2d/shmup/components.hpp>
 #include <aegis2d/shmup/ships.hpp>
 
@@ -9,7 +8,6 @@
 
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 namespace rtype {
 
@@ -61,30 +59,6 @@ ecs::Entity spawn_player_missile(ecs::Registry& registry, ecs::Entity shooter) {
     return missile;
 }
 
-ecs::Entity spawn_bydos_slave(ecs::Registry& registry, Vec2 line, float phase, float first_shot) {
-    const ecs::SineMotion wave{.amplitude = Vec2{0.0F, -tuning::bydos_wave_amplitude},
-                               .period = tuning::bydos_wave_period,
-                               .elapsed = phase};
-    const ecs::Entity bydos = registry.create();
-    registry.emplace<ecs::Transform>(bydos, line + ecs::sine_offset(wave, phase));
-    registry.emplace<ecs::Velocity>(bydos, Vec2{-tuning::bydos_speed, 0.0F});
-    registry.emplace<ecs::SineMotion>(bydos, wave);
-    registry.emplace<ecs::Sprite>(bydos, ecs::Sprite{.size = tuning::bydos_size});
-    registry.emplace<ecs::Collider>(
-        bydos,
-        ecs::Collider{.size = tuning::bydos_size, .layer = layer::enemy, .mask = mask::enemy});
-    registry.emplace<ecs::Health>(bydos, tuning::bydos_health);
-    registry.emplace<ecs::Damage>(
-        bydos, ecs::Damage{.amount = tuning::ram_damage, .consumed_on_hit = false});
-    registry.emplace<ecs::ScoreValue>(bydos, tuning::bydos_score);
-    registry.emplace<shmup::Weapon>(
-        bydos, shmup::Weapon{.cooldown = tuning::bydos_fire_cooldown, .reload = first_shot});
-    registry.emplace<shmup::AutoTrigger>(bydos);
-    registry.emplace<ecs::OffscreenDespawn>(bydos, tuning::despawn_margin);
-    registry.emplace<ecs::NetworkId>(bydos, ecs::NetworkId::of(bydos));
-    return bydos;
-}
-
 ecs::Entity spawn_enemy_missile(ecs::Registry& registry, Vec2 position) {
     const ecs::Entity missile = registry.create();
     registry.emplace<ecs::Transform>(missile, position);
@@ -107,13 +81,6 @@ ecs::Entity fire_enemy_missile(ecs::Registry& registry, ecs::Entity shooter) {
     const ecs::Entity missile = spawn_enemy_missile(registry, position - nose);
     registry.emplace<ecs::Owner>(missile, shooter);
     return missile;
-}
-
-ecs::Entity spawn_enemy(ecs::Registry& registry, std::string_view type, Vec2 position) {
-    if (type == "bydos_slave") {
-        return spawn_bydos_slave(registry, position);
-    }
-    throw std::invalid_argument{"rtype: unknown enemy type \"" + std::string{type} + '"'};
 }
 
 } // namespace rtype
