@@ -77,8 +77,10 @@ To hunt memory errors and undefined behavior, configure with the engine's saniti
   (`git tag -s v0.2.0 -m "R-Type v0.2.0"`, then `git push origin v0.2.0`) whose version
   matches `project()` in `CMakeLists.txt`. The *Release* workflow builds the packages of
   the server and the client with the engine's `master`, for Linux (`.tar.gz`) and Windows
-  (`.zip`), and publishes them in a GitHub release named after the tag. A pull request that
-  changes the workflow or `CMakeLists.txt` builds the packages without publishing.
+  (`.zip`), and publishes them in a GitHub release named after the tag, whose notes list the
+  pull requests of [CHANGELOG.md](CHANGELOG.md) added since the previous tag
+  (`tools/release_notes.cmake`). A pull request that changes the workflow or
+  `CMakeLists.txt` builds the packages without publishing.
 
 ## Documentation
 

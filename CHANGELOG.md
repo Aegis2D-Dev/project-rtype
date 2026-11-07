@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#101](https://github.com/Aegis2D-Dev/project-rtype/pull/101) | Release notes from the changelogs: the pull requests since the previous tag | `chore/release-notes` | Open | 2026-11-07 | [2026-11-07-release-notes](changelogs/2026-11-07-release-notes.md) |
 | [#100](https://github.com/Aegis2D-Dev/project-rtype/pull/100) | Kick and ban from the admin console, the bans kept across restarts | `feat/server-kick-ban` | Open | 2026-11-07 | [2026-11-07-server-kick-ban](changelogs/2026-11-07-server-kick-ban.md) |
 | [#99](https://github.com/Aegis2D-Dev/project-rtype/pull/99) | Admin console on the server's standard input | `feat/server-admin-console` | Open | 2026-11-07 | [2026-11-07-server-admin-console](changelogs/2026-11-07-server-admin-console.md) |
 | [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) | Best scores in the lobby brought to develop | `chore/client-lobby-scoreboard-to-develop` | Merged | 2026-11-07 | [2026-11-07-develop-lobby-scoreboard](changelogs/2026-11-07-develop-lobby-scoreboard.md) |
@@ -55,7 +56,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 | [#52](https://github.com/Aegis2D-Dev/project-rtype/pull/52) | Lagometer overlay | `feat/client-lagometer` | Merged | 2026-10-29 | [2026-10-29-client-lagometer](changelogs/2026-10-29-client-lagometer.md) |
 | [#51](https://github.com/Aegis2D-Dev/project-rtype/pull/51) | Network statistics | `feat/client-network-stats` | Merged | 2026-10-28 | [2026-10-28-client-network-stats](changelogs/2026-10-28-client-network-stats.md) |
 | [#50](https://github.com/Aegis2D-Dev/project-rtype/pull/50) | Round trip time estimate | `feat/rtt-estimate` | Merged | 2026-10-27 | [2026-10-27-rtt-estimate](changelogs/2026-10-27-rtt-estimate.md) |
-| [#49](https://github.com/Aegis2D-Dev/project-rtype/pull/49) | Ship controls and player ships from the engine's shmup module | `refactor/shmup-ship-controls` | Open | 2026-10-27 | [2026-10-27-shmup-ship-controls](changelogs/2026-10-27-shmup-ship-controls.md) |
+| [#49](https://github.com/Aegis2D-Dev/project-rtype/pull/49) | Ship controls and player ships from the engine's shmup module | `refactor/shmup-ship-controls` | Merged | 2026-10-27 | [2026-10-27-shmup-ship-controls](changelogs/2026-10-27-shmup-ship-controls.md) |
 | [#48](https://github.com/Aegis2D-Dev/project-rtype/pull/48) | Traffic counters | `feat/traffic-counters` | Merged | 2026-10-23 | [2026-10-23-traffic-counters](changelogs/2026-10-23-traffic-counters.md) |
 | [#47](https://github.com/Aegis2D-Dev/project-rtype/pull/47) | Weapons from the engine's shmup module | `feat/shmup-weapons` | Merged | 2026-10-20 | [2026-10-20-shmup-weapons](changelogs/2026-10-20-shmup-weapons.md) |
 | [#45](https://github.com/Aegis2D-Dev/project-rtype/pull/45) | Release workflow and game packages | `ci/release-packages` | Merged | 2026-10-17 | [2026-10-17-release-packages](changelogs/2026-10-17-release-packages.md) |
