@@ -1,3 +1,4 @@
+#include <aegis2d/core/commands.hpp>
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/components.hpp>
@@ -15,6 +16,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/admin_console.hpp>
 #include <rtype/chat.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
@@ -43,6 +45,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -599,6 +602,105 @@ TEST_CASE("the chat stays in its room, a long message is refused and a flood is 
     CHECK(chats(other_room).size() == 1);
     CHECK(!first.closed);
     CHECK(server.sessions().size() == 4);
+}
+
+TEST_CASE("every admin command works, and a wrong one says why", "[server][admin]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{29};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    bool stopped = false;
+    rtype::AdminConsole console{server, [&stopped] { stopped = true; }};
+    using aegis2d::core::CommandStatus;
+    const auto run = [&](std::string_view line) {
+        const aegis2d::core::CommandResult result = console.run(line);
+        // What the sessions send in answer is read by the context.
+        context.run_for(std::chrono::milliseconds{20});
+        return result;
+    };
+
+    // Nothing yet.
+    CHECK(run("rooms").text == "no room in use");
+    CHECK(run("players").text == "no player");
+    CHECK(run("help").text.contains("close"));
+
+    // Two players in room 0, one in the lobby.
+    Player first{context, server};
+    static_cast<void>(log_in(context, server, first, "R9"));
+    Player second{context, server};
+    static_cast<void>(log_in(context, server, second, "Kaz"));
+    Player lobby{context, server};
+    static_cast<void>(log_in(context, server, lobby, "Lolo"));
+    lobby.send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] { return server.sessions().members(0).size() == 2; }));
+    CHECK(run("rooms").text == "room 0 \"Room 1\": 2/4 players, waiting");
+    CHECK(run("players").text ==
+          "R9: room 0, player 0, out of game\nKaz: room 0, player 1, out of game\nLolo: lobby, "
+          "out of game");
+
+    // say: a message of the server reaches every player, lobby included.
+    const auto chats = [](const Player& player) {
+        std::vector<rtype::ChatMessage> messages;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                messages.push_back(std::move(*chat));
+            }
+        }
+        return messages;
+    };
+    const aegis2d::core::CommandResult said = run("say the server restarts at noon");
+    CHECK(said.status == CommandStatus::Done);
+    CHECK(said.text == "said to 3 players");
+    REQUIRE(pump(context, server, [&] { return !chats(lobby).empty(); }));
+    const rtype::ChatMessage notice{.player = rtype::server_player,
+                                    .name = std::string{rtype::server_name},
+                                    .text = "the server restarts at noon"};
+    CHECK(chats(first) == std::vector{notice});
+    CHECK(chats(lobby) == std::vector{notice});
+
+    // Wrong commands say why and change nothing.
+    const aegis2d::core::CommandResult long_text =
+        run("say " + std::string(rtype::max_chat_size + 1, 'a'));
+    CHECK(long_text.status == CommandStatus::Failed);
+    CHECK(long_text.text.contains("too long"));
+    CHECK(run("say").status == CommandStatus::WrongArguments);
+    CHECK(run("close").status == CommandStatus::WrongArguments);
+    CHECK(run("close first").status == CommandStatus::WrongArguments);
+    const aegis2d::core::CommandResult no_room = run("close 1");
+    CHECK(no_room.status == CommandStatus::Failed);
+    CHECK(no_room.text.contains("room 1 is not in use"));
+    CHECK(run("kick R9").status == CommandStatus::Unknown);
+    CHECK(server.sessions().size() == 3);
+    CHECK(!stopped);
+
+    // close: the players of the room are told why, and their sessions end; the lobby stays.
+    const aegis2d::core::CommandResult closed = run("close 0");
+    CHECK(closed.status == CommandStatus::Done);
+    CHECK(closed.text == "room 0 closed: 2 players logged out");
+    REQUIRE(pump(context, server, [&] { return first.closed && second.closed; }));
+    CHECK(rtype::read_logout(first.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::RoomClosed));
+    CHECK(server.sessions().size() == 1);
+    CHECK(!lobby.closed);
+    CHECK(run("rooms").text == "no room in use");
+
+    // stop: what the server was given.
+    CHECK(run("stop").text == "stopping");
+    CHECK(stopped);
+}
+
+TEST_CASE("the console takes the lines typed, until the end of the input", "[server][admin]") {
+    std::istringstream typed{"rooms\nsay hello world\n"};
+    rtype::ConsoleInput input{typed};
+    std::vector<std::string> lines;
+    const auto deadline = std::chrono::steady_clock::now() + test_deadline;
+    while (!input.ended() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
+    }
+    REQUIRE(input.ended());
+    lines = input.take();
+    CHECK(lines == std::vector<std::string>{"rooms", "say hello world"});
+    CHECK(input.take().empty());
 }
 
 TEST_CASE("four clients join one room and start it with these messages", "[server][rooms]") {
