@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <format>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +28,23 @@ net::Endpoint address_of(const net::Endpoint& endpoint) noexcept {
     std::array<std::uint8_t, 4> address{};
     std::ranges::copy(bytes.first(address.size()), address.begin());
     return net::Endpoint::v4(address, 0);
+}
+
+bool ChatRate::allow(Clock::time_point now) noexcept {
+    if (!since_ || tokens_ == burst) {
+        since_ = now;
+    }
+    const auto back =
+        static_cast<std::uint32_t>(std::min<Clock::duration::rep>((now - *since_) / refill, burst));
+    if (back > 0) {
+        tokens_ = std::min(burst, tokens_ + back);
+        *since_ += back * refill;
+    }
+    if (tokens_ == 0) {
+        return false;
+    }
+    --tokens_;
+    return true;
 }
 
 RateLimiter::RateLimiter(std::uint32_t per_second) noexcept : per_second_{per_second} {}

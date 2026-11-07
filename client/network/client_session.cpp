@@ -13,6 +13,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/client_world.hpp>
 #include <rtype/delta_snapshot.hpp>
@@ -46,6 +47,11 @@ namespace net = aegis2d::net;
 namespace core = aegis2d::core;
 
 namespace {
+
+// A well-formed message of the chat (RFC section 3.8), which the client does not show yet.
+bool is_chat(std::span<const std::byte> message) {
+    return read_chat_message(message).has_value() || read_chat_rejected(message).has_value();
+}
 
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
@@ -236,9 +242,10 @@ void ClientSession::on_message(std::span<const std::byte> message) {
         on_room_message(message);
         return;
     }
-    // Once logged in, the server only sends Logout (RFC section 3.3), and, to a client that
-    // used the rooms, RoomPlayers and GameStart, which a client in game ignores.
-    if (read_room_players(message).has_value() || read_game_start(message)) {
+    // Once logged in, the server only sends Logout (RFC section 3.3), the chat of the room
+    // (section 3.8) and, to a client that used the rooms, RoomPlayers and GameStart, which a
+    // client in game ignores; the chat is not shown yet.
+    if (read_room_players(message).has_value() || read_game_start(message) || is_chat(message)) {
         return;
     }
     if (const std::optional<std::uint8_t> reason = read_logout(message)) {
@@ -279,7 +286,7 @@ void ClientSession::on_room_message(std::span<const std::byte> message) {
         }
     } else if (const std::optional<std::uint8_t> reason = read_logout(message)) {
         fail(logout_text(*reason));
-    } else {
+    } else if (!is_chat(message)) {
         fail("the server sent an unexpected message");
     }
 }
