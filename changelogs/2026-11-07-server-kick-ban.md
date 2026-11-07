@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#100](https://github.com/Aegis2D-Dev/project-rtype/pull/100) (opened 2026-11-07) |
 | Branch | `feat/server-kick-ban` → `develop` (stacked on `feat/server-admin-console`, #99) |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`d41d415`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#311](https://github.com/Aegis2D-Dev/aegis2d/issues/311) feat(server): kick and ban |
 
