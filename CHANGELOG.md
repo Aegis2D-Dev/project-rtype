@@ -5,6 +5,7 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
+| [#94](https://github.com/Aegis2D-Dev/project-rtype/pull/94) | Chat in the client, opened with T | `feat/client-chat` | Open | 2026-11-07 | [2026-11-07-client-chat](changelogs/2026-11-07-client-chat.md) |
 | [#93](https://github.com/Aegis2D-Dev/project-rtype/pull/93) | Chat relayed in each room, with length and rate limits | `feat/server-chat-relay` | Open | 2026-11-07 | [2026-11-07-server-chat-relay](changelogs/2026-11-07-server-chat-relay.md) |
 | [#91](https://github.com/Aegis2D-Dev/project-rtype/pull/91) | Graphify merge driver for the graph output | `feat/gitattributes-graphify-merge` | Merged | 2026-11-07 | [2026-11-07-gitattributes-graphify-merge](changelogs/2026-11-07-gitattributes-graphify-merge.md) |
 | [#83](https://github.com/Aegis2D-Dev/project-rtype/pull/83) | Frame metrics in the client, with F12 | `feat/client-frame-metrics` | Open | 2026-11-05 | [2026-11-05-client-frame-metrics](changelogs/2026-11-05-client-frame-metrics.md) |
