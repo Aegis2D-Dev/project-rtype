@@ -154,7 +154,29 @@ Each collider has a `layer` (what it is) and a `mask` (what it can hit), defined
 | `enemy` | player (ramming), player missile | player, player missile |
 | `enemy_missile` | player | player |
 
-There is no friendly fire: players and their missiles ignore each other, and so do enemies.
+Players and their missiles ignore each other, unless the room plays with friendly fire: the
+`weapons` system then adds `player` to the mask of each missile it fires, which hits the other
+players (never its shooter, which it leaves ahead of). Enemies always ignore each other.
+
+## Rules of a room
+
+A `ServerGame` takes `GameRules`, the rules of its room (`game_rules()` on the server, from
+those of `CreateRoom`, RFC section 3.6); the default ones are the game as tuned:
+
+| Rule | Effect |
+|---|---|
+| `lives` | Lives of each player at the start, 1 to 9 (3 by default) |
+| `enemy_health` | Health of every enemy that appears, at random or by the waves |
+| `spawn_interval_scale` | Factor of the intervals between two random Bydos |
+| `friendly_fire` | Player missiles hit the other players |
+
+| Difficulty | Enemy health | Random Bydos spawns |
+|---|---|---|
+| Easy | 1 point | every 1.2 to 3 s (intervals × 1.5) |
+| Normal | 1 point | every 0.8 to 2 s |
+| Hard | 2 points | every 0.48 to 1.2 s (intervals × 0.6) |
+
+The waves file of a room replaces the server's own for its games.
 
 ## Entities
 
