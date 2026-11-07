@@ -12,6 +12,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/ban_list.hpp>
 #include <rtype/chat.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
@@ -157,6 +158,24 @@ public:
     /// @param room Number of the room.
     /// @return The number of sessions ended, 0 if the room was empty or not in use.
     std::size_t close_room(std::uint32_t room);
+
+    /// @brief Removes a player for the administrator: it gets `Logout` with @p reason, every
+    /// other session a message of the server saying so, and its game a `PlayerLeft` with
+    /// `Kicked`.
+    /// @param name Name of the player.
+    /// @param reason LogoutReason::Kicked or LogoutReason::Banned.
+    /// @return The address its TCP connection comes from, or `std::nullopt` if no player
+    /// has this name.
+    std::optional<aegis2d::net::Endpoint> remove_player(std::string_view name, LogoutReason reason);
+
+    /// @brief Sets the bans checked at each login: a banned address gets `LoginRejected`
+    /// with `Banned`.
+    /// @param bans The list, which must outlive this object, or nullptr for none.
+    void set_bans(BanList* bans) noexcept;
+
+    /// @brief The bans checked at each login.
+    /// @return The list given to set_bans(), or nullptr.
+    [[nodiscard]] BanList* bans() const noexcept;
 
     /// @brief Sets the board a `ListScores` reads (RFC section 3.9).
     /// @param board The best scores, which must outlive this object, or nullptr to answer
@@ -396,6 +415,7 @@ private:
     RateLimits limits_;
     RateLimiter limiter_{limits_.datagrams_per_second};
     const Scoreboard* scores_ = nullptr;
+    BanList* bans_ = nullptr;
     DropReport drops_;
     std::uint64_t rate_limited_ = 0;
     std::uint64_t refused_connections_ = 0;

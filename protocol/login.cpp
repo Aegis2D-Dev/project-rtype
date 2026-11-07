@@ -67,6 +67,8 @@ std::string_view to_string(LoginRejection reason) noexcept {
         return "name taken";
     case LoginRejection::GameStarted:
         return "game started";
+    case LoginRejection::Banned:
+        return "banned";
     }
     return "unknown";
 }

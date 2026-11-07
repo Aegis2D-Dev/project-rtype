@@ -1,7 +1,10 @@
 #include <aegis2d/core/commands.hpp>
+#include <aegis2d/net/endpoint.hpp>
 
 #include <rtype/admin_console.hpp>
+#include <rtype/ban_list.hpp>
 #include <rtype/chat.hpp>
+#include <rtype/login.hpp>
 #include <rtype/rooms.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
@@ -95,6 +98,30 @@ AdminConsole::AdminConsole(ServerNetwork& network, std::function<void()> stop)
                       const std::size_t ended =
                           network_->close_room(static_cast<std::uint32_t>(room));
                       return std::format("room {} closed: {} players logged out", room, ended);
+                  });
+    commands_.add("kick", {{.name = "player"}}, "Removes a player, telling it and the others",
+                  [this](const core::CommandCall& call) {
+                      const std::string& name = call.text("player");
+                      if (!network_->remove_player(name, LogoutReason::Kicked)) {
+                          throw std::invalid_argument{std::format("no player is named {}", name)};
+                      }
+                      return std::format("{} removed", name);
+                  });
+    commands_.add("ban", {{.name = "player"}},
+                  "Removes a player and bans its address, also after a restart",
+                  [this](const core::CommandCall& call) {
+                      const std::string& name = call.text("player");
+                      BanList* const bans = network_->bans();
+                      if (bans == nullptr) {
+                          throw std::logic_error{"this server keeps no bans"};
+                      }
+                      const std::optional<aegis2d::net::Endpoint> address =
+                          network_->remove_player(name, LogoutReason::Banned);
+                      if (!address) {
+                          throw std::invalid_argument{std::format("no player is named {}", name)};
+                      }
+                      static_cast<void>(bans->ban(*address));
+                      return std::format("{} banned ({})", name, address->address());
                   });
     commands_.add("stop", {}, "Stops the server, telling the players",
                   [this](const core::CommandCall&) {

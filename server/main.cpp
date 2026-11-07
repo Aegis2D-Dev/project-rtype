@@ -9,6 +9,7 @@
 #include <aegis2d/net/socket_error.hpp>
 
 #include <rtype/admin_console.hpp>
+#include <rtype/ban_list.hpp>
 #include <rtype/enemy_scripts.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/rate_limit.hpp>
@@ -92,6 +93,8 @@ int main(int argc, char** argv) {
     std::cout << " (" << rtype::default_enemies_directory().string() << ")\n";
 
     aegis2d::net::NetworkContext context;
+    // Before the server, which keeps a pointer to it.
+    rtype::BanList bans{options.bans};
     try {
         rtype::GameServer server{context,          std::nullopt,     waves,
                                  options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
@@ -99,6 +102,9 @@ int main(int argc, char** argv) {
         rtype::ServerNetwork& network = server.network();
         server.keep_scores(options.scores);
         std::cout << "scores: " << options.scores.string() << '\n';
+        network.set_bans(&bans);
+        std::cout << "bans: " << options.bans.string() << " (" << bans.addresses().size()
+                  << " banned)\n";
         if (options.trace.has_value()) {
             server.start_trace();
         }

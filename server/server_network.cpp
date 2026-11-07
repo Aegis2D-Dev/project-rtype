@@ -415,6 +415,38 @@ std::size_t ServerNetwork::close_room(std::uint32_t room) {
     return tokens.size();
 }
 
+std::optional<net::Endpoint> ServerNetwork::remove_player(std::string_view name,
+                                                          LogoutReason reason) {
+    std::optional<std::uint32_t> token;
+    std::optional<net::Endpoint> address;
+    for (auto& [id, client] : clients_) {
+        const Session* const session =
+            client.token && !client.closed ? sessions_.find(*client.token) : nullptr;
+        if (session != nullptr && session->name == name) {
+            token = session->token;
+            address = client.connection.remote_endpoint();
+            break;
+        }
+    }
+    if (!token) {
+        return std::nullopt;
+    }
+    end_with_logout(*token, reason, LeaveReason::Kicked);
+    const std::string_view what = reason == LogoutReason::Banned ? "banned" : "removed";
+    // The name passed valid_player_name(): no control character reaches the log.
+    core::log_info("TCP: {} {} by the administrator", name, what);
+    static_cast<void>(say(std::format("{} was {} by the administrator", name, what)));
+    return address;
+}
+
+void ServerNetwork::set_bans(BanList* bans) noexcept {
+    bans_ = bans;
+}
+
+BanList* ServerNetwork::bans() const noexcept {
+    return bans_;
+}
+
 void ServerNetwork::set_scoreboard(const Scoreboard* board) noexcept {
     scores_ = board;
 }
@@ -607,7 +639,11 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
                           : "a message other than LoginRequest first");
         return;
     }
-    const std::variant<Session, LoginRejection> result = sessions_.login(*request);
+    // A banned address is refused before anything else of its login.
+    const std::variant<Session, LoginRejection> result =
+        bans_ != nullptr && bans_->banned(client.connection.remote_endpoint())
+            ? std::variant<Session, LoginRejection>{LoginRejection::Banned}
+            : sessions_.login(*request);
     if (const auto* const rejection = std::get_if<LoginRejection>(&result)) {
         core::log_info("TCP: login from {} refused: {}",
                        client.connection.remote_endpoint().to_string(), to_string(*rejection));
