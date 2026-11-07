@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#104](https://github.com/Aegis2D-Dev/project-rtype/pull/104) (opened 2026-11-07) |
 | Branch | `fix/ci-windows-stale-build` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`b9b3753`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#480](https://github.com/Aegis2D-Dev/aegis2d/issues/480) fix(tests): client world test crashes on Windows CI now and then |
 

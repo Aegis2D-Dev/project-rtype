@@ -68,3 +68,9 @@ if(Python3_FOUND)
         COMMAND Python3::Interpreter -B -m unittest -v net_benchmark_test
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
+
+# The release notes, from the changelog rows added since the previous release (aegis2d#388).
+add_test(NAME release_notes
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/release-notes-check"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/release/check_release_notes.cmake")
