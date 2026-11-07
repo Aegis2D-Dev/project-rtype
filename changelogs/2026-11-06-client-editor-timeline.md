@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#89](https://github.com/Aegis2D-Dev/project-rtype/pull/89) (opened 2026-11-06) |
 | Branch | `feat/client-editor-timeline` → `feat/client-level-editor` (stacked on #88) |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`8d64bf8`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#370](https://github.com/Aegis2D-Dev/aegis2d/issues/370) feat(tools): level editor waves timeline |
 

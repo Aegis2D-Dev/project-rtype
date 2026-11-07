@@ -27,12 +27,15 @@ must be merged first: until then, this branch does not build against the engine'
 ## Changed
 - Documentation: the memory and the network numbers in the *Frame metrics* section of
   *Play*.
-- Changelog: #83 marked as merged (`4c7e3f1`).
+- Changelog: #83 marked as merged (`4c7e3f1`), then #84, #85, #88, #89 and #90
+  (`cac9007`, `92be473`, `61a7cbb`, `8d64bf8`, `c16bd94`).
 
 ## Commits
 - `ec7865b` feat(client): showed the network numbers in the frame metrics
 - `696939a` feat(tests): added the network lines of the frame metrics test
-- feat(docs): documented the network numbers in the frame metrics and updated changelogs
+- `13d27dc` feat(docs): documented the network numbers in the frame metrics and updated changelogs
+- `217699b` Merge remote-tracking branch 'origin/develop' into feat/client-metrics-network
+- feat(changelog): updated changelogs
 
 ## Notes
 - Built and tested in the CI image (clang 18, warnings as errors) against the engine's
@@ -41,5 +44,8 @@ must be merged first: until then, this branch does not build against the engine'
   --check`; `mkdocs build --strict`. Built on macOS (AppleClang 21) too; the client's
   window does not draw while hidden behind others on this machine, so the screenshot of
   the docs was not taken again.
-- The CI of this pull request builds against the engine's `develop`, so it fails until
-  Aegis2D-Dev/aegis2d#472 is merged; the pull request is a draft until then.
+- The CI of this pull request builds against the engine's `develop`: it failed until
+  Aegis2D-Dev/aegis2d#472 were merged, on 2026-11-07. With `develop` merged in since, built on macOS
+  (AppleClang 21) against the engine's `develop` (`f6bf491`): 293 of the 295 ctest tests pass,
+  the two flood tests failing on this machine only (they bind UDP to 127.0.0.2, not routed
+  on macOS without an alias).
