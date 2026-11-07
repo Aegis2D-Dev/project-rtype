@@ -33,6 +33,7 @@
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/ship_movement.hpp>
+#include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_history.hpp>
 #include <rtype/tuning.hpp>
@@ -43,6 +44,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -714,7 +716,13 @@ TEST_CASE("reconciled with the snapshots, the own ship ends where the server's i
     // Within the rounding of the snapshots, 1/16 pixel.
     CHECK(std::abs(predicted.x - at.x) <= 0.0625F);
     CHECK(std::abs(predicted.y - at.y) <= 0.0625F);
-    CHECK(client.prediction().pending().size() <= 3);
+    // The inputs the server applied are dropped: only the later ones are pending, as many as
+    // the machine's speed left in flight, never the whole list.
+    const std::deque<rtype::InputRecord>& pending = client.prediction().pending();
+    CHECK(pending.size() < rtype::ShipPrediction::max_pending);
+    CHECK(std::ranges::all_of(pending, [released](const rtype::InputRecord& input) {
+        return aegis2d::net::sequence_greater_than(input.sequence, released);
+    }));
 }
 
 TEST_CASE("the server compensates each player by its round trip time", "[client][lag]") {
