@@ -16,10 +16,14 @@ namespace net = aegis2d::net;
 
 namespace {
 
-// Kinds are contiguous: checked as a range before the cast, like net::PacketType.
+// Kinds are checked as ranges before the cast, like net::PacketType; 17 to 19 are the chat's
+// (RFC section 3.8), not read here yet.
 std::optional<TcpKind> tcp_kind(std::uint8_t value) noexcept {
-    if (value < static_cast<std::uint8_t>(TcpKind::LoginRequest) ||
-        value > static_cast<std::uint8_t>(TcpKind::GameStart)) {
+    const bool session = value >= static_cast<std::uint8_t>(TcpKind::LoginRequest) &&
+                         value <= static_cast<std::uint8_t>(TcpKind::GameStart);
+    const bool scores = value >= static_cast<std::uint8_t>(TcpKind::ListScores) &&
+                        value <= static_cast<std::uint8_t>(TcpKind::ScoreList);
+    if (!session && !scores) {
         return std::nullopt;
     }
     return static_cast<TcpKind>(value);

@@ -211,6 +211,7 @@ void GameServer::close_room(std::uint32_t id) {
 
 void GameServer::keep_scores(std::filesystem::path file) {
     scores_.emplace(std::move(file));
+    network_.set_scoreboard(&*scores_);
 }
 
 const Scoreboard* GameServer::scoreboard() const noexcept {

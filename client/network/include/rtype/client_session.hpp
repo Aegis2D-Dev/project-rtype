@@ -18,6 +18,7 @@
 #include <rtype/login.hpp>
 #include <rtype/network_stats.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
@@ -165,6 +166,12 @@ public:
     /// @brief Leaves the room for the lobby, where the rooms are listed again (`LeaveRoom`).
     void leave_room();
 
+    /// @brief The best scores of the server, as the lobby shows them (RFC section 3.9).
+    /// @details Asked with the rooms, at the login and at each refresh of the lobby; a score
+    /// whose name breaks the rules of `LoginRequest` is left out.
+    /// @return Best first, empty until the first `ScoreList`.
+    [[nodiscard]] const std::vector<ScoreRecord>& scores() const noexcept;
+
     /// @brief Whether the player said it is ready, in its room.
     /// @return The last value given to set_ready() since the room was joined.
     [[nodiscard]] bool ready() const noexcept;
@@ -303,6 +310,7 @@ private:
     std::vector<RoomRecord> rooms_;
     std::string room_error_;
     RoomPlayers room_players_;
+    std::vector<ScoreRecord> scores_;
     std::uint64_t connects_sent_ = 0;
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;

@@ -519,6 +519,8 @@ void ClientApp::draw() {
             break;
         case ClientScreen::Rooms:
             draw_rooms(renderer_, font_, room_list_, message_,
+                       session_.has_value() ? std::span<const ScoreRecord>{session_->scores()}
+                                            : std::span<const ScoreRecord>{},
                        std::chrono::duration<double>{now - started_}.count(), preferences_);
             break;
         case ClientScreen::Room:
