@@ -99,9 +99,10 @@ void draw_room(aegis2d::render::IRenderer& renderer, const aegis2d::render::Bitm
 /// the server's limit (max_chat_size bytes).
 inline constexpr std::size_t chat_length = max_chat_size / 4;
 
-/// @brief Where the chat line goes while it is typed, at the bottom left.
+/// @brief Where the chat line goes while it is typed, at the bottom left at 100%, above the
+/// game's HUD: twice as large at 200%, it still fits in the screen.
 inline constexpr aegis2d::render::Rect chat_box{
-    .x = 20.0F, .y = 670.0F, .width = 640.0F, .height = 32.0F};
+    .x = 20.0F, .y = 610.0F, .width = 600.0F, .height = 32.0F};
 
 /// @brief Draws the last chat messages above the chat line, each in its sender's color, and
 /// the line itself while it is typed.

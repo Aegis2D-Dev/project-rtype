@@ -56,6 +56,10 @@ ready to be joined:
 | Left / Right | One player less / more in the new room, 1 to 4 |
 | Escape | Leave the server, back to the connect screen |
 
+With a gamepad, the D-pad or the left stick moves as the arrows, A (Cross) is Enter and B
+(Circle) is Escape, on the rooms screen, in a room, while joining and on the connection lost
+screen; the connect screen and the names are typed on the keyboard, or skipped with `--join`.
+
 A full room is told before joining, and what the server refuses is told too: a room gone
 meanwhile, or no room left on the server.
 
@@ -255,3 +259,8 @@ changed.
 - **Flashes and shake**: F2 turns them off, for players with photosensitive epilepsy or
   motion sickness; even when on, flashes never start more than three times a second.
 - **Keys**: every movement and fire key can be changed, and auto-fire spares holding Fire.
+- **Gamepad in the lobby**: the rooms, a room and the connection lost screen take the D-pad,
+  A and B as the arrows, Enter and Escape, so a game can be joined, readied and left without
+  the keyboard once connected (`--join` skips the connect screen).
+- **Chat and lagometer**: the chat's messages and its line, and the lagometer's labels,
+  follow the text size; the chat line stays above the HUD at every size.
