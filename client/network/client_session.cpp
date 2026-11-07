@@ -21,6 +21,7 @@
 #include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_decoder.hpp>
@@ -228,6 +229,7 @@ void ClientSession::on_message(std::span<const std::byte> message) {
             core::log_info("client: logged in, choosing a room");
             last_room_list_ = Clock::now();
             send_request(write_list_rooms());
+            send_request(write_list_scores());
             return;
         }
         start_binding();
@@ -238,9 +240,10 @@ void ClientSession::on_message(std::span<const std::byte> message) {
         return;
     }
     // Once logged in, the server only sends Logout (RFC section 3.3), the chat of the room
-    // (section 3.8) and, to a client that used the rooms, RoomPlayers and GameStart, which a
-    // client in game ignores.
-    if (on_chat(message) || read_room_players(message).has_value() || read_game_start(message)) {
+    // (section 3.8), the scores asked for (section 3.9) and, to a client that used the rooms,
+    // RoomPlayers and GameStart, which a client in game ignores.
+    if (on_chat(message) || read_room_players(message).has_value() || read_game_start(message) ||
+        read_score_list(message).has_value()) {
         return;
     }
     if (const std::optional<std::uint8_t> reason = read_logout(message)) {
@@ -255,6 +258,10 @@ void ClientSession::on_message(std::span<const std::byte> message) {
 void ClientSession::on_room_message(std::span<const std::byte> message) {
     if (std::optional<std::vector<RoomRecord>> rooms = read_room_list(message)) {
         rooms_ = std::move(*rooms);
+    } else if (std::optional<std::vector<ScoreRecord>> scores = read_score_list(message)) {
+        std::erase_if(*scores,
+                      [](const ScoreRecord& score) { return !valid_player_name(score.name); });
+        scores_ = std::move(*scores);
     } else if (read_room_created(message).has_value()) {
         room_error_.clear();
         send_request(write_list_rooms());
@@ -284,6 +291,10 @@ void ClientSession::on_room_message(std::span<const std::byte> message) {
     } else if (!on_chat(message)) {
         fail("the server sent an unexpected message");
     }
+}
+
+const std::vector<ScoreRecord>& ClientSession::scores() const noexcept {
+    return scores_;
 }
 
 // RFC section 3.8: a message of the room, or why one of this client was not sent; false for
@@ -334,6 +345,7 @@ void ClientSession::leave_room() {
     ready_ = false;
     last_room_list_ = Clock::now();
     send_request(write_list_rooms());
+    send_request(write_list_scores());
 }
 
 bool ClientSession::ready() const noexcept {
@@ -539,6 +551,7 @@ void ClientSession::update(Clock::time_point now) {
         if (now - last_room_list_ >= room_refresh) {
             last_room_list_ = now;
             send_request(write_list_rooms());
+            send_request(write_list_scores());
         }
         break;
     case ClientState::InRoom:

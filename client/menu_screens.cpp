@@ -18,6 +18,7 @@
 #include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/tuning.hpp>
 
 #include <algorithm>
@@ -26,6 +27,7 @@
 #include <cstdint>
 #include <format>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -202,7 +204,8 @@ void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
 }
 
 void draw_rooms(render::IRenderer& renderer, const render::BitmapFont& font,
-                const RoomListForm& form, const ScreenMessage& message, double seconds,
+                const RoomListForm& form, const ScreenMessage& message,
+                std::span<const ScoreRecord> scores, double seconds,
                 const Preferences& preferences) {
     const render::TextStyle title = style(5.0F, title_color, preferences);
     const render::TextStyle body = style(2.5F, text_color, preferences);
@@ -252,6 +255,26 @@ void draw_rooms(render::IRenderer& renderer, const render::BitmapFont& font,
             style(2.0F, message.error ? error_color : title_color, preferences);
         const std::string text = font.wrap(message.text, width - (4.0F * gap), said.scale);
         font.draw(renderer, text, {centered_x(font, text, said.scale), y}, said);
+        y += font.line_height(said.scale) + gap;
+    }
+
+    // The best scores of the server (RFC section 3.9), in two columns of 5, best first.
+    if (!scores.empty()) {
+        const render::TextStyle heading = style(2.5F, heading_color, preferences);
+        font.draw(renderer, "BEST SCORES", {left, y}, heading);
+        y += font.line_height(heading.scale) + 6.0F;
+        const render::TextStyle line = style(2.0F, text_color, preferences);
+        const float line_height = font.line_height(line.scale) + 4.0F;
+        constexpr std::size_t per_column = 5;
+        std::size_t index = 0;
+        for (const ScoreRecord& score : scores) {
+            const float x = left + (index < per_column ? 0.0F : (width / 2.0F) - left);
+            const float at = y + (static_cast<float>(index % per_column) * line_height);
+            ++index;
+            font.draw(renderer,
+                      std::format("{:>2}. {:<16} {:>7}", index, upper(score.name), score.score),
+                      {x, at}, line);
+        }
     }
     constexpr std::string_view keys =
         "ENTER JOIN OR CREATE   UP / DOWN CHOOSE   LEFT / RIGHT PLAYERS   ESC LEAVE";

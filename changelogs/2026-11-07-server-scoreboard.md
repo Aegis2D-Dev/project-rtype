@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) (opened 2026-11-07) |
 | Branch | `feat/server-scoreboard` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`6ceb348`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#312](https://github.com/Aegis2D-Dev/aegis2d/issues/312) feat(server): scoreboard storage |
 

@@ -28,6 +28,8 @@
 #include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/ship_movement.hpp>
@@ -962,6 +964,30 @@ TEST_CASE("four clients fill and start a room, while a second room plays", "[cli
         server.sessions().find(playing.login().value_or(rtype::LoginAccepted{}).session);
     REQUIRE(first != nullptr);
     CHECK(first->room != room);
+}
+
+TEST_CASE("the best scores of the server show in the lobby", "[client][scores]") {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_lobby_scores_test";
+    std::filesystem::remove_all(folder);
+    {
+        rtype::Scoreboard board{folder / "scores.json"};
+        CHECK(board.record("R9", 300));
+        CHECK(board.record("Kaz", 1200));
+    }
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    game_server.keep_scores(folder / "scores.json");
+    ServerNetwork& server = game_server.network();
+    ClientSettings settings = settings_for(server, "Lolo");
+    settings.choose_room = true;
+    ClientSession client{context, settings};
+    client.start();
+
+    // Asked with the rooms at the login, as the lobby shows them.
+    REQUIRE(pump(context, &server, {&client}, [&] { return !client.scores().empty(); }));
+    CHECK(client.state() == ClientState::Lobby);
+    CHECK(client.scores() == std::vector<rtype::ScoreRecord>{{.name = "Kaz", .score = 1200},
+                                                             {.name = "R9", .score = 300}});
 }
 
 TEST_CASE("two clients chat in the lobby and in game", "[client][chat]") {

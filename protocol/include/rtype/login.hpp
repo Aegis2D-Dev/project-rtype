@@ -1,6 +1,7 @@
 /// @file
 /// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules;
-/// those of the rooms are in rooms.hpp, those of the chat in chat.hpp.
+/// those of the rooms are in rooms.hpp, those of the chat in chat.hpp, those of the
+/// scoreboard in scores.hpp.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -59,6 +60,10 @@ enum class TcpKind : std::uint8_t {
     ChatMessage = 18,
     /// @brief Server to client: why a `ChatSend` was not relayed.
     ChatRejected = 19,
+    /// @brief Client to server: the best scores, please (RFC section 3.9).
+    ListScores = 20,
+    /// @brief Server to client: the best scores, best first.
+    ScoreList = 21,
 };
 
 /// @brief Why a login is refused, the `reason` of `LoginRejected`.

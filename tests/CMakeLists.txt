@@ -30,6 +30,7 @@ add_executable(rtype_tests
     room_test.cpp
     scoreboard_test.cpp
     rtt_test.cpp
+    scores_test.cpp
     server_game_test.cpp
     server_test.cpp
     ship_movement_test.cpp

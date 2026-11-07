@@ -92,7 +92,8 @@ TEST_CASE("kinds and logouts are checked", "[server][login]") {
     CHECK(rtype::kind_of(bytes({0x10})) == TcpKind::GameStart);
     CHECK(rtype::kind_of(bytes({0x11})) == TcpKind::ChatSend);
     CHECK(rtype::kind_of(bytes({0x13, 0x01})) == TcpKind::ChatRejected);
-    CHECK(!rtype::kind_of(bytes({0x14})).has_value());
+    CHECK(rtype::kind_of(bytes({0x14})) == TcpKind::ListScores);
+    CHECK(!rtype::kind_of(bytes({0x16})).has_value());
 
     CHECK(rtype::read_logout(bytes({0x04, 0x00})) == std::uint8_t{0});
     CHECK(rtype::read_logout(bytes({0x04, 0x09})) == std::uint8_t{9});

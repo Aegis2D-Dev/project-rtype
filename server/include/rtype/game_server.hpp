@@ -93,7 +93,8 @@ public:
     /// @brief Keeps the best scores in a file: at the end of each game of a room, every
     /// player of it records its score there.
     /// @details Reads the board of the file now (Scoreboard), and uses it on the context's
-    /// thread; without a call, no score is kept.
+    /// thread, where the network answers `ListScores` with it; without a call, no score is
+    /// kept and the list is empty.
     /// @param file Where the scores are kept.
     void keep_scores(std::filesystem::path file);
 
