@@ -16,14 +16,10 @@ namespace net = aegis2d::net;
 
 namespace {
 
-// Kinds are checked as ranges before the cast, like net::PacketType; 17 to 19 are the chat's
-// (RFC section 3.8), not read here yet.
+// Kinds are contiguous: checked as a range before the cast, like net::PacketType.
 std::optional<TcpKind> tcp_kind(std::uint8_t value) noexcept {
-    const bool session = value >= static_cast<std::uint8_t>(TcpKind::LoginRequest) &&
-                         value <= static_cast<std::uint8_t>(TcpKind::GameStart);
-    const bool scores = value >= static_cast<std::uint8_t>(TcpKind::ListScores) &&
-                        value <= static_cast<std::uint8_t>(TcpKind::ScoreList);
-    if (!session && !scores) {
+    if (value < static_cast<std::uint8_t>(TcpKind::LoginRequest) ||
+        value > static_cast<std::uint8_t>(TcpKind::ScoreList)) {
         return std::nullopt;
     }
     return static_cast<TcpKind>(value);
@@ -76,17 +72,21 @@ std::string_view to_string(LoginRejection reason) noexcept {
 }
 
 bool valid_player_name(std::string_view name) noexcept {
-    if (name.empty() || name.size() > max_name_size) {
+    return valid_text(name, max_name_size);
+}
+
+bool valid_text(std::string_view text, std::size_t max_size) noexcept {
+    if (text.empty() || text.size() > max_size) {
         return false;
     }
-    for (std::size_t start = 0; start < name.size();) {
-        const Lead lead = lead_of(static_cast<unsigned char>(name.at(start)));
-        if (lead.size == 0 || name.size() - start < lead.size) {
+    for (std::size_t start = 0; start < text.size();) {
+        const Lead lead = lead_of(static_cast<unsigned char>(text.at(start)));
+        if (lead.size == 0 || text.size() - start < lead.size) {
             return false;
         }
         char32_t code_point = lead.value;
         for (std::size_t index = 1; index < lead.size; ++index) {
-            const auto byte = static_cast<unsigned char>(name.at(start + index));
+            const auto byte = static_cast<unsigned char>(text.at(start + index));
             if ((byte & 0xC0U) != 0x80U) {
                 return false;
             }

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -67,6 +68,29 @@ private:
 
     std::uint32_t per_second_;
     std::unordered_map<aegis2d::net::Endpoint, Window> windows_;
+};
+
+/// @brief The chat rate of one session (RFC section 3.8): a token bucket.
+/// @details A session sends burst messages at once, then gets one more back every refill,
+/// up to burst kept. A message refused does not count. Not thread-safe.
+class ChatRate {
+public:
+    /// @brief Clock of the refills.
+    using Clock = std::chrono::steady_clock;
+    /// @brief Messages a session may send at once.
+    static constexpr std::uint32_t burst = 5;
+    /// @brief Time for one message to come back.
+    static constexpr std::chrono::seconds refill{1};
+
+    /// @brief Counts a message and tells whether it may be relayed.
+    /// @param now Current time, never earlier than the previous call's.
+    /// @return `false` if the session is over the rate: the message is a flood.
+    [[nodiscard]] bool allow(Clock::time_point now) noexcept;
+
+private:
+    std::uint32_t tokens_ = burst;
+    // When the last message came back, or when the bucket was last full.
+    std::optional<Clock::time_point> since_;
 };
 
 /// @brief Counts the datagrams dropped from each address, by reason, for a summary in the

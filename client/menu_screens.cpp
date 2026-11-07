@@ -5,14 +5,17 @@
 #include <aegis2d/platform/controls.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/color.hpp>
+#include <aegis2d/render/player_style.hpp>
 #include <aegis2d/render/renderer.hpp>
 #include <aegis2d/shmup/ship_controls.hpp>
 #include <aegis2d/ui/text_field.hpp>
+#include <aegis2d/ui/widget_tree.hpp>
 
 #include "game_art.hpp"
 #include "preferences.hpp"
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
 #include <rtype/scores.hpp>
@@ -23,9 +26,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -340,6 +345,34 @@ void draw_status(render::IRenderer& renderer, const render::BitmapFont& font,
     font.draw(renderer, wrapped, {centered_x(font, wrapped, body.scale), y}, body);
     const float footer_y = height - font.line_height(small.scale) - (2.0F * gap);
     font.draw(renderer, footer, {centered_x(font, footer, small.scale), footer_y}, small);
+}
+
+void draw_chat(render::IRenderer& renderer, const render::BitmapFont& font,
+               const std::vector<PlayerNotice>& lines, const aegis2d::ui::TextField& field,
+               const aegis2d::ui::WidgetTree& tree, bool typing, const Preferences& preferences) {
+    // Above the line, newest at the bottom, each on a dark band so it reads over the game.
+    const render::TextStyle line_style = style(1.5F, text_color, preferences);
+    const float line_height = font.line_height(line_style.scale) + 8.0F;
+    float y = chat_box.y - line_height;
+    for (const PlayerNotice& line : std::views::reverse(lines)) {
+        const Vec2 size = font.measure(line.text, line_style.scale);
+        renderer.draw({.position = Vec2{chat_box.x - 6.0F, y - 4.0F},
+                       .size = size + Vec2{12.0F, 8.0F},
+                       .tint = render::Color{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.6F},
+                       .layer = 9});
+        render::TextStyle sender = line_style;
+        sender.layer = 10;
+        sender.color = line.player < tuning::max_players
+                           ? seen_as(render::player_style(line.player).color, preferences.vision)
+                           : color(dim_color, preferences);
+        font.draw(renderer, line.text, Vec2{chat_box.x, y}, sender);
+        y -= line_height;
+    }
+    if (typing) {
+        aegis2d::ui::TextFieldStyle box;
+        box.layer = 10;
+        field.draw(renderer, tree, font, box);
+    }
 }
 
 } // namespace rtype

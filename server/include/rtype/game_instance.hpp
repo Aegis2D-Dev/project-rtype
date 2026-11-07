@@ -32,14 +32,16 @@ struct PlayerState {
 /// @details A session joins when its UDP endpoint is bound (RFC section 3.4) and leaves
 /// when it ends. Each player gets the ship of its player number, the `player` of
 /// `LoginAccepted`, so the number picks its ship and spawn point. When the last player
-/// leaves, the instance starts a fresh game with the same seed and waves, for the next
+/// leaves, the instance starts a fresh game with the same seed, waves and rules, for the next
 /// players. Not thread-safe: use it from one thread.
 class GameInstance {
 public:
     /// @brief Creates an empty game.
     /// @param seed Seed of the random spawns, or `std::nullopt` for none (see ServerGame).
     /// @param waves Waves to play in every game, at their start.
-    GameInstance(std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves);
+    /// @param rules How every game plays (the rules of the room).
+    GameInstance(std::optional<std::uint64_t> seed, aegis2d::ecs::WaveSchedule waves,
+                 GameRules rules = {});
 
     /// @brief Adds the ship of a player to the game.
     /// @param player Player number of the session, below tuning::max_players.
@@ -107,6 +109,7 @@ private:
 
     std::optional<std::uint64_t> seed_;
     aegis2d::ecs::WaveSchedule waves_;
+    GameRules rules_;
     // ServerGame cannot move: each game is a new object.
     std::unique_ptr<ServerGame> game_;
     std::array<std::optional<aegis2d::ecs::Entity>, tuning::max_players> ships_;

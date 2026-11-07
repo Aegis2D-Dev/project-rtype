@@ -15,6 +15,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <rtype/chat.hpp>
 #include <rtype/client_options.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/delta_snapshot.hpp>
@@ -24,6 +25,7 @@
 #include <rtype/input.hpp>
 #include <rtype/lag_compensation.hpp>
 #include <rtype/login.hpp>
+#include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
 #include <rtype/rooms.hpp>
 #include <rtype/scoreboard.hpp>
@@ -986,4 +988,59 @@ TEST_CASE("the best scores of the server show in the lobby", "[client][scores]")
     CHECK(client.state() == ClientState::Lobby);
     CHECK(client.scores() == std::vector<rtype::ScoreRecord>{{.name = "Kaz", .score = 1200},
                                                              {.name = "R9", .score = 300}});
+}
+
+TEST_CASE("two clients chat in the lobby and in game", "[client][chat]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    ServerNetwork& server = game_server.network();
+    ClientSettings first_settings = settings_for(server, "R9");
+    first_settings.choose_room = true;
+    ClientSettings second_settings = settings_for(server, "Kaz");
+    second_settings.choose_room = true;
+    ClientSession first{context, first_settings};
+    ClientSession second{context, second_settings};
+    CHECK(!first.send_chat("too early"));
+    first.start();
+    second.start();
+    REQUIRE(pump(context, &server, {&first, &second}, [&] {
+        return first.state() == ClientState::Lobby && second.state() == ClientState::Lobby;
+    }));
+    const auto texts = [](ClientSession& client) {
+        std::vector<std::string> lines;
+        for (const rtype::PlayerNotice& line : client.chat().shown()) {
+            lines.push_back(line.text);
+        }
+        return lines;
+    };
+
+    // In the lobby, both see the message, in the sender's color.
+    CHECK(first.send_chat("hello"));
+    REQUIRE(pump(context, &server, {&first, &second},
+                 [&] { return !first.chat().shown().empty() && !second.chat().shown().empty(); }));
+    CHECK(texts(second) == std::vector<std::string>{"R9: hello"});
+    CHECK(texts(first) == texts(second));
+    CHECK(second.chat().shown().front().player == 0);
+
+    // In game too; a message the server refuses is only told to its sender.
+    first.join_room(0);
+    second.join_room(0);
+    REQUIRE(pump(context, &server, {&first, &second}, [&] {
+        return first.state() == ClientState::InRoom && second.state() == ClientState::InRoom;
+    }));
+    first.set_ready(true);
+    second.set_ready(true);
+    REQUIRE(pump(context, &server, {&first, &second}, [&] {
+        return first.state() == ClientState::InGame && second.state() == ClientState::InGame;
+    }));
+    CHECK(second.send_chat("gg"));
+    CHECK(second.send_chat(std::string(rtype::max_chat_size + 1, 'a')));
+    REQUIRE(pump(context, &server, {&first, &second}, [&] {
+        return first.chat().shown().size() == 2 && second.chat().shown().size() == 3;
+    }));
+    CHECK(texts(first) == std::vector<std::string>{"R9: hello", "Kaz: gg"});
+    CHECK(first.chat().shown().back().player == 1);
+    CHECK(texts(second).back() == "Message not sent: too long");
+    CHECK(first.state() == ClientState::InGame);
+    CHECK(second.state() == ClientState::InGame);
 }

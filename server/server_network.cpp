@@ -12,6 +12,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/input.hpp>
@@ -515,7 +516,8 @@ void ServerNetwork::on_accept(net::TcpConnection connection) {
                                              .sent = 0,
                                              .close_when_sent = false,
                                              .closed = false,
-                                             .rooms = false})
+                                             .rooms = false,
+                                             .chat = ChatRate{}})
                          .first->second;
     // The handlers find the client by id: it may be gone when a late handler runs.
     client.connection.start(
@@ -546,7 +548,7 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
     }
     // Logged in: the messages of the rooms are answered, a Logout ends the session (RFC
     // section 3.3).
-    if (on_room_message(client, message)) {
+    if (on_room_message(client, message) || on_chat(client, message)) {
         return;
     }
     const Session* const session = sessions_.find(*client.token);
@@ -651,6 +653,46 @@ bool ServerNetwork::on_room_message(Client& client, std::span<const std::byte> m
         return true;
     }
     return false;
+}
+
+// RFC section 3.8: a text checked, then relayed to the sessions of the sender's room (or of
+// the lobby), the sender included; false for any other message.
+bool ServerNetwork::on_chat(Client& client, std::span<const std::byte> message) {
+    const std::optional<std::string> text = read_chat_send(message);
+    if (!text) {
+        return false;
+    }
+    const Session* const sender = sessions_.find(client.token.value_or(0));
+    if (sender == nullptr) {
+        return true;
+    }
+    std::optional<ChatRejection> rejection = check_chat_text(*text);
+    if (!rejection && !client.chat.allow(Clock::now())) {
+        rejection = ChatRejection::TooFast;
+    }
+    if (rejection) {
+        // Debug only, like dropped datagrams: a flood must not become a flood of log lines.
+        core::log_debug("TCP: chat of player {} refused: {}", sender->player,
+                        to_string(*rejection));
+        send(client, write_chat_rejected(*rejection));
+        return true;
+    }
+    const std::uint32_t room = sender->room;
+    const std::vector<std::byte> relayed = write_chat_message(ChatMessage{
+        .player = room == no_room ? lobby_player : sender->player,
+        .name = sender->name,
+        .text = *text,
+    });
+    for (auto& [id, other] : clients_) {
+        if (!other.token || other.closed || other.close_when_sent) {
+            continue;
+        }
+        const Session* const session = sessions_.find(*other.token);
+        if (session != nullptr && session->room == room) {
+            send(other, relayed);
+        }
+    }
+    return true;
 }
 
 // RFC section 3.7: the session leaves its room, if it was in one, for the room it joins.

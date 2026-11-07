@@ -15,6 +15,7 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/chat.hpp>
 #include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
@@ -33,6 +34,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -59,6 +61,7 @@ using aegis2d::net::TcpCloseReason;
 using aegis2d::net::TcpConnection;
 using aegis2d::net::TcpListener;
 using aegis2d::net::UdpSocket;
+using rtype::ChatRejection;
 using rtype::LoginAccepted;
 using rtype::LoginRejection;
 using rtype::LoginRequest;
@@ -513,6 +516,89 @@ TEST_CASE("a client lists and creates rooms with these messages only", "[server]
     REQUIRE(pump(context, server, [&] { return player.closed; }));
     CHECK(player.received.size() == answers);
     CHECK(server.sessions().size() == 0);
+}
+
+TEST_CASE("the chat stays in its room, a long message is refused and a flood is cut",
+          "[server][chat]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{23};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    // Four players log in to room 0; the third moves to room 1, the fourth to the lobby.
+    std::vector<std::unique_ptr<Player>> players;
+    for (const std::string name : {"A", "B", "C", "D"}) {
+        players.push_back(std::make_unique<Player>(context, server));
+        static_cast<void>(log_in(context, server, *players.back(), name));
+    }
+    Player& first = *players.at(0);
+    Player& second = *players.at(1);
+    Player& other_room = *players.at(2);
+    Player& lobby = *players.at(3);
+    const auto chats = [](const Player& player) {
+        std::vector<rtype::ChatMessage> messages;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                messages.push_back(std::move(*chat));
+            }
+        }
+        return messages;
+    };
+    const auto rejections = [](const Player& player, ChatRejection reason) {
+        return std::ranges::count_if(
+            player.received, [reason](const std::vector<std::byte>& message) {
+                return rtype::read_chat_rejected(message) == static_cast<std::uint8_t>(reason);
+            });
+    };
+    other_room.send(rtype::write_create_room({.name = "Bees", .max_players = 4}));
+    other_room.send(rtype::write_join_room(1));
+    lobby.send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] {
+        return server.sessions().members(1).size() == 1 && server.sessions().members(0).size() == 2;
+    }));
+
+    // A message reaches the players of the room, the sender too, and no one else.
+    first.send(rtype::write_chat_send("hi"));
+    other_room.send(rtype::write_chat_send("yo"));
+    lobby.send(rtype::write_chat_send("anyone?"));
+    const rtype::ChatMessage hi{.player = 0, .name = "A", .text = "hi"};
+    REQUIRE(pump(context, server, [&] {
+        return !chats(second).empty() && !chats(other_room).empty() && !chats(lobby).empty();
+    }));
+    context.run_for(std::chrono::milliseconds{100});
+    CHECK(chats(first) == std::vector{hi});
+    CHECK(chats(second) == std::vector{hi});
+    CHECK(chats(other_room) ==
+          std::vector{rtype::ChatMessage{.player = 0, .name = "C", .text = "yo"}});
+    CHECK(chats(lobby) == std::vector{rtype::ChatMessage{
+                              .player = rtype::lobby_player, .name = "D", .text = "anyone?"}});
+
+    // A long message is refused, and only its sender learns it; the session goes on.
+    first.send(rtype::write_chat_send(std::string(rtype::max_chat_size + 1, 'a')));
+    first.send(rtype::write_chat_send("a\tb"));
+    REQUIRE(pump(context, server, [&] { return rejections(first, ChatRejection::BadText) == 1; }));
+    CHECK(rejections(first, ChatRejection::TooLong) == 1);
+    CHECK(chats(second).size() == 1);
+    CHECK(!first.closed);
+
+    // A flood: the 4 messages left of the first 5 go out, the others are refused.
+    constexpr std::size_t flood = 12;
+    for (std::size_t message = 0; message < flood; ++message) {
+        first.send(rtype::write_chat_send("spam"));
+    }
+    const auto answered = [&] {
+        return chats(first).size() - 1 +
+               static_cast<std::size_t>(rejections(first, ChatRejection::TooFast));
+    };
+    REQUIRE(pump(context, server, [&] { return answered() == flood; }));
+    context.run_for(std::chrono::milliseconds{100});
+    // A slow machine may get a message back during the flood, rarely more.
+    const std::size_t relayed = chats(first).size() - 1;
+    CHECK(relayed >= rtype::ChatRate::burst - 1);
+    CHECK(relayed <= rtype::ChatRate::burst + 1);
+    CHECK(chats(second).size() == relayed + 1);
+    CHECK(chats(other_room).size() == 1);
+    CHECK(!first.closed);
+    CHECK(server.sessions().size() == 4);
 }
 
 TEST_CASE("four clients join one room and start it with these messages", "[server][rooms]") {
@@ -1778,6 +1864,113 @@ TEST_CASE("the scores of a game over are kept for the next run", "[server][score
     const std::vector<rtype::ScoreEntry> kept{{.name = "R9", .score = 1500}};
     CHECK(game_server.scoreboard()->best() == kept);
     CHECK(rtype::Scoreboard{file}.best() == kept);
+}
+
+TEST_CASE("the rules of a room become the rules of its games", "[server][rules]") {
+    const rtype::GameRules tuned = rtype::game_rules(rtype::RoomRules{});
+    CHECK(tuned.lives == rtype::tuning::player_lives);
+    CHECK(tuned.enemy_health_factor == 1);
+    CHECK(tuned.spawn_interval_scale == 1.0F);
+    CHECK(!tuned.friendly_fire);
+
+    const rtype::GameRules easy =
+        rtype::game_rules({.lives = 9, .difficulty = 0, .waves = "", .friendly_fire = 0});
+    CHECK(easy.lives == 9);
+    CHECK(easy.enemy_health_factor == rtype::tuning::easy_enemy_health_factor);
+    CHECK(easy.spawn_interval_scale == rtype::tuning::easy_spawn_interval_scale);
+    const rtype::GameRules hard =
+        rtype::game_rules({.lives = 1, .difficulty = 2, .waves = "", .friendly_fire = 1});
+    CHECK(hard.lives == 1);
+    CHECK(hard.enemy_health_factor == rtype::tuning::hard_enemy_health_factor);
+    CHECK(hard.spawn_interval_scale == rtype::tuning::hard_spawn_interval_scale);
+    CHECK(hard.friendly_fire);
+}
+
+TEST_CASE("two rooms with different rules play differently at the same time",
+          "[server][room][rules]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    game_server.set_waves({{"swarm", aegis2d::ecs::WaveSchedule::from_string(
+                                         R"({"loop": true, "waves": [{"delay": 0.5, "spawns": [
+                                             {"type": "bydos_slave", "position": [1296, 360]}]}]})")}});
+    ServerNetwork& server = game_server.network();
+    const auto received = [](const Player& player, rtype::TcpKind kind) {
+        return std::ranges::count_if(player.received,
+                                     [kind](const std::vector<std::byte>& message) {
+                                         return rtype::kind_of(message) == kind;
+                                     });
+    };
+
+    // The first player plays in the room of the logins, with the default rules.
+    Player tuned_player{context, server};
+    const std::uint32_t tuned = log_in(context, server, tuned_player, "Tuned");
+    const rtype::Session* const session = server.sessions().find(tuned);
+    REQUIRE(session != nullptr);
+    const std::uint32_t tuned_room = session->room;
+    CHECK(server.sessions().rules(tuned_room) == rtype::RoomRules{});
+
+    // The second one creates room 1 with its rules, joins it and starts it alone.
+    Player hard_player{context, server};
+    const std::uint32_t hard = log_in(context, server, hard_player, "Hard");
+    hard_player.send(rtype::write_create_room(
+        {.name = "Aces",
+         .max_players = 2,
+         .rules = {.lives = 1, .difficulty = 2, .waves = "swarm", .friendly_fire = 1}}));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::RoomCreated) == 1; }));
+    CHECK(rtype::read_room_created(hard_player.received.back()) == std::uint8_t{1});
+    hard_player.send(rtype::write_join_room(1));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::RoomJoined) == 1; }));
+    hard_player.send(rtype::write_set_ready(true));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::GameStart) == 1; }));
+
+    Socket hard_udp{context};
+    hard_udp.send(server, datagram(PacketType::Connect, hard));
+    Socket tuned_udp{context};
+    tuned_udp.send(server, datagram(PacketType::Connect, tuned));
+    REQUIRE(pump(context, server, [&] {
+        return !snapshots_of(hard_udp).empty() && !snapshots_of(tuned_udp).empty() &&
+               !snapshots_of(hard_udp).back().players.empty() &&
+               !snapshots_of(tuned_udp).back().players.empty();
+    }));
+    CHECK(game_server.open_rooms() == 2);
+    // Each player sees the lives of its room's rules.
+    CHECK(snapshots_of(hard_udp).back().players.front().lives == 1);
+    CHECK(snapshots_of(tuned_udp).back().players.front().lives == rtype::tuning::player_lives);
+
+    // Both games run side by side, each with its own rules and waves.
+    struct Probe {
+        std::atomic<bool> done{false};
+        rtype::GameRules rules;
+        std::size_t waves = 0;
+        std::uint64_t ticks = 0;
+    };
+    const auto probe = [&](std::uint32_t id, Probe& into) {
+        game_server.room(id).simulation().post([&into](rtype::GameInstance& game) {
+            into.rules = game.game().rules();
+            into.waves = game.game().waves().spawns().size();
+            into.ticks = game.game().ticks();
+            into.done = true;
+        });
+    };
+    Probe hard_room;
+    Probe tuned_game;
+    probe(1, hard_room);
+    probe(tuned_room, tuned_game);
+    REQUIRE(pump(context, server, [&] { return hard_room.done && tuned_game.done; }));
+    CHECK(hard_room.rules.lives == 1);
+    CHECK(hard_room.rules.enemy_health_factor == rtype::tuning::hard_enemy_health_factor);
+    CHECK(hard_room.rules.friendly_fire);
+    CHECK(hard_room.waves == 1);
+    CHECK(tuned_game.rules.lives == rtype::tuning::player_lives);
+    CHECK(tuned_game.rules.enemy_health_factor == 1);
+    CHECK(!tuned_game.rules.friendly_fire);
+    CHECK(tuned_game.waves == 0);
+    CHECK(hard_room.ticks > 0);
+    CHECK(tuned_game.ticks > 0);
 }
 
 TEST_CASE("an exception while handling a client kicks that client only", "[server][errors]") {

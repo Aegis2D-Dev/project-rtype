@@ -13,6 +13,7 @@
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/letterbox.hpp>
 #include <aegis2d/render/opengl/renderer.hpp>
+#include <aegis2d/ui/navigation.hpp>
 
 #include "editor_view.hpp"
 #include "game_art.hpp"
@@ -49,6 +50,7 @@ namespace rtype {
 namespace core = aegis2d::core;
 namespace platform = aegis2d::platform;
 namespace render = aegis2d::render;
+namespace ui = aegis2d::ui;
 using platform::Key;
 
 namespace {
@@ -150,36 +152,40 @@ bool ClientApp::frame() {
     if (!capture_.waiting().has_value()) {
         read_options_keys();
     }
-    switch (screen_) {
-    case ClientScreen::Connect:
-        connect_screen();
-        break;
-    case ClientScreen::Joining:
-        joining_screen();
-        break;
-    case ClientScreen::Rooms:
-        rooms_screen();
-        break;
-    case ClientScreen::Room:
-        room_screen();
-        break;
-    case ClientScreen::Game:
-        game_screen();
-        break;
-    case ClientScreen::Lost:
-        lost_screen();
-        break;
-    case ClientScreen::Editor:
-        editor_screen();
-        break;
-    case ClientScreen::Playtest:
-        playtest_screen();
-        break;
+    // While the chat line is open, the keys are its own.
+    if (!chat_keys()) {
+        switch (screen_) {
+        case ClientScreen::Connect:
+            connect_screen();
+            break;
+        case ClientScreen::Joining:
+            joining_screen();
+            break;
+        case ClientScreen::Rooms:
+            rooms_screen();
+            break;
+        case ClientScreen::Room:
+            room_screen();
+            break;
+        case ClientScreen::Game:
+            game_screen();
+            break;
+        case ClientScreen::Lost:
+            lost_screen();
+            break;
+        case ClientScreen::Editor:
+            editor_screen();
+            break;
+        case ClientScreen::Playtest:
+            playtest_screen();
+            break;
+        }
     }
-    // The fields take typed text while one is selected on the connect screen; the game's
-    // keys are actions then, never text.
-    window_.set_text_input(screen_ == ClientScreen::Connect && !capture_.waiting().has_value() &&
-                           fields_.focused().has_value());
+    // The fields take typed text while one is selected on the connect screen, and the chat
+    // line while it is open; the game's keys are actions then, never text.
+    window_.set_text_input(chatting_ ||
+                           (screen_ == ClientScreen::Connect && !capture_.waiting().has_value() &&
+                            fields_.focused().has_value()));
     update_session();
     sounds_.update();
     draw();
@@ -296,6 +302,48 @@ void ClientApp::connect_screen() {
             break;
         }
     }
+}
+
+// The chat line (RFC section 3.8): T opens it in the lobby, in a room and in game, Enter
+// sends what was typed and Escape closes it; while it is open, the keys are the line's. A room
+// name being typed on the lobby screen takes the T.
+bool ClientApp::chat_keys() {
+    const bool can_chat =
+        session_.has_value() && (screen_ == ClientScreen::Room || screen_ == ClientScreen::Game ||
+                                 (screen_ == ClientScreen::Rooms && !room_list_.creating()));
+    if (!can_chat) {
+        chatting_ = false;
+        return false;
+    }
+    const platform::Keyboard& keyboard = window_.keyboard();
+    if (!chatting_) {
+        if (!keyboard.pressed(Key::T)) {
+            return false;
+        }
+        chatting_ = true;
+        chat_field_.set_text({});
+        chat_tree_.focus(chat_field_.id());
+        // The ship stops while its player types.
+        session_->set_input(aegis2d::ecs::PlayerInput{});
+        return true;
+    }
+    if (keyboard.pressed(Key::Escape)) {
+        chatting_ = false;
+    } else if (keyboard.pressed(Key::Enter) || keyboard.pressed(Key::KeypadEnter)) {
+        if (!chat_field_.text().empty()) {
+            session_->send_chat(chat_field_.text());
+        }
+        chatting_ = false;
+    } else {
+        ui::Navigation navigation;
+        if (keyboard.pressed(Key::Left)) {
+            navigation.direction = ui::Direction::Left;
+        } else if (keyboard.pressed(Key::Right)) {
+            navigation.direction = ui::Direction::Right;
+        }
+        chat_field_.update(navigation, window_.text_input(), keyboard, chat_tree_);
+    }
+    return true;
 }
 
 void ClientApp::joining_screen() {
@@ -661,6 +709,12 @@ void ClientApp::draw() {
                          preferences_);
             break;
         }
+    }
+    if (session_.has_value() && (screen_ == ClientScreen::Rooms || screen_ == ClientScreen::Room ||
+                                 screen_ == ClientScreen::Game)) {
+        session_->chat().prune(now);
+        draw_chat(renderer_, font_, session_->chat().shown(), chat_field_, chat_tree_, chatting_,
+                  preferences_);
     }
     // Entities only in game; the menus have none.
     const std::optional<std::size_t> entities =

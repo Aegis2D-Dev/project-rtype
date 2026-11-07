@@ -42,7 +42,10 @@ namespace rtype {
 /// login_timeout, is closed without a reply (section 6.5). Once logged in, a `ListRooms` gets
 /// the `RoomList` of the rooms in use and a `CreateRoom` its `RoomCreated` or `RoomRejected`
 /// (section 3.6); a `JoinRoom` gets `RoomJoined` or `JoinRejected`, a `LeaveRoom` moves the
-/// session to the lobby and a `SetReady` sets whether it is ready (section 3.7); a `Logout` or
+/// session to the lobby and a `SetReady` sets whether it is ready (section 3.7); a `ChatSend`
+/// whose text and rate pass (check_chat_text(), ChatRate) goes as a `ChatMessage` to every
+/// session of the sender's room, or of the lobby, the sender included, and any other gets
+/// `ChatRejected` with its reason (section 3.8); a `Logout` or
 /// the closing of the connection ends the session; any other message is a protocol error that
 /// ends it too. Whenever the sessions of a room or their ready states change, the clients of
 /// that room that sent a message of the rooms and are not in game get its `RoomPlayers`, then
@@ -313,12 +316,14 @@ private:
         bool closed = false;
         // Whether it sent a message of the rooms, and so gets RoomPlayers and GameStart.
         bool rooms = false;
+        ChatRate chat;
     };
 
     void on_accept(aegis2d::net::TcpConnection connection);
     void on_message(std::uint64_t id, std::span<const std::byte> message);
     void on_login(Client& client, std::span<const std::byte> message);
     bool on_room_message(Client& client, std::span<const std::byte> message);
+    bool on_chat(Client& client, std::span<const std::byte> message);
     void on_join(Client& client, std::uint8_t room);
     void announce_room(std::uint32_t room);
     void on_close(std::uint64_t id, aegis2d::net::TcpCloseReason reason);

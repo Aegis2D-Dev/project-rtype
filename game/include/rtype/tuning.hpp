@@ -75,6 +75,15 @@ inline constexpr float bydos_lane_top = bydos_lane_margin + (bydos_size.y / 2.0F
 /// @brief Lowest line of a random Bydos.
 inline constexpr float bydos_lane_bottom = area_height - bydos_lane_top;
 
+/// @brief Factor of the enemy health of an easy room: one missile still kills a Bydos.
+inline constexpr std::int32_t easy_enemy_health_factor = 1;
+/// @brief Random Bydos spawn intervals of an easy room, times the normal ones: fewer enemies.
+inline constexpr float easy_spawn_interval_scale = 1.5F;
+/// @brief Factor of the enemy health of a hard room: a Bydos takes two missiles.
+inline constexpr std::int32_t hard_enemy_health_factor = 2;
+/// @brief Random Bydos spawn intervals of a hard room, times the normal ones: more enemies.
+inline constexpr float hard_spawn_interval_scale = 0.6F;
+
 /// @brief Speed of an enemy missile, to the left.
 inline constexpr float enemy_missile_speed = 300.0F;
 /// @brief Size of an enemy missile.
