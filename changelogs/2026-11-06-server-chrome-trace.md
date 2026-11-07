@@ -31,12 +31,15 @@ engine's `develop`.
 
 ## Changed
 - Documentation: `--trace` in the server options of *Getting started*.
-- Changelog: #83 marked as merged (`4c7e3f1`).
+- Changelog: #83 marked as merged (`4c7e3f1`), then #84, #85, #88, #89 and #90
+  (`cac9007`, `92be473`, `61a7cbb`, `8d64bf8`, `c16bd94`).
 
 ## Commits
 - `861a791` feat(server): wrote the timings of the rooms as a chrome trace with --trace
 - `ede87a4` feat(tests): added the server trace tests
-- feat(docs): documented the server trace and updated changelogs
+- `13d27dc` feat(docs): documented the server trace and updated changelogs
+- `c66099d` Merge remote-tracking branch 'origin/develop' into feat/server-chrome-trace
+- feat(changelog): updated changelogs
 
 ## Notes
 - Built and tested in the CI image (clang 18, warnings as errors) against the engine's
@@ -46,5 +49,8 @@ engine's `develop`.
 - Perfetto: on macOS, a server played by two `r-type_bot` for 4 s wrote 3840 events (240
   ticks); the trace loaded in ui.perfetto.dev, the room as a thread with its ticks and
   their systems nested.
-- The CI of this pull request builds against the engine's `develop`, so it fails until
-  Aegis2D-Dev/aegis2d#472, #473 and #474 are merged; the pull request is a draft until then.
+- The CI of this pull request builds against the engine's `develop`: it failed until
+  Aegis2D-Dev/aegis2d#472, #473 and #474 were merged, on 2026-11-07. With `develop` merged in since, built on macOS
+  (AppleClang 21) against the engine's `develop` (`f6bf491`): 295 of the 297 ctest tests pass,
+  the two flood tests failing on this machine only (they bind UDP to 127.0.0.2, not routed
+  on macOS without an alias).

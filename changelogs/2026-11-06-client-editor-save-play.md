@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#90](https://github.com/Aegis2D-Dev/project-rtype/pull/90) (opened 2026-11-06) |
 | Branch | `feat/client-editor-save-play` → `feat/client-editor-timeline` (stacked on #89) |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`c16bd94`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#371](https://github.com/Aegis2D-Dev/aegis2d/issues/371) feat(tools): level editor save and play |
 
