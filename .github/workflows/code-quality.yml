@@ -169,8 +169,26 @@ jobs:
         run: '"BUILD_DIR=$env:RUNNER_WORKSPACE\build" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
       - name: Install build prerequisites
         run: python -m pip install cmake==4.4.3 -r cmake/requirements.txt
+      # The kept tree is only reused with the engine it was built with: on 2026-11-07 a tree
+      # of cust-aegis2d-win-01 kept engine DLLs older than the tests built against the new
+      # engine headers, and a test crashed there on every run (Aegis2D-Dev/aegis2d#480).
       - name: Configure the server, the client and the tests
-        run: cmake -S . -B "$env:BUILD_DIR" -A x64 -T ClangCL -DAEGIS2D_WARNINGS_AS_ERRORS=ON -DPython_EXECUTABLE="$((Get-Command python).Source)"
+        run: |
+          $configure = {
+            cmake -S . -B "$env:BUILD_DIR" -A x64 -T ClangCL -DAEGIS2D_WARNINGS_AS_ERRORS=ON -DPython_EXECUTABLE="$((Get-Command python).Source)"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $stamp = Join-Path $env:BUILD_DIR engine-commit.txt
+          $kept = Test-Path (Join-Path $env:BUILD_DIR CMakeCache.txt)
+          & $configure
+          $engine = git -C (Join-Path $env:BUILD_DIR _deps\aegis2d-src) rev-parse HEAD
+          $built = if (Test-Path $stamp) { (Get-Content $stamp -Raw).Trim() } else { '' }
+          if ($kept -and $built -ne $engine) {
+            Write-Output "engine $engine, tree built with '$built': starting from an empty tree"
+            Remove-Item -Recurse -Force $env:BUILD_DIR
+            & $configure
+          }
+          Set-Content -Path $stamp -Value $engine
       - name: Build
         run: cmake --build "$env:BUILD_DIR" --config Debug --parallel
       - name: Run the tests
