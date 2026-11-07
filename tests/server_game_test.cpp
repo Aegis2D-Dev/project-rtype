@@ -2,10 +2,13 @@
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/shmup/components.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/entities.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/tuning.hpp>
@@ -13,6 +16,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -607,4 +611,80 @@ TEST_CASE("enemies off screen do not fire", "[rtype][server][137]") {
     run(game, 1);
     CHECK(game.enemy_fired().empty());
     CHECK(game.registry().size() == 2);
+}
+
+TEST_CASE("the rules of a game set the lives of its players", "[rtype][server][rules]") {
+    ServerGame game{std::nullopt, rtype::default_enemies_directory(), false,
+                    rtype::GameRules{.lives = 1}};
+    const Entity ship = game.add_player();
+    CHECK(game.rules().lives == 1);
+    CHECK(game.registry().get<Lives>(ship).count == 1);
+
+    // One hit, and the player is out.
+    const Entity bydos = straight_bydos(game, position_of(game, ship));
+    run(game, 1);
+    CHECK_FALSE(game.registry().alive(bydos));
+    CHECK(game.players() == 0);
+    CHECK(game.game_over());
+}
+
+TEST_CASE("the rules of a game set the health and the rate of its enemies",
+          "[rtype][server][rules]") {
+    constexpr std::uint64_t seed = 7;
+    constexpr int ticks = 60 * static_cast<int>(tuning::tick_rate);
+    const auto enemies = rtype::default_enemies_directory();
+    ServerGame easy{seed, enemies, false, rtype::GameRules{.spawn_interval_scale = 1.5F}};
+    ServerGame normal{seed};
+    ServerGame hard{seed, enemies, false,
+                    rtype::GameRules{.enemy_health_factor = 2, .spawn_interval_scale = 0.6F}};
+    const std::size_t fewer = spawns_of(easy, ticks).size();
+    const std::size_t tuned = spawns_of(normal, ticks).size();
+    const std::size_t more = spawns_of(hard, ticks).size();
+    CHECK(fewer < tuned);
+    CHECK(tuned < more);
+
+    // Random Bydos and those of the waves come with twice the health of their script.
+    const auto first_health = [](ServerGame& game, int most) {
+        for (int tick = 0; tick < most; ++tick) {
+            run(game, 1);
+            if (!game.spawned().empty()) {
+                return game.registry().get<aegis2d::ecs::Health>(game.spawned().front()).points;
+            }
+        }
+        return 0;
+    };
+    const auto one_bydos = [] {
+        return aegis2d::ecs::WaveSchedule::from_string(
+            R"({"waves": [{"delay": 0.0, "spawns": [{"type": "bydos_slave", "position": [1296, 360]}]}]})");
+    };
+    ServerGame plain{std::nullopt};
+    plain.play_waves(one_bydos());
+    ServerGame tough{std::nullopt, enemies, false, rtype::GameRules{.enemy_health_factor = 2}};
+    tough.play_waves(one_bydos());
+    const std::int32_t scripted = first_health(plain, 1);
+    REQUIRE(scripted > 0);
+    CHECK(first_health(tough, 1) == 2 * scripted);
+    ServerGame random_plain{seed};
+    ServerGame random_tough{seed, enemies, false, rtype::GameRules{.enemy_health_factor = 2}};
+    const std::int32_t random_scripted = first_health(random_plain, ticks);
+    REQUIRE(random_scripted > 0);
+    CHECK(first_health(random_tough, ticks) == 2 * random_scripted);
+}
+
+TEST_CASE("with friendly fire the missiles of a player hit the others", "[rtype][server][rules]") {
+    const bool friendly_fire = GENERATE(false, true);
+    CAPTURE(friendly_fire);
+    ServerGame game{std::nullopt, rtype::default_enemies_directory(), false,
+                    rtype::GameRules{.friendly_fire = friendly_fire}};
+    const Entity shooter = game.add_player(0);
+    const Entity target = game.add_player(1);
+    place(game, shooter, Vec2{100.0F, 360.0F});
+    place(game, target, Vec2{400.0F, 360.0F});
+    game.set_input(shooter, holding(Action::Fire));
+
+    run(game, static_cast<int>(tuning::tick_rate));
+    CHECK(game.registry().get<Lives>(target).count ==
+          (friendly_fire ? tuning::player_lives - 1 : tuning::player_lives));
+    // Its own missiles never hit the shooter.
+    CHECK(game.registry().get<Lives>(shooter).count == tuning::player_lives);
 }

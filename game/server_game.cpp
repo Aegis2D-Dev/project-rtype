@@ -5,6 +5,7 @@
 
 #include <rtype/entities.hpp>
 #include <rtype/lag_compensation.hpp>
+#include <rtype/layers.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/ship_movement.hpp>
 
@@ -26,11 +27,18 @@ using aegis2d::Vec2;
 
 namespace {
 
-ecs::SpawnSettings bydos_spawns() noexcept {
+ecs::SpawnSettings bydos_spawns(float scale) noexcept {
     return ecs::SpawnSettings{.from = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_top},
                               .to = Vec2{tuning::bydos_spawn_x, tuning::bydos_lane_bottom},
-                              .min_interval = tuning::bydos_spawn_min_interval,
-                              .max_interval = tuning::bydos_spawn_max_interval};
+                              .min_interval = tuning::bydos_spawn_min_interval * scale,
+                              .max_interval = tuning::bydos_spawn_max_interval * scale};
+}
+
+// The health an enemy's script gave it, times the factor of the room's rules.
+void scale_health(ecs::Registry& world, ecs::Entity enemy, std::int32_t factor) {
+    if (const auto health = world.try_get<ecs::Health>(enemy)) {
+        health->get().points *= factor;
+    }
 }
 
 bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
@@ -43,10 +51,10 @@ bool on_screen(const ecs::Registry& world, ecs::Entity entity) {
 } // namespace
 
 ServerGame::ServerGame(std::optional<std::uint64_t> seed, const std::filesystem::path& enemies,
-                       bool hot_reload)
+                       bool hot_reload, GameRules rules)
     : enemies_{registry_, enemies}, hot_{hot_reload},
       grid_{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell}, seed_{seed},
-      spawner_{bydos_spawns(), seed.value_or(0)} {
+      rules_{rules}, spawner_{bydos_spawns(rules.spawn_interval_scale), seed.value_or(0)} {
     if (seed_ && enemies_.find(tuning::random_enemy) == nullptr) {
         throw aegis2d::core::ConfigError{std::format("{}: no script gives {}, the random enemy",
                                                      enemies.string(), tuning::random_enemy)};
@@ -68,7 +76,11 @@ void ServerGame::register_systems() {
         shmup::trigger_weapons(world, tick, shooters_);
         fired_.clear();
         for (const ecs::Entity shooter : shooters_) {
-            fired_.push_back(spawn_player_missile(world, shooter));
+            const ecs::Entity missile = spawn_player_missile(world, shooter);
+            if (rules_.friendly_fire) {
+                world.get<ecs::Collider>(missile).mask |= layer::player;
+            }
+            fired_.push_back(missile);
         }
     });
     systems_.add("enemy_fire", [this](ecs::Registry& world, const ecs::Tick& tick) {
@@ -89,6 +101,7 @@ void ServerGame::register_systems() {
             const ecs::Entity enemy =
                 enemies_.spawn(tuning::random_enemy, line, random, shot_delay);
             if (registry_.alive(enemy)) {
+                scale_health(registry_, enemy, rules_.enemy_health_factor);
                 spawned_.push_back(enemy);
             }
         }
@@ -98,6 +111,7 @@ void ServerGame::register_systems() {
         for (const ecs::WaveSpawn& spawn : due_) {
             const ecs::Entity enemy = enemies_.spawn(spawn.type, spawn.position);
             if (registry_.alive(enemy)) {
+                scale_health(registry_, enemy, rules_.enemy_health_factor);
                 spawned_.push_back(enemy);
             }
         }
@@ -146,6 +160,7 @@ ecs::Entity ServerGame::add_player(std::size_t slot) {
         throw std::logic_error{"rtype: this player slot is taken"};
     }
     ship = spawn_player(registry_, slot);
+    registry_.get<ecs::Lives>(ship).count = rules_.lives;
     rewinds_.at(slot) = 0;
     started_ = true;
     return ship;
@@ -259,6 +274,10 @@ const std::vector<ecs::Entity>& ServerGame::enemy_fired() const noexcept {
 
 const std::vector<ecs::Entity>& ServerGame::spawned() const noexcept {
     return spawned_;
+}
+
+const GameRules& ServerGame::rules() const noexcept {
+    return rules_;
 }
 
 std::optional<std::uint64_t> ServerGame::seed() const noexcept {
