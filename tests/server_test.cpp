@@ -1,3 +1,4 @@
+#include <aegis2d/core/config.hpp>
 #include <aegis2d/core/random.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
@@ -240,6 +241,11 @@ TEST_CASE("the compression threshold is read from the command line", "[server][o
     CHECK(error_of({"--compress"}) == "--compress needs a value");
 }
 
+TEST_CASE("a trace file is read from the command line", "[server][options][368]") {
+    CHECK_FALSE(parse({}).trace.has_value());
+    CHECK(parse({"--trace", "trace.json"}).trace == std::filesystem::path{"trace.json"});
+}
+
 TEST_CASE("the room limit is read from the command line", "[server][options]") {
     CHECK(parse({}).max_rooms == rtype::default_max_rooms);
     CHECK(parse({"--max-rooms", "1"}).max_rooms == 1);
@@ -263,6 +269,7 @@ TEST_CASE("bad command lines name the faulty argument", "[server][options]") {
     CHECK(error_of({"4242"}) == "unknown argument \"4242\"");
     CHECK(error_of({"--tcp-port"}) == "--tcp-port needs a value");
     CHECK(error_of({"--waves"}) == "--waves needs a value");
+    CHECK(error_of({"--trace"}) == "--trace needs a value");
     for (const std::string_view port : {"", "65536", "-1", "+1", "42abc", "0x10", " 42", "abc"}) {
         CAPTURE(port);
         CHECK(error_of({"--udp-port", port}) ==
@@ -1258,6 +1265,31 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     }
     context.run_for(std::chrono::milliseconds{50});
     CHECK(first_udp.received.size() == received);
+}
+
+TEST_CASE("the server writes the timings of its rooms as a Chrome trace", "[server][368]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    game_server.start_trace();
+    ServerNetwork& server = game_server.network();
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    REQUIRE(pump(context, server, [&] { return game_server.simulation().ticks() >= 5; }));
+
+    const auto file = std::filesystem::temp_directory_path() / "rtype_server_trace_test.json";
+    CHECK(game_server.save_trace(file) > 0);
+    CHECK(game_server.open_rooms() == 0);
+    const auto trace = aegis2d::core::Config::from_file(file);
+    CHECK(trace.string("traceEvents.0.args.name") == "r-type_server");
+    CHECK(trace.string("traceEvents.1.args.name").value_or("").starts_with("room 0 ("));
+    // The systems of the first tick, then the tick, its sending and the whole frame.
+    CHECK(trace.string("traceEvents.2.name") == "steering");
+    CHECK(trace.string("traceEvents.2.ph") == "X");
+    CHECK(trace.integer("traceEvents.2.tid") == 1);
+    std::filesystem::remove(file);
 }
 
 TEST_CASE("a player whose TCP connection closes is gone from the game within a second",

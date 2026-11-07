@@ -30,7 +30,7 @@ TEST_CASE("the server reads where an enemy was at a past tick", "[server][histor
     // No seed, no waves: a Bydos alone, weaving left, and a player.
     ServerGame game;
     static_cast<void>(game.add_player());
-    const Entity bydos = rtype::spawn_bydos_slave(game.registry(), {1200.0F, 300.0F});
+    const Entity bydos = game.spawn_enemy("bydos_slave", {1200.0F, 300.0F});
     std::map<std::uint64_t, Vec2> seen;
     for (int tick = 0; tick < 2 * static_cast<int>(tuning::tick_rate); ++tick) {
         game.tick(step_from_rate(tuning::tick_rate));
@@ -56,8 +56,8 @@ TEST_CASE("the server reads where an enemy was at a past tick", "[server][histor
 TEST_CASE("only the enemies are kept, each while it lives", "[server][history]") {
     ServerGame game;
     const Entity player = game.add_player();
-    const Entity first = rtype::spawn_bydos_slave(game.registry(), {1000.0F, 200.0F});
-    const Entity second = rtype::spawn_bydos_slave(game.registry(), {1100.0F, 500.0F});
+    const Entity first = game.spawn_enemy("bydos_slave", {1000.0F, 200.0F});
+    const Entity second = game.spawn_enemy("bydos_slave", {1100.0F, 500.0F});
     game.tick(step_from_rate(tuning::tick_rate));
     const std::uint64_t both = game.ticks();
     CHECK(!game.history().position(player, both).has_value());
@@ -74,7 +74,7 @@ TEST_CASE("only the enemies are kept, each while it lives", "[server][history]")
     CHECK(game.history().position(second, after).has_value());
     CHECK(game.history().enemies(after).size() == 1);
     // A new entity in the freed slot is another enemy, with no past.
-    const Entity reused = rtype::spawn_bydos_slave(game.registry(), {900.0F, 360.0F});
+    const Entity reused = game.spawn_enemy("bydos_slave", {900.0F, 360.0F});
     CHECK(!game.history().position(reused, both).has_value());
 }
 

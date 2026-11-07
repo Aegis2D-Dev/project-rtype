@@ -3,6 +3,7 @@
 #pragma once
 #include <aegis2d/core/clock.hpp>
 #include <aegis2d/core/loop.hpp>
+#include <aegis2d/core/profiler.hpp>
 
 #include <rtype/game_instance.hpp>
 #include <rtype/tuning.hpp>
@@ -42,8 +43,9 @@ public:
     /// thread from now on.
     /// @param rate Ticks per second, tuning::tick_rate by default.
     /// @param after_tick Called after each tick (snapshots, events); may be empty.
+    /// @param trace `true` to time each tick, its systems and what follows it, for profiler().
     explicit Simulation(GameInstance& instance, std::uint32_t rate = tuning::tick_rate,
-                        TickHandler after_tick = {});
+                        TickHandler after_tick = {}, bool trace = false);
 
     Simulation(const Simulation&) = delete;
     Simulation& operator=(const Simulation&) = delete;
@@ -66,6 +68,12 @@ public:
     /// @return The count since the start.
     [[nodiscard]] std::uint64_t ticks() const noexcept;
 
+    /// @brief The timings of the ticks, recorded with `trace`: a frame per tick, the `tick`
+    /// and its systems, then `after_tick` (the snapshots and events).
+    /// @details Used by the thread: read it once stop() returned.
+    /// @return The profiler; off without `trace`.
+    [[nodiscard]] const aegis2d::core::Profiler& profiler() const noexcept;
+
     /// @brief Ticks per second the thread aims at.
     /// @return The rate given to the constructor.
     [[nodiscard]] std::uint32_t rate() const noexcept;
@@ -86,6 +94,7 @@ private:
     // Used by the thread only.
     std::chrono::steady_clock::time_point report_since_;
     std::uint64_t report_ticks_ = 0;
+    aegis2d::core::Profiler profiler_;
     // Last, so the thread starts once every other member is ready.
     std::thread thread_;
 };

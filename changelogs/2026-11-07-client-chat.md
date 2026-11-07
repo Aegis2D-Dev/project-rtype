@@ -34,16 +34,19 @@ of the *Network: multi-instance server* epic (Aegis2D-Dev/aegis2d#298), on the r
 ## Commits
 - `6ff95ad` feat(client): added the chat line and the last messages of the room
 - `0b9bd40` feat(tests): added two clients chatting in the lobby and in game
-- feat(docs): documented the chat of the client and updated changelogs
+- `5e92099` feat(docs): documented the chat of the client and updated changelogs
+- Merge branch 'feat/server-chat-relay' into feat/client-chat
 
 ## Notes
-- Stacked on #93, which relays the chat; its RFC part is Aegis2D-Dev/aegis2d#476.
+- Stacked on #93, which relays the chat; its RFC part is Aegis2D-Dev/aegis2d#476, merged.
+  #93 was merged in once it had `develop` (level editor): the only conflicts were the screens
+  of `ClientApp`, the chat line keeping the keys of the editor screens too while it is open.
 - On the room list, T is a letter of the new room's name while one is typed: the chat opens
   from the other rows.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too (`-DSDL_UNIX_CONSOLE_BUILD=ON`): clang-format, clang-tidy 22 (75 files, and
-  86 with the client), `mkdocs build --strict`, Doxygen. The drawing was not checked on a
+  93 with the client), `mkdocs build --strict`, Doxygen. The drawing was not checked on a
   window: the machine used has no display.
-- `ctest`: 264 of 265 tests pass; under ASan and UBSan, the test cases of the chat and the
+- `ctest`: 294 of 295 tests pass; under ASan and UBSan, the test cases of the chat and the
   client pass. *a flooding address is cut off, and the players play on* fails on the machine
   used, as on `develop`, and passes in CI.

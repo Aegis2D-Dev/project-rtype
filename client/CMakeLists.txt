@@ -4,6 +4,7 @@
 add_subdirectory(ui)
 add_executable(r-type_client
     client_app.cpp
+    editor_view.cpp
     game_art.cpp
     game_sounds.cpp
     game_view.cpp
