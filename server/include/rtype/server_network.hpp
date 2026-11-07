@@ -15,6 +15,7 @@
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
 #include <rtype/snapshot_history.hpp>
@@ -142,6 +143,11 @@ public:
     /// setting, compressed datagrams received are decompressed.
     /// @param threshold Size in bytes, or `std::nullopt` (the default) to never compress.
     void set_compression(std::optional<std::size_t> threshold) noexcept;
+
+    /// @brief Sets the board a `ListScores` reads (RFC section 3.9).
+    /// @param board The best scores, which must outlive this object, or nullptr to answer
+    /// with none.
+    void set_scoreboard(const Scoreboard* board) noexcept;
 
     /// @brief Sets the waves files a room may be created with (SessionTable::set_waves()).
     /// @param names Their names, without `.json`.
@@ -375,6 +381,7 @@ private:
     std::uint64_t errors_ = 0;
     RateLimits limits_;
     RateLimiter limiter_{limits_.datagrams_per_second};
+    const Scoreboard* scores_ = nullptr;
     DropReport drops_;
     std::uint64_t rate_limited_ = 0;
     std::uint64_t refused_connections_ = 0;

@@ -13,9 +13,11 @@
 #include <rtype/connect_form.hpp>
 #include <rtype/player_notices.hpp>
 #include <rtype/room_list_form.hpp>
+#include <rtype/scores.hpp>
 
 #include <array>
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -66,15 +68,18 @@ void draw_connect(aegis2d::render::IRenderer& renderer, const aegis2d::render::B
 inline constexpr std::size_t visible_rooms = 9;
 
 /// @brief Draws the room list screen (#304): the rooms of the server with their players and
-/// state, the row of a new room (name and size), and the keys of the screen.
+/// state, the row of a new room (name and size), the best scores of the server (#313), and
+/// the keys of the screen.
 /// @param renderer Renderer, between begin_frame() and end_frame().
 /// @param font Font of the texts.
 /// @param form The rooms, the selected row and the new room.
 /// @param message Last message, under the rooms.
+/// @param scores Best scores, best first (ClientSession::scores()); none are drawn if empty.
 /// @param seconds Seconds since the start, for the blinking cursor.
 /// @param preferences The player's settings: text size, color vision.
 void draw_rooms(aegis2d::render::IRenderer& renderer, const aegis2d::render::BitmapFont& font,
-                const RoomListForm& form, const ScreenMessage& message, double seconds,
+                const RoomListForm& form, const ScreenMessage& message,
+                std::span<const ScoreRecord> scores, double seconds,
                 const Preferences& preferences);
 
 /// @brief Draws the screen of the room joined (#305): its players, whether each is ready, and

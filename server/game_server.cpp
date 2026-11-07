@@ -268,6 +268,7 @@ void GameServer::set_waves(std::map<std::string, aegis2d::ecs::WaveSchedule> wav
 
 void GameServer::keep_scores(std::filesystem::path file) {
     scores_.emplace(std::move(file));
+    network_.set_scoreboard(&*scores_);
 }
 
 const Scoreboard* GameServer::scoreboard() const noexcept {

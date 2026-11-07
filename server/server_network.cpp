@@ -19,6 +19,8 @@
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
@@ -381,6 +383,10 @@ void ServerNetwork::set_compression(std::optional<std::size_t> threshold) noexce
     compression_ = threshold;
 }
 
+void ServerNetwork::set_scoreboard(const Scoreboard* board) noexcept {
+    scores_ = board;
+}
+
 void ServerNetwork::set_waves(std::vector<std::string> names) {
     sessions_.set_waves(std::move(names));
 }
@@ -594,6 +600,17 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
 // RFC sections 3.6 and 3.7: the messages of the rooms, after the login; false for any other.
 bool ServerNetwork::on_room_message(Client& client, std::span<const std::byte> message) {
     const std::uint32_t token = client.token.value_or(0);
+    // RFC section 3.9: the best scores, at any time after the login.
+    if (read_list_scores(message)) {
+        std::vector<ScoreRecord> best;
+        if (scores_ != nullptr) {
+            for (const ScoreEntry& entry : scores_->best()) {
+                best.push_back(ScoreRecord{.name = entry.name, .score = entry.score});
+            }
+        }
+        send(client, write_score_list(best));
+        return true;
+    }
     if (read_list_rooms(message)) {
         client.rooms = true;
         send(client, write_room_list(sessions_.list_rooms()));
