@@ -40,6 +40,7 @@ void GameInstance::start() {
     ships_.fill(std::nullopt);
     scores_.fill(0);
     inputs_.fill(std::nullopt);
+    over_told_ = false;
     ++games_;
 }
 
@@ -120,6 +121,14 @@ std::optional<PlayerState> GameInstance::player_state(std::uint8_t player) {
                        .lives = lives != nullptr ? lives->count : 0,
                        .score = scores_.at(player),
                        .input = inputs_.at(player)};
+}
+
+bool GameInstance::take_game_over() {
+    if (over_told_ || !game_->game_over()) {
+        return false;
+    }
+    over_told_ = true;
+    return true;
 }
 
 std::size_t GameInstance::players() const noexcept {

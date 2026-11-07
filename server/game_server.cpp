@@ -9,6 +9,7 @@
 #include <rtype/game_server.hpp>
 #include <rtype/lag_compensation.hpp>
 #include <rtype/room.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/simulation.hpp>
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
@@ -63,6 +65,25 @@ GameServer::GameServer(aegis2d::net::NetworkContext& context, std::optional<std:
 // the players of the room; every third tick, the state of its game goes too, as a snapshot.
 void GameServer::after_tick(Room& room, GameInstance& instance) {
     const std::uint32_t id = room.id();
+    // The game is over: the score of each of its players goes to the board.
+    if (instance.take_game_over()) {
+        std::vector<ScoreEntry> ended;
+        for (std::uint8_t player = 0; player < tuning::max_players; ++player) {
+            const std::optional<std::string>& name = room.names().at(player);
+            if (const std::optional<PlayerState> state = instance.player_state(player);
+                name.has_value() && state.has_value()) {
+                ended.push_back(ScoreEntry{.name = *name, .score = state->score});
+            }
+        }
+        context_.post([this, ended = std::move(ended)] {
+            for (const ScoreEntry& entry : ended) {
+                if (scores_.has_value() && scores_->record(entry.name, entry.score)) {
+                    aegis2d::core::log_info("server: {} made the best scores with {}", entry.name,
+                                            entry.score);
+                }
+            }
+        });
+    }
     if (std::vector<std::vector<std::byte>> changes = write_events(room.events().update(instance));
         !changes.empty()) {
         context_.post(
@@ -186,6 +207,14 @@ void GameServer::close_room(std::uint32_t id) {
     closed->simulation().stop();
     aegis2d::core::log_info("server: room {} closed after {} ticks ({} of {} open)", id,
                             closed->simulation().ticks(), open_rooms(), max_rooms());
+}
+
+void GameServer::keep_scores(std::filesystem::path file) {
+    scores_.emplace(std::move(file));
+}
+
+const Scoreboard* GameServer::scoreboard() const noexcept {
+    return scores_.has_value() ? &*scores_ : nullptr;
 }
 
 ServerNetwork& GameServer::network() noexcept {

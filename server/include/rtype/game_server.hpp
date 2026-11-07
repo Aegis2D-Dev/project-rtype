@@ -8,11 +8,13 @@
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/room.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -65,6 +67,17 @@ public:
     /// @brief Stops the simulation threads, then closes the sockets.
     ~GameServer() = default;
 
+    /// @brief Keeps the best scores in a file: at the end of each game of a room, every
+    /// player of it records its score there.
+    /// @details Reads the board of the file now (Scoreboard), and uses it on the context's
+    /// thread; without a call, no score is kept.
+    /// @param file Where the scores are kept.
+    void keep_scores(std::filesystem::path file);
+
+    /// @brief The best scores kept.
+    /// @return The board, or nullptr without keep_scores(); use it on the context's thread.
+    [[nodiscard]] const Scoreboard* scoreboard() const noexcept;
+
     /// @brief The sockets and the sessions; use them on the context's thread.
     /// @return The network side.
     [[nodiscard]] ServerNetwork& network() noexcept;
@@ -114,6 +127,7 @@ private:
     std::optional<std::uint64_t> seed_;
     aegis2d::ecs::WaveSchedule waves_;
     std::uint32_t rate_;
+    std::optional<Scoreboard> scores_;
     // The players in a game, by token; used by the network thread only.
     std::unordered_map<std::uint32_t, Seat> seats_;
     // One slot per room, empty while it is closed; used by the network thread only. Last:

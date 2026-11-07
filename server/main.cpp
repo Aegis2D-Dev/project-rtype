@@ -85,6 +85,8 @@ int main(int argc, char** argv) {
                                  options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
                                  options.max_rooms};
         rtype::ServerNetwork& network = server.network();
+        server.keep_scores(options.scores);
+        std::cout << "scores: " << options.scores.string() << '\n';
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
         network.set_compression(options.compress_from);
         network.set_waves(rtype::waves_names(rtype::default_waves_file().parent_path()));
