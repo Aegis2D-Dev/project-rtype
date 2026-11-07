@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#85](https://github.com/Aegis2D-Dev/project-rtype/pull/85) (opened 2026-11-06) |
 | Branch | `feat/game-reload-behaviors` → `feat/game-scripted-enemies` (stacked on #84) |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`92be473`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#357](https://github.com/Aegis2D-Dev/aegis2d/issues/357) feat(game): reload behaviors on change |
 

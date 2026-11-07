@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#88](https://github.com/Aegis2D-Dev/project-rtype/pull/88) (opened 2026-11-06) |
 | Branch | `feat/client-level-editor` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`61a7cbb`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#369](https://github.com/Aegis2D-Dev/aegis2d/issues/369) feat(tools): level editor mode |
 

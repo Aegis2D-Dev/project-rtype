@@ -665,7 +665,12 @@ void ClientApp::draw() {
         screen_ == ClientScreen::Game && session_.has_value()
             ? std::optional{session_->world().registry().size()}
             : std::nullopt;
-    metrics_overlay_.draw(renderer_, font_, metrics_, entities);
+    // The network numbers while connected to a game.
+    const std::vector<std::string> network =
+        screen_ == ClientScreen::Game && session_.has_value() && !lagometer_.samples().empty()
+            ? lag_lines(lagometer_.latest())
+            : std::vector<std::string>{};
+    metrics_overlay_.draw(renderer_, font_, metrics_, entities, network);
     renderer_.end_frame();
     if (capture && renderer_.captured().has_value()) {
         renderer_.captured()->save_png(*options_.screenshot);

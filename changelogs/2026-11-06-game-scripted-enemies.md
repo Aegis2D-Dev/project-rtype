@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#84](https://github.com/Aegis2D-Dev/project-rtype/pull/84) (opened 2026-11-06) |
 | Branch | `feat/game-scripted-enemies` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`cac9007`) |
 | Author | @Neptnium |
 | Ticket | [Aegis2D-Dev/aegis2d#356](https://github.com/Aegis2D-Dev/aegis2d/issues/356) feat(game): scripted enemy behaviors |
 
