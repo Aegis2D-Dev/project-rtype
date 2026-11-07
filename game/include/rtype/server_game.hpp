@@ -168,6 +168,10 @@ public:
     /// @copydoc registry()
     [[nodiscard]] const aegis2d::ecs::Registry& registry() const noexcept;
 
+    /// @brief Times each system of the game with a profiler (`ecs::Scheduler::set_profiler()`).
+    /// @param profiler Profiler of the simulation thread, or `nullptr` for none.
+    void set_profiler(aegis2d::core::Profiler* profiler) noexcept;
+
     /// @brief Systems of the game, in update order.
     /// @return The scheduler.
     [[nodiscard]] const aegis2d::ecs::Scheduler& systems() const noexcept;

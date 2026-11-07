@@ -241,6 +241,10 @@ const ecs::Registry& ServerGame::registry() const noexcept {
     return registry_;
 }
 
+void ServerGame::set_profiler(aegis2d::core::Profiler* profiler) noexcept {
+    systems_.set_profiler(profiler);
+}
+
 const ecs::Scheduler& ServerGame::systems() const noexcept {
     return systems_;
 }
