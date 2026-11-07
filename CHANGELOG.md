@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#104](https://github.com/Aegis2D-Dev/project-rtype/pull/104) | Windows build tree emptied when the engine changes | `fix/ci-windows-stale-build` | Open | 2026-11-07 | [2026-11-07-ci-windows-stale-build](changelogs/2026-11-07-ci-windows-stale-build.md) |
+| [#105](https://github.com/Aegis2D-Dev/project-rtype/pull/105) | Reconciliation test without timing on its pending inputs | `fix/tests-reconciliation-pending` | Open | 2026-11-07 | [2026-11-07-tests-reconciliation-pending](changelogs/2026-11-07-tests-reconciliation-pending.md) |
+| [#104](https://github.com/Aegis2D-Dev/project-rtype/pull/104) | Windows build tree emptied when the engine changes | `fix/ci-windows-stale-build` | Merged | 2026-11-07 | [2026-11-07-ci-windows-stale-build](changelogs/2026-11-07-ci-windows-stale-build.md) |
 | [#100](https://github.com/Aegis2D-Dev/project-rtype/pull/100) | Kick and ban from the admin console, the bans kept across restarts | `feat/server-kick-ban` | Merged | 2026-11-07 | [2026-11-07-server-kick-ban](changelogs/2026-11-07-server-kick-ban.md) |
 | [#99](https://github.com/Aegis2D-Dev/project-rtype/pull/99) | Admin console on the server's standard input | `feat/server-admin-console` | Merged | 2026-11-07 | [2026-11-07-server-admin-console](changelogs/2026-11-07-server-admin-console.md) |
 | [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) | Best scores in the lobby brought to develop | `chore/client-lobby-scoreboard-to-develop` | Merged | 2026-11-07 | [2026-11-07-develop-lobby-scoreboard](changelogs/2026-11-07-develop-lobby-scoreboard.md) |
