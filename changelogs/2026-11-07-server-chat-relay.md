@@ -35,20 +35,23 @@ client shows the chat with #309.
 - `ClientSession` ignores `ChatMessage` and `ChatRejected` instead of ending the session, until
   the client shows the chat (#309).
 - *Architecture*: the chat.
-- Changelog: #80 (`ce5d219`) and #91 (`7d37054`) marked as merged.
+- Changelog, with `develop` merged in: #80 (`ce5d219`) and #91 (`7d37054`) marked as merged.
 
 ## Commits
 - `62869c6` feat(server): relayed the chat of each room with length and rate limits
 - `d58e044` feat(server): counted the chat refill from the last full bucket
 - `5bf657d` feat(tests): added a chat flood cut and a long chat message refused
-- feat(docs): documented the chat relay and updated changelogs
+- `348c148` feat(docs): documented the chat relay and updated changelogs
+- Merge remote-tracking branch 'origin/develop' into feat/server-chat-relay
 
 ## Notes
-- The RFC part is Aegis2D-Dev/aegis2d#476.
+- The RFC part is Aegis2D-Dev/aegis2d#476, merged on 2026-11-07. `develop` was merged in
+  for its new commits (enemy scripts, level editor, server trace): the only conflict was the
+  index of `CHANGELOG.md`.
 - The rate is per session, on top of the TCP limits of an address; a refused message does not
   count against it.
 - Verified with the engine's `develop` (`server` preset, Clang 20, warnings as errors), the
   client built too: clang-format, clang-tidy 22 (73 files), `mkdocs build --strict`, Doxygen.
-- `ctest`: 262 of 263 tests pass; under ASan and UBSan, the test cases of the chat, the logins,
+- `ctest`: 292 of 293 tests pass; under ASan and UBSan, the test cases of the chat, the logins,
   the rooms and the client pass. *a flooding address is cut off, and the players play on* fails
   on the machine used, as on `develop`, and passes in CI.

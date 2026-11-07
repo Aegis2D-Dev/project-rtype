@@ -16,9 +16,16 @@ namespace rtype {
 
 namespace core = aegis2d::core;
 
-Simulation::Simulation(GameInstance& instance, std::uint32_t rate, TickHandler after_tick)
+Simulation::Simulation(GameInstance& instance, std::uint32_t rate, TickHandler after_tick,
+                       bool trace)
     : instance_{instance}, rate_{rate}, after_tick_{std::move(after_tick)},
-      loop_{core::FixedTimestep{core::step_from_rate(rate)}}, thread_{[this] { run(); }} {}
+      loop_{core::FixedTimestep{core::step_from_rate(rate)}}, thread_{[this, trace] {
+          profiler_.set_enabled(trace);
+          if (trace) {
+              profiler_.start_trace();
+          }
+          run();
+      }} {}
 
 Simulation::~Simulation() {
     stop();
@@ -39,14 +46,24 @@ void Simulation::step(core::Duration step_duration) {
         return;
     }
     run_commands();
+    // A frame of the profiler per tick, with its systems (a new game each time it starts).
+    profiler_.begin_frame();
     try {
-        instance_.game().tick(step_duration);
+        if (profiler_.enabled()) {
+            instance_.game().set_profiler(&profiler_);
+        }
+        {
+            const core::ProfileScope timer = profiler_.scope("tick");
+            instance_.game().tick(step_duration);
+        }
         if (after_tick_) {
+            const core::ProfileScope timer = profiler_.scope("after_tick");
             after_tick_(instance_);
         }
     } catch (const std::exception& error) {
         core::log_error("simulation: a tick threw: {}", error.what());
     }
+    profiler_.end_frame();
     const std::uint64_t ticks = ticks_.fetch_add(1, std::memory_order_relaxed) + 1;
 
     // The measured rate, logged every report_period of real time.
@@ -74,6 +91,10 @@ void Simulation::run_commands() {
             core::log_error("simulation: a command threw: {}", error.what());
         }
     }
+}
+
+const core::Profiler& Simulation::profiler() const noexcept {
+    return profiler_;
 }
 
 void Simulation::post(Command command) {

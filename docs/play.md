@@ -77,6 +77,7 @@ server and `--join`:
 | `--frames <count>` | Quit after this many frames (tests, captures) |
 | `--screenshot <png>` | Save the frame before the last one (after 300 frames by default) |
 | `--metrics` | Show the frame metrics from the start, as F12 does |
+| `--edit <file>` | Open a waves file in the [level editor](#level-editor) instead of the connect screen |
 
 ## Controls
 
@@ -182,12 +183,55 @@ normal within a few.
 F12 shows the **frame metrics** at the top center of every screen (the engine's
 `render::MetricsOverlay`): the frames per second over the last second, the mean and longest
 frame times of the last 120 frames, the entities of the game (in game only), and the
-sprites and draw calls of the frame before, the overlay's own left out. Under them, a bar
+sprites and draw calls of the frame before, the overlay's own left out, the memory the
+client uses, and, while connected to a game, the network numbers of the lagometer (round
+trip, jitter, loss, the bytes received and sent per second, the time between two snapshots
+and the corrections of your ship), with or without the lagometer. Under them, a bar
 per frame, newest on the right: blue within 16.7 ms (60 frames per second, the line half
 way up), orange above, a frame of 33 ms or more filling the graph. `--metrics` shows them
 from the start, for a capture.
 
 ![R-Type with the frame metrics: 119 frames per second, 8.4 ms a frame, 11 entities, 410 sprites in 12 draw calls, and an orange bar for a slower frame.](images/frame-metrics.png)
+
+## Level editor
+
+`r-type_client --edit assets/waves/stage1.json` opens a waves file in the level editor,
+with no server: the play area is shown a little smaller, with the strip beyond its right
+edge where the enemies appear, and each enemy of the wave shown at its place, with the
+second it appears in its wave under it.
+
+| Action | Mouse or key |
+|---|---|
+| Place an enemy (a Bydos slave) | Left click on an empty place |
+| Move an enemy | Left click on it and drag |
+| Remove an enemy | Right click on it |
+| Next / previous wave | Page Down / Page Up |
+| Edit a wave and move it in time | Left click on it in the timeline and drag |
+| The wave's delay, 0.1 s shorter / longer | Left / Right |
+| The wave before / after the one before or after it | Up / Down |
+| Add an empty wave after the one shown, 2 s after it | N |
+| Save the waves to the file | S |
+| Play the waves from the one shown, on the client | P (Escape comes back) |
+| Leave the editor | Escape |
+
+Under the play area, the timeline shows when each wave plays, as the server plays them: a
+block per wave, from the end of its delay to its last enemy, the wave edited in yellow, a
+mark every 5 seconds. A wave starts its delay after the last enemy of the wave before it, so
+moving a wave in time moves the waves after it too; its delay, start and end are written
+above the timeline.
+
+S writes the waves to the file opened, each enemy a spawn of its own, once the server
+would read them: a draft it would refuse (a wave with no enemy...) is not saved, and the
+reason is shown above the controls. P plays the waves from the one shown, on the client
+with no server: your ship (the keys of the game), the enemies of the waves as the server
+makes them appear, the score and the lives; Escape comes back to the editor, as it was. To
+play the saved waves with others, start the server on the file: `r-type_server --waves
+assets/waves/stage1.json`.
+
+Each group of the file (`count`, `every`, `step`) shows as one enemy per member, so each can
+be moved on its own. Positions are whole logical pixels, kept within the play area and the
+strip. The top of the screen tells the wave shown, its enemies, and whether something
+changed.
 
 ## Accessibility
 

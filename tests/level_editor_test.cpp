@@ -1,0 +1,320 @@
+#include <aegis2d/core/clock.hpp>
+#include <aegis2d/core/config.hpp>
+#include <aegis2d/core/math.hpp>
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/entity.hpp>
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+#include <rtype/level_editor.hpp>
+#include <rtype/server_game.hpp>
+#include <rtype/tuning.hpp>
+#include <rtype/waves.hpp>
+
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+using aegis2d::Vec2;
+using Catch::Approx;
+using rtype::DraftEnemy;
+using rtype::EditorPointer;
+using rtype::EditorView;
+using rtype::LevelDraft;
+using rtype::LevelEditor;
+namespace tuning = rtype::tuning;
+
+namespace {
+
+std::filesystem::path write_waves(std::string_view name, std::string_view text) {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_level_editor_test";
+    std::filesystem::create_directories(folder);
+    const auto path = folder / name;
+    std::ofstream{path} << text;
+    return path;
+}
+
+// A draft of one wave with two enemies, far apart.
+LevelDraft two_enemies() {
+    return LevelDraft{
+        .loop = false,
+        .waves = {{.delay = 1.0F,
+                   .enemies = {{.type = "bydos_slave", .position = {300.0F, 200.0F}},
+                               {.type = "bydos_slave", .position = {900.0F, 500.0F}}}}}};
+}
+
+// The mouse over a point of the play area, as the editor's view draws it.
+EditorPointer over(Vec2 level, bool pressed = false, bool held = false, bool remove = false) {
+    return {.position = EditorView{}.to_screen(level),
+            .pressed = pressed,
+            .held = held,
+            .remove = remove};
+}
+
+} // namespace
+
+TEST_CASE("a waves file opens as one enemy per member of its groups", "[client][editor][369]") {
+    const LevelDraft stage =
+        LevelDraft::from_file(std::filesystem::path{RTYPE_ASSET_DIR} / "waves" / "stage1.json");
+    CHECK(stage.loop);
+    REQUIRE(stage.waves.size() == 4);
+    const std::size_t enemies = std::accumulate(
+        stage.waves.begin(), stage.waves.end(), std::size_t{0},
+        [](std::size_t sum, const rtype::DraftWave& wave) { return sum + wave.enemies.size(); });
+    CHECK(enemies == 29); // as r-type_server counts them
+    CHECK(stage.waves.at(0).delay == 2.0F);
+    REQUIRE(stage.waves.at(0).enemies.size() == 5);
+    CHECK(stage.waves.at(0).enemies.at(4) ==
+          DraftEnemy{
+              .type = "bydos_slave", .position = {1296.0F, 136.0F + (4 * 112.0F)}, .at = 0.0F});
+    // A file of six, one every half second, the second file two seconds in.
+    const auto& files = stage.waves.at(1).enemies;
+    REQUIRE(files.size() == 12);
+    CHECK(files.at(5).at == Approx(2.5F));
+    CHECK(files.at(6).position == Vec2{1296.0F, 520.0F});
+    CHECK(files.at(6).at == Approx(2.0F));
+
+    const auto broken = write_waves(
+        "broken.json", R"({"waves": [{"spawns": [{"type": "boss", "position": [1, 2]}]}]})");
+    CHECK_THROWS_AS(LevelDraft::from_file(broken), aegis2d::core::ConfigError);
+    CHECK_THROWS_AS(LevelDraft::from_file(broken.parent_path() / "missing.json"),
+                    aegis2d::core::ConfigError);
+}
+
+TEST_CASE("the editor's view shows the play area and the strip beyond it",
+          "[client][editor][369]") {
+    const EditorView view;
+    const Vec2 right =
+        view.to_screen({tuning::area_width + EditorView::strip, tuning::area_height});
+    CHECK(right.x <= tuning::area_width);
+    CHECK(right.y <= tuning::area_height);
+    CHECK(view.to_screen({0.0F, 0.0F}).x >= 0.0F);
+    const Vec2 point{1296.0F, 360.0F};
+    CHECK(view.to_level(view.to_screen(point)).x == Approx(point.x));
+    CHECK(view.to_level(view.to_screen(point)).y == Approx(point.y));
+}
+
+TEST_CASE("enemies are placed with the mouse", "[client][editor][369]") {
+    LevelEditor editor{two_enemies()};
+    CHECK_FALSE(editor.changed());
+    editor.update(over({640.0F, 360.0F}, true, true));
+    REQUIRE(editor.enemies().size() == 3);
+    CHECK(editor.enemies().back() ==
+          DraftEnemy{.type = "bydos_slave", .position = {640.0F, 360.0F}});
+    CHECK(editor.dragged() == 2);
+    CHECK(editor.changed());
+    // Held, the new enemy follows the mouse; released, it stays.
+    editor.update(over({700.4F, 380.6F}, false, true));
+    CHECK(editor.enemies().back().position == Vec2{700.0F, 381.0F});
+    editor.update(over({710.0F, 390.0F}));
+    CHECK_FALSE(editor.dragged().has_value());
+    CHECK(editor.enemies().back().position == Vec2{700.0F, 381.0F});
+    CHECK(editor.hovered() == 2);
+
+    // Beyond the strip or the bottom, it stops at their edge.
+    editor.update(over({2000.0F, 900.0F}, true, true));
+    CHECK(editor.enemies().back().position ==
+          Vec2{tuning::area_width + EditorView::strip, tuning::area_height});
+}
+
+TEST_CASE("an enemy is moved and removed with the mouse", "[client][editor][369]") {
+    LevelEditor editor{two_enemies()};
+    // Taken a little off its center, it keeps that offset.
+    editor.update(over({310.0F, 205.0F}, true, true));
+    CHECK(editor.dragged() == 0);
+    editor.update(over({410.0F, 255.0F}, false, true));
+    editor.update(over({410.0F, 255.0F}));
+    CHECK(editor.enemies().size() == 2);
+    CHECK(editor.enemies().front().position == Vec2{400.0F, 250.0F});
+
+    editor.update(over({900.0F, 500.0F}, false, false, true));
+    REQUIRE(editor.enemies().size() == 1);
+    CHECK(editor.enemies().front().position == Vec2{400.0F, 250.0F});
+    // Nothing under the mouse: nothing removed.
+    editor.update(over({100.0F, 100.0F}, false, false, true));
+    CHECK(editor.enemies().size() == 1);
+    CHECK_FALSE(editor.hovered().has_value());
+}
+
+TEST_CASE("the editor goes from wave to wave", "[client][editor][369]") {
+    LevelDraft draft = two_enemies();
+    draft.waves.push_back({.delay = 3.0F, .enemies = {}});
+    LevelEditor editor{draft};
+    CHECK(editor.wave() == 0);
+    editor.next_wave();
+    CHECK(editor.wave() == 1);
+    CHECK(editor.enemies().empty());
+    editor.update(over({640.0F, 360.0F}, true, true));
+    CHECK(editor.draft().waves.at(1).enemies.size() == 1);
+    CHECK(editor.draft().waves.at(0).enemies.size() == 2);
+    editor.next_wave();
+    CHECK(editor.wave() == 0);
+    CHECK_FALSE(editor.dragged().has_value());
+    editor.previous_wave();
+    CHECK(editor.wave() == 1);
+
+    LevelEditor empty{LevelDraft{}};
+    CHECK(empty.draft().waves.size() == 1);
+    empty.previous_wave();
+    CHECK(empty.wave() == 0);
+}
+
+namespace {
+
+// Two waves: one enemy at once, then two over a second, two seconds after.
+LevelDraft two_waves() {
+    return LevelDraft{
+        .loop = false,
+        .waves = {
+            {.delay = 1.0F, .enemies = {{.type = "bydos_slave", .position = {300.0F, 200.0F}}}},
+            {.delay = 2.0F,
+             .enemies = {{.type = "bydos_slave", .position = {600.0F, 200.0F}, .at = 0.0F},
+                         {.type = "bydos_slave", .position = {600.0F, 300.0F}, .at = 1.0F}}}}};
+}
+
+// The mouse on the timeline, at a time of the waves.
+EditorPointer on_timeline(const LevelEditor& editor, float time, bool pressed, bool held) {
+    const EditorView view;
+    const float seconds = EditorView::timeline_seconds(editor.timeline().back().end);
+    const Vec2 at =
+        view.timeline + Vec2{time / seconds * view.timeline_size.x, view.timeline_size.y / 2.0F};
+    return {.position = at, .pressed = pressed, .held = held, .remove = false};
+}
+
+} // namespace
+
+TEST_CASE("the timeline tells when each wave plays", "[client][editor][370]") {
+    const LevelEditor editor{two_waves()};
+    const std::vector<rtype::WaveSpan> spans = editor.timeline();
+    REQUIRE(spans.size() == 2);
+    CHECK(spans.at(0).start == 1.0F);
+    CHECK(spans.at(0).end == 1.0F);
+    CHECK(spans.at(1).start == 3.0F);
+    CHECK(spans.at(1).end == 4.0F);
+    CHECK(EditorView::timeline_seconds(4.0F) == 10.0F);
+    CHECK(EditorView::timeline_seconds(50.0F) == Approx(60.0F));
+}
+
+TEST_CASE("a wave is moved in time from the editor", "[client][editor][370]") {
+    LevelEditor editor{two_waves()};
+    // Taken on the timeline where it starts, the second wave is edited and follows the mouse.
+    editor.update(on_timeline(editor, 3.2F, true, true));
+    CHECK(editor.wave() == 1);
+    CHECK(editor.dragging_wave());
+    editor.update(on_timeline(editor, 4.7F, false, true));
+    CHECK(editor.draft().waves.at(1).delay == Approx(3.5F));
+    CHECK(editor.timeline().at(1).start == Approx(4.5F));
+    editor.update(on_timeline(editor, 4.7F, false, false));
+    CHECK_FALSE(editor.dragging_wave());
+    CHECK(editor.changed());
+    // No enemy placed by a click on the timeline.
+    CHECK(editor.enemies().size() == 2);
+
+    // Dragged before the start, its delay stops at 0.
+    editor.update(on_timeline(editor, 4.6F, true, true));
+    editor.update(on_timeline(editor, 0.0F, false, true));
+    CHECK(editor.draft().waves.at(1).delay == 0.0F);
+
+    // A click before every wave edits the first.
+    editor.update(on_timeline(editor, 0.1F, true, false));
+    CHECK(editor.wave() == 0);
+}
+
+TEST_CASE("the keys change the delay and the order of the waves", "[client][editor][370]") {
+    LevelEditor editor{two_waves()};
+    editor.shift_delay(0.25F);
+    CHECK(editor.draft().waves.at(0).delay == Approx(1.3F));
+    editor.shift_delay(-5.0F);
+    CHECK(editor.draft().waves.at(0).delay == 0.0F);
+    CHECK(editor.timeline().at(1).start == Approx(2.0F));
+
+    editor.move_wave(false);
+    CHECK(editor.wave() == 0);
+    editor.move_wave(true);
+    CHECK(editor.wave() == 1);
+    CHECK(editor.draft().waves.at(0).enemies.size() == 2);
+    CHECK(editor.draft().waves.at(1).enemies.size() == 1);
+    editor.move_wave(true);
+    CHECK(editor.wave() == 1);
+    CHECK(editor.changed());
+}
+
+TEST_CASE("a draft is saved as a waves file the server reads", "[client][editor][371]") {
+    const LevelDraft draft = two_waves();
+    const auto file = write_waves("saved.json", "");
+    draft.save(file);
+    const LevelDraft read = LevelDraft::from_file(file);
+    CHECK(read.loop == draft.loop);
+    REQUIRE(read.waves.size() == 2);
+    CHECK(read.waves.at(1).delay == 2.0F);
+    CHECK(read.waves.at(1).enemies == draft.waves.at(1).enemies);
+    CHECK(rtype::load_waves(file).spawns().size() == 3);
+    CHECK_FALSE(std::filesystem::exists(file.string() + ".saving"));
+
+    // From the second wave on: the first one is left out.
+    CHECK(draft.schedule(1).waves() == 1);
+    CHECK(draft.schedule(1).spawns().size() == 2);
+    CHECK(draft.to_json(1).find("\"position\": [300, 200]") == std::string::npos);
+}
+
+TEST_CASE("a draft the server would refuse leaves the file as it was", "[client][editor][371]") {
+    LevelDraft draft = two_waves();
+    const auto file = write_waves("kept.json", "");
+    draft.save(file);
+    draft.waves.push_back({.delay = 1.0F, .enemies = {}});
+    CHECK_THROWS_WITH(draft.save(file), Catch::Matchers::ContainsSubstring("waves.2.spawns"));
+    CHECK(LevelDraft::from_file(file).waves.size() == 2);
+    CHECK_FALSE(std::filesystem::exists(file.string() + ".saving"));
+    CHECK_THROWS_AS(static_cast<void>(draft.schedule()), aegis2d::core::ConfigError);
+}
+
+TEST_CASE("a new wave is made and played without editing JSON by hand", "[client][editor][371]") {
+    // The stage as it is, copied, and a wave added after its last one with the mouse.
+    const auto file = write_waves("new_wave.json", "");
+    std::filesystem::copy_file(std::filesystem::path{RTYPE_ASSET_DIR} / "waves" / "stage1.json",
+                               file, std::filesystem::copy_options::overwrite_existing);
+    LevelEditor editor{LevelDraft::from_file(file)};
+    editor.previous_wave();
+    editor.add_wave();
+    CHECK(editor.wave() == 4);
+    CHECK(editor.enemies().empty());
+    for (const float y : {200.0F, 360.0F, 520.0F}) {
+        editor.update(over({1000.0F, y}, true, true));
+        editor.update(over({1000.0F, y}));
+    }
+    editor.draft().save(file);
+    editor.mark_saved();
+    CHECK_FALSE(editor.changed());
+    CHECK(rtype::load_waves(file).waves() == 5);
+
+    // Played from that wave, on the client: its three enemies appear where they were placed.
+    rtype::ServerGame game;
+    game.play_waves(LevelDraft::from_file(file).schedule(editor.wave()));
+    std::vector<Vec2> appeared;
+    for (int tick = 0; tick < 5 * 60 && appeared.size() < 3; ++tick) {
+        game.tick(aegis2d::core::step_from_rate(tuning::tick_rate));
+        for (const aegis2d::ecs::Entity enemy : game.spawned()) {
+            appeared.push_back(game.registry().get<aegis2d::ecs::Transform>(enemy).position);
+        }
+    }
+    REQUIRE(appeared.size() == 3);
+    CHECK(appeared.at(0).x == Approx(1000.0F).margin(5.0));
+    CHECK(appeared.at(1).y == Approx(360.0F).margin(50.0));
+}
+
+TEST_CASE("a wave is added after the one edited", "[client][editor][371]") {
+    LevelEditor editor{two_waves()};
+    editor.add_wave();
+    CHECK(editor.wave() == 1);
+    CHECK(editor.draft().waves.size() == 3);
+    CHECK(editor.draft().waves.at(1).enemies.empty());
+    CHECK(editor.draft().waves.at(1).delay == 2.0F);
+    CHECK(editor.draft().waves.at(2).enemies.size() == 2);
+    CHECK(editor.changed());
+}

@@ -26,7 +26,7 @@ inline constexpr std::uint32_t default_max_rooms = 4;
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
     "                     [--max-packet-rate <datagrams per second>] [--compress <bytes>]\n"
-    "                     [--max-rooms <count>] [--help] [--version]\n";
+    "                     [--max-rooms <count>] [--trace <file.json>] [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -55,6 +55,9 @@ struct ServerOptions {
     std::optional<std::size_t> compress_from;
     /// @brief Rooms played at once, 1 to 64, tuning::max_players in each.
     std::uint32_t max_rooms = default_max_rooms;
+    /// @brief File the timings of every tick are written to when the server stops, in the
+    /// Chrome trace format (Perfetto), or `std::nullopt` (the default) for none.
+    std::optional<std::filesystem::path> trace;
 };
 
 /// @brief Reads the command line of `r-type_server`.

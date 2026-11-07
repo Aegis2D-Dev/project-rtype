@@ -330,6 +330,14 @@ TEST_CASE("the client reads its server and name from the command line", "[client
     CHECK(std::get<std::string>(parse_client({"--server"})) == "unknown argument \"--server\"");
 }
 
+TEST_CASE("the client opens a waves file in the level editor with --edit",
+          "[client][options][369]") {
+    CHECK_FALSE(std::get<rtype::ClientOptions>(parse_client({})).edit.has_value());
+    CHECK(std::get<rtype::ClientOptions>(parse_client({"--edit", "stage1.json"})).edit ==
+          std::filesystem::path{"stage1.json"});
+    CHECK(std::get<std::string>(parse_client({"--edit"})) == "--edit needs a value");
+}
+
 TEST_CASE("the client reads its window options from the command line", "[client][options]") {
     const auto defaults = std::get<rtype::ClientOptions>(parse_client({}));
     CHECK_FALSE(defaults.join);
