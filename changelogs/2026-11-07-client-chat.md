@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#94](https://github.com/Aegis2D-Dev/project-rtype/pull/94) (opened 2026-11-07) |
 | Branch | `feat/client-chat` → `develop` (stacked on `feat/server-chat-relay`, #93) |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`846b3fb`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#309](https://github.com/Aegis2D-Dev/aegis2d/issues/309) feat(client): chat |
 

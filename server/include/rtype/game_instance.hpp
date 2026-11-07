@@ -88,6 +88,11 @@ public:
     /// @return 0 to tuning::max_players.
     [[nodiscard]] std::size_t players() const noexcept;
 
+    /// @brief Tells once per game that it is over: every player who joined is out.
+    /// @return `true` the first time it is called once the current game is over, `false`
+    /// before and after.
+    [[nodiscard]] bool take_game_over();
+
     /// @brief Number of games played: 1, then 1 more each time the last player leaves.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t games() const noexcept;
@@ -111,6 +116,7 @@ private:
     std::array<std::uint32_t, tuning::max_players> scores_{};
     std::array<std::optional<std::uint16_t>, tuning::max_players> inputs_{};
     std::uint64_t games_ = 0;
+    bool over_told_ = false;
 };
 
 } // namespace rtype

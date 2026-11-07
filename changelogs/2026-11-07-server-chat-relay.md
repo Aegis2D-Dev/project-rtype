@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#93](https://github.com/Aegis2D-Dev/project-rtype/pull/93) (opened 2026-11-07) |
 | Branch | `feat/server-chat-relay` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`27b5d25`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#308](https://github.com/Aegis2D-Dev/aegis2d/issues/308) feat(server): text chat relay |
 

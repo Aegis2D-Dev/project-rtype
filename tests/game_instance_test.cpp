@@ -154,3 +154,17 @@ TEST_CASE("the game keeps the sequence of the last input it applied", "[server][
     static_cast<void>(instance.join(1));
     CHECK(!input().has_value());
 }
+
+TEST_CASE("a game over is told once per game", "[server][game]") {
+    GameInstance instance = empty_instance();
+    const Entity ship = instance.join(0);
+    CHECK(!instance.take_game_over());
+    knock_out(instance, ship);
+    CHECK(instance.take_game_over());
+    CHECK(!instance.take_game_over());
+    // The next game is told again.
+    CHECK(instance.leave(0));
+    CHECK(!instance.take_game_over());
+    knock_out(instance, instance.join(0));
+    CHECK(instance.take_game_over());
+}

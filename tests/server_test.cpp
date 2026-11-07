@@ -1,5 +1,8 @@
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/random.hpp>
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/entity.hpp>
+#include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
 #include <aegis2d/net/compression.hpp>
@@ -22,6 +25,7 @@
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
@@ -257,6 +261,13 @@ TEST_CASE("the room limit is read from the command line", "[server][options]") {
               "--max-rooms: \"" + std::string{rooms} + "\" is not a room count (1 to 64)");
     }
     CHECK(error_of({"--max-rooms"}) == "--max-rooms needs a value");
+}
+
+TEST_CASE("the scores file is read from the command line", "[server][options]") {
+    CHECK(parse({}).scores == std::filesystem::path{rtype::default_scores_file});
+    CHECK(parse({"--scores", "/var/lib/rtype/best.json"}).scores ==
+          std::filesystem::path{"/var/lib/rtype/best.json"});
+    CHECK(error_of({"--scores"}) == "--scores needs a value");
 }
 
 TEST_CASE("help and version stop the reading", "[server][options]") {
@@ -1819,6 +1830,40 @@ TEST_CASE("a room opens with its first player in game and closes with its last",
     third_udp.send(server, datagram(PacketType::Connect, third));
     REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
     CHECK(game_server.room(0).simulation().ticks() < 30);
+}
+
+TEST_CASE("the scores of a game over are kept for the next run", "[server][scores]") {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_server_scores_test";
+    std::filesystem::remove_all(folder);
+    const std::filesystem::path file = folder / "scores.json";
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    CHECK(game_server.scoreboard() == nullptr);
+    game_server.keep_scores(file);
+    REQUIRE(game_server.scoreboard() != nullptr);
+    ServerNetwork& server = game_server.network();
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+
+    // The player scores, then is out: the game is over, and its score is kept, once.
+    game_server.room().simulation().post([](rtype::GameInstance& game) {
+        // On the simulation thread: no assertion here, the test waits for the board.
+        const std::optional<aegis2d::ecs::Entity> ship = game.ship(0);
+        if (!ship.has_value()) {
+            return;
+        }
+        aegis2d::ecs::Registry& world = game.game().registry();
+        world.get<aegis2d::ecs::Score>(*ship).points = 1500;
+        world.remove<aegis2d::ecs::Lives>(*ship);
+    });
+    REQUIRE(pump(context, server, [&] { return !game_server.scoreboard()->best().empty(); }));
+    context.run_for(std::chrono::milliseconds{100});
+    const std::vector<rtype::ScoreEntry> kept{{.name = "R9", .score = 1500}};
+    CHECK(game_server.scoreboard()->best() == kept);
+    CHECK(rtype::Scoreboard{file}.best() == kept);
 }
 
 TEST_CASE("the rules of a room become the rules of its games", "[server][rules]") {

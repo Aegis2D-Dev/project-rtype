@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#92](https://github.com/Aegis2D-Dev/project-rtype/pull/92) (opened 2026-11-07) |
 | Branch | `feat/server-room-rules` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`d274552`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#307](https://github.com/Aegis2D-Dev/aegis2d/issues/307) feat(server): apply room rules |
 

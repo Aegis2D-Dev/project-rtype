@@ -104,7 +104,13 @@ within its `ChatRate` (5 messages at once, then 1 per second) goes as a `ChatMes
 session of the sender's room, or of the lobby (`player` 255), the sender included; any other
 gets `ChatRejected` with its reason, the connection going on. `ClientSession::send_chat()`
 sends a message once logged in, and its `ChatLog` keeps the last ones of the room and the
-reasons of the refused ones, which `r-type_client` draws over its screens. A bound player joins the
+reasons of the refused ones, which `r-type_client` draws over its screens. When the game of a room
+is over (`GameInstance::take_game_over()`, once per game), the score of each of its players
+goes to the `Scoreboard` of the server (`GameServer::keep_scores()`, `--scores`): the 10 best,
+best first, in a JSON file (`{"scores": [{"name": "R9", "score": 1200}]}`) written at each
+change through a temporary file that then replaces it, so a crash never leaves half a file. A
+file that cannot be read or is not a board is logged and replaced by the next score: the
+server starts anyway. A bound player joins the
 game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
 `PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid

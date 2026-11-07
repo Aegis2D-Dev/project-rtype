@@ -10,6 +10,7 @@
 #include <rtype/game_instance.hpp>
 #include <rtype/room.hpp>
 #include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/simulation.hpp>
@@ -89,6 +90,17 @@ public:
     /// @param waves The schedules, by name (waves_names(), without `.json`).
     void set_waves(std::map<std::string, aegis2d::ecs::WaveSchedule> waves);
 
+    /// @brief Keeps the best scores in a file: at the end of each game of a room, every
+    /// player of it records its score there.
+    /// @details Reads the board of the file now (Scoreboard), and uses it on the context's
+    /// thread; without a call, no score is kept.
+    /// @param file Where the scores are kept.
+    void keep_scores(std::filesystem::path file);
+
+    /// @brief The best scores kept.
+    /// @return The board, or nullptr without keep_scores(); use it on the context's thread.
+    [[nodiscard]] const Scoreboard* scoreboard() const noexcept;
+
     /// @brief The sockets and the sessions; use them on the context's thread.
     /// @return The network side.
     [[nodiscard]] ServerNetwork& network() noexcept;
@@ -151,6 +163,7 @@ private:
     aegis2d::ecs::WaveSchedule waves_;
     std::map<std::string, aegis2d::ecs::WaveSchedule> named_waves_;
     std::uint32_t rate_;
+    std::optional<Scoreboard> scores_;
     // The players in a game, by token; used by the network thread only.
     std::unordered_map<std::uint32_t, Seat> seats_;
     // With start_trace(), the timings of the rooms closed, named after them.

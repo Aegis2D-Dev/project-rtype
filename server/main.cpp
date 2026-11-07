@@ -95,6 +95,8 @@ int main(int argc, char** argv) {
                                  options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
                                  options.max_rooms};
         rtype::ServerNetwork& network = server.network();
+        server.keep_scores(options.scores);
+        std::cout << "scores: " << options.scores.string() << '\n';
         if (options.trace.has_value()) {
             server.start_trace();
         }
