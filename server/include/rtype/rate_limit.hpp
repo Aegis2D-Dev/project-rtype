@@ -89,7 +89,7 @@ public:
 
 private:
     std::uint32_t tokens_ = burst;
-    // When the last token came back, or the first message with every token left.
+    // When the last message came back, or when the bucket was last full.
     std::optional<Clock::time_point> since_;
 };
 

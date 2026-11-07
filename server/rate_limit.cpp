@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace rtype {
@@ -31,13 +32,16 @@ net::Endpoint address_of(const net::Endpoint& endpoint) noexcept {
 }
 
 bool ChatRate::allow(Clock::time_point now) noexcept {
-    if (!since_ || tokens_ == burst) {
+    if (!since_) {
         since_ = now;
     }
-    const auto back =
-        static_cast<std::uint32_t>(std::min<Clock::duration::rep>((now - *since_) / refill, burst));
-    if (back > 0) {
-        tokens_ = std::min(burst, tokens_ + back);
+    const auto back = (now - *since_) / refill;
+    if (std::cmp_greater_equal(back, burst - tokens_)) {
+        // Full again: the next message to come back counts from now.
+        tokens_ = burst;
+        since_ = now;
+    } else {
+        tokens_ += static_cast<std::uint32_t>(back);
         *since_ += back * refill;
     }
     if (tokens_ == 0) {

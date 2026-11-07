@@ -654,7 +654,9 @@ bool ServerNetwork::on_chat(Client& client, std::span<const std::byte> message) 
         rejection = ChatRejection::TooFast;
     }
     if (rejection) {
-        core::log_info("TCP: chat of player {} refused: {}", sender->player, to_string(*rejection));
+        // Debug only, like dropped datagrams: a flood must not become a flood of log lines.
+        core::log_debug("TCP: chat of player {} refused: {}", sender->player,
+                        to_string(*rejection));
         send(client, write_chat_rejected(*rejection));
         return true;
     }
