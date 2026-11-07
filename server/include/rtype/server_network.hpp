@@ -12,6 +12,7 @@
 #include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
@@ -30,6 +31,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace rtype {
@@ -143,6 +145,18 @@ public:
     /// setting, compressed datagrams received are decompressed.
     /// @param threshold Size in bytes, or `std::nullopt` (the default) to never compress.
     void set_compression(std::optional<std::size_t> threshold) noexcept;
+
+    /// @brief Sends a message of the server to every session logged in (`ChatMessage` with
+    /// server_player and server_name, RFC section 3.8).
+    /// @param text Text to send, checked as a chat text.
+    /// @return The number of sessions it was sent to, or ChatRejection::TooLong or BadText.
+    std::variant<std::size_t, ChatRejection> say(std::string_view text);
+
+    /// @brief Closes a room: each of its sessions gets `Logout` with `RoomClosed` and ends;
+    /// the others of the game are told it was kicked.
+    /// @param room Number of the room.
+    /// @return The number of sessions ended, 0 if the room was empty or not in use.
+    std::size_t close_room(std::uint32_t room);
 
     /// @brief Sets the board a `ListScores` reads (RFC section 3.9).
     /// @param board The best scores, which must outlive this object, or nullptr to answer

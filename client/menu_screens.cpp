@@ -13,6 +13,7 @@
 
 #include "game_art.hpp"
 #include "preferences.hpp"
+#include <rtype/chat.hpp>
 #include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
 #include <rtype/player_notices.hpp>
@@ -362,9 +363,13 @@ void draw_chat(render::IRenderer& renderer, const render::BitmapFont& font,
                        .layer = 9});
         render::TextStyle sender = line_style;
         sender.layer = 10;
-        sender.color = line.player < tuning::max_players
-                           ? seen_as(render::player_style(line.player).color, preferences.vision)
-                           : color(dim_color, preferences);
+        // The players in their slot's color, the server in the title's, the lobby dimmed.
+        if (line.player < tuning::max_players) {
+            sender.color = seen_as(render::player_style(line.player).color, preferences.vision);
+        } else {
+            sender.color =
+                color(line.player == server_player ? title_color : dim_color, preferences);
+        }
         font.draw(renderer, line.text, Vec2{chat_box.x, y}, sender);
         y -= line_height;
     }

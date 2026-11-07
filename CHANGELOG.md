@@ -5,7 +5,8 @@ All notable changes to the R-Type game. Each pull request has its own file in
 
 | Pull request | Title | Branch | Status | Date | Details |
 |---|---|---|---|---|---|
-| [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) | Best scores in the lobby brought to develop | `chore/client-lobby-scoreboard-to-develop` | Open | 2026-11-07 | [2026-11-07-develop-lobby-scoreboard](changelogs/2026-11-07-develop-lobby-scoreboard.md) |
+| [#99](https://github.com/Aegis2D-Dev/project-rtype/pull/99) | Admin console on the server's standard input | `feat/server-admin-console` | Open | 2026-11-07 | [2026-11-07-server-admin-console](changelogs/2026-11-07-server-admin-console.md) |
+| [#97](https://github.com/Aegis2D-Dev/project-rtype/pull/97) | Best scores in the lobby brought to develop | `chore/client-lobby-scoreboard-to-develop` | Merged | 2026-11-07 | [2026-11-07-develop-lobby-scoreboard](changelogs/2026-11-07-develop-lobby-scoreboard.md) |
 | [#96](https://github.com/Aegis2D-Dev/project-rtype/pull/96) | Best scores in the lobby | `feat/client-lobby-scoreboard` | Merged | 2026-11-07 | [2026-11-07-client-lobby-scoreboard](changelogs/2026-11-07-client-lobby-scoreboard.md) |
 | [#95](https://github.com/Aegis2D-Dev/project-rtype/pull/95) | Best scores kept in a JSON file across restarts | `feat/server-scoreboard` | Merged | 2026-11-07 | [2026-11-07-server-scoreboard](changelogs/2026-11-07-server-scoreboard.md) |
 | [#94](https://github.com/Aegis2D-Dev/project-rtype/pull/94) | Chat in the client, opened with T | `feat/client-chat` | Merged | 2026-11-07 | [2026-11-07-client-chat](changelogs/2026-11-07-client-chat.md) |

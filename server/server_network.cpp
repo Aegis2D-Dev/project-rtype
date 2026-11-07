@@ -383,6 +383,38 @@ void ServerNetwork::set_compression(std::optional<std::size_t> threshold) noexce
     compression_ = threshold;
 }
 
+std::variant<std::size_t, ChatRejection> ServerNetwork::say(std::string_view text) {
+    if (const std::optional<ChatRejection> rejection = check_chat_text(text)) {
+        return *rejection;
+    }
+    const std::vector<std::byte> message = write_chat_message(ChatMessage{
+        .player = server_player, .name = std::string{server_name}, .text = std::string{text}});
+    std::size_t sent = 0;
+    for (auto& [id, client] : clients_) {
+        if (client.token && !client.closed && !client.close_when_sent) {
+            send(client, message);
+            ++sent;
+        }
+    }
+    return sent;
+}
+
+std::size_t ServerNetwork::close_room(std::uint32_t room) {
+    // Collected first: ending a session changes the room.
+    std::vector<std::uint32_t> tokens;
+    for (const Session& member : sessions_.members(room)) {
+        tokens.push_back(member.token);
+    }
+    for (const std::uint32_t token : tokens) {
+        end_with_logout(token, LogoutReason::RoomClosed, LeaveReason::Kicked);
+    }
+    if (!tokens.empty()) {
+        core::log_info("TCP: room {} closed by the administrator, {} sessions ended", room,
+                       tokens.size());
+    }
+    return tokens.size();
+}
+
 void ServerNetwork::set_scoreboard(const Scoreboard* board) noexcept {
     scores_ = board;
 }

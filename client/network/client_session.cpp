@@ -115,6 +115,8 @@ std::string logout_text(std::uint8_t reason) {
         return "the server lost the connection (timed out)";
     case LogoutReason::ProtocolError:
         return "the server ended the session after an invalid packet";
+    case LogoutReason::RoomClosed:
+        return "the administrator of the server closed your room";
     case LogoutReason::Left:
         break;
     }
