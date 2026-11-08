@@ -1,19 +1,33 @@
+#include <aegis2d/core/clock.hpp>
 #include <aegis2d/core/log.hpp>
+#include <aegis2d/ecs/system.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/socket_error.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat.hpp>
 #include <rtype/client_session.hpp>
 #include <rtype/client_world.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
+#include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
+#include <rtype/ship_prediction.hpp>
 #include <rtype/snapshot.hpp>
+#include <rtype/snapshot_decoder.hpp>
+#include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -38,8 +52,11 @@ namespace {
 // RFC section 5.5: a peer that leaves sends Disconnect three times, as it is not resent.
 constexpr int disconnect_copies = 3;
 
-// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
-constexpr std::uint8_t valid_actions = 0x1FU;
+// A tick of the server in seconds, computed as its simulation does, so the prediction moves
+// the ship by the same float steps.
+constexpr float tick_seconds =
+    aegis2d::ecs::Tick{.step = aegis2d::core::step_from_rate(tuning::tick_rate), .index = 0}
+        .delta();
 
 // What the player is told for each LoginRejected reason; unknown ones are a plain refusal.
 std::string rejection_text(std::uint8_t reason) {
@@ -54,8 +71,42 @@ std::string rejection_text(std::uint8_t reason) {
         return "another player has this name";
     case LoginRejection::GameStarted:
         return "the game has started";
+    case LoginRejection::Banned:
+        return "the administrator of the server banned this address";
     }
     return "the server refused the login";
+}
+
+std::string room_rejection_text(std::uint8_t reason) {
+    switch (static_cast<RoomRejection>(reason)) {
+    case RoomRejection::NoRoomLeft:
+        return "the server has no room left";
+    case RoomRejection::BadName:
+        return "the room's name is not valid: 1 to 16 characters, no control character";
+    case RoomRejection::BadSize:
+        return "a room takes 1 to 4 players";
+    case RoomRejection::BadLives:
+        return "a room gives 1 to 9 lives";
+    case RoomRejection::BadDifficulty:
+        return "the server does not know this difficulty";
+    case RoomRejection::UnknownWaves:
+        return "the server has no such waves";
+    case RoomRejection::BadFriendlyFire:
+        return "friendly fire is on or off";
+    }
+    return "the server refused the room";
+}
+
+std::string join_rejection_text(std::uint8_t reason) {
+    switch (static_cast<JoinRejection>(reason)) {
+    case JoinRejection::NoSuchRoom:
+        return "the room is gone";
+    case JoinRejection::RoomFull:
+        return "the room is full";
+    case JoinRejection::InGame:
+        return "you are in game already";
+    }
+    return "the server refused to let you in the room";
 }
 
 std::string logout_text(std::uint8_t reason) {
@@ -66,6 +117,12 @@ std::string logout_text(std::uint8_t reason) {
         return "the server lost the connection (timed out)";
     case LogoutReason::ProtocolError:
         return "the server ended the session after an invalid packet";
+    case LogoutReason::RoomClosed:
+        return "the administrator of the server closed your room";
+    case LogoutReason::Kicked:
+        return "the administrator of the server removed you";
+    case LogoutReason::Banned:
+        return "the administrator of the server banned you";
     case LogoutReason::Left:
         break;
     }
@@ -95,6 +152,10 @@ std::string_view to_string(ClientState state) noexcept {
         return "connecting";
     case ClientState::LoggingIn:
         return "logging in";
+    case ClientState::Lobby:
+        return "in the lobby";
+    case ClientState::InRoom:
+        return "in a room";
     case ClientState::Binding:
         return "binding";
     case ClientState::InGame:
@@ -169,43 +230,195 @@ void ClientSession::on_message(std::span<const std::byte> message) {
             fail("the server sent an unexpected answer to the login");
             return;
         }
-        const LoginAccepted granted = accepted.value_or(LoginAccepted{});
-        const std::optional<net::Endpoint> udp =
-            resolve(server_tcp_.value_or(net::Endpoint{}).address(), granted.udp_port);
-        if (!udp.has_value()) {
-            fail("the server's address cannot be used for UDP");
+        login_ = accepted.value_or(LoginAccepted{});
+        if (settings_.choose_room) {
+            // RFC sections 3.6 and 3.7: the rooms first, refreshed by update().
+            state_ = ClientState::Lobby;
+            core::log_info("client: logged in, choosing a room");
+            last_room_list_ = Clock::now();
+            send_request(write_list_rooms());
+            send_request(write_list_scores());
             return;
         }
-        const net::Endpoint server = udp.value_or(net::Endpoint{});
-        login_ = granted;
-        server_udp_ = server;
-        // RFC section 3.4: from an endpoint of the same family as the server's.
-        try {
-            socket_ = server.is_v6()
-                          ? std::make_unique<net::UdpSocket>(
-                                context_, net::Endpoint::v6(std::array<std::uint8_t, 16>{}, 0))
-                          : std::make_unique<net::UdpSocket>(context_, std::uint16_t{0});
-        } catch (const net::SocketError& error) {
-            fail(std::format("cannot open a UDP socket: {}", error.what()));
-            return;
-        }
-        socket_->start_receiving(
-            [this](const net::Endpoint& from, std::span<const std::byte> datagram) {
-                on_datagram(from, datagram);
-            });
-        state_ = ClientState::Binding;
-        accepted_ = Clock::now();
-        core::log_info("client: logged in as player {}, binding UDP port {}", granted.player,
-                       granted.udp_port);
-        send_connect(accepted_);
+        start_binding();
         return;
     }
-    // Once logged in, the server only sends Logout (RFC section 3.3).
+    if (state_ == ClientState::Lobby || state_ == ClientState::InRoom) {
+        on_room_message(message);
+        return;
+    }
+    // Once logged in, the server only sends Logout (RFC section 3.3), the chat of the room
+    // (section 3.8), the scores asked for (section 3.9) and, to a client that used the rooms,
+    // RoomPlayers and GameStart, which a client in game ignores.
+    if (on_chat(message) || read_room_players(message).has_value() || read_game_start(message) ||
+        read_score_list(message).has_value()) {
+        return;
+    }
     if (const std::optional<std::uint8_t> reason = read_logout(message)) {
         fail(logout_text(*reason));
         return;
     }
     fail("the server sent an unexpected message");
+}
+
+// RFC sections 3.6 and 3.7: the answers of the lobby, then the players of the room joined
+// and its start; those of the room given at login are ignored.
+void ClientSession::on_room_message(std::span<const std::byte> message) {
+    if (std::optional<std::vector<RoomRecord>> rooms = read_room_list(message)) {
+        rooms_ = std::move(*rooms);
+    } else if (std::optional<std::vector<ScoreRecord>> scores = read_score_list(message)) {
+        std::erase_if(*scores,
+                      [](const ScoreRecord& score) { return !valid_player_name(score.name); });
+        scores_ = std::move(*scores);
+    } else if (read_room_created(message).has_value()) {
+        room_error_.clear();
+        send_request(write_list_rooms());
+    } else if (const std::optional<std::uint8_t> reason = read_room_rejected(message)) {
+        room_error_ = room_rejection_text(*reason);
+    } else if (const auto joined = read_room_joined(message)) {
+        room_error_.clear();
+        login_ = LoginAccepted{.session = login_.value_or(LoginAccepted{}).session,
+                               .player = joined->second,
+                               .udp_port = login_.value_or(LoginAccepted{}).udp_port};
+        state_ = ClientState::InRoom;
+        room_players_ = RoomPlayers{.room = joined->first, .players = {}};
+        ready_ = false;
+        core::log_info("client: in room {} as player {}", joined->first, joined->second);
+    } else if (const std::optional<std::uint8_t> refused = read_join_rejected(message)) {
+        room_error_ = join_rejection_text(*refused);
+    } else if (std::optional<RoomPlayers> players = read_room_players(message)) {
+        if (state_ == ClientState::InRoom && players->room == room_players_.room) {
+            room_players_ = std::move(*players);
+        }
+    } else if (read_game_start(message)) {
+        if (state_ == ClientState::InRoom) {
+            start_binding();
+        }
+    } else if (const std::optional<std::uint8_t> reason = read_logout(message)) {
+        fail(logout_text(*reason));
+    } else if (!on_chat(message)) {
+        fail("the server sent an unexpected message");
+    }
+}
+
+const std::vector<ScoreRecord>& ClientSession::scores() const noexcept {
+    return scores_;
+}
+
+// RFC section 3.8: a message of the room, or why one of this client was not sent; false for
+// any other message.
+bool ClientSession::on_chat(std::span<const std::byte> message) {
+    if (const std::optional<ChatMessage> chat = read_chat_message(message)) {
+        chat_.add(*chat, Clock::now());
+        return true;
+    }
+    if (const std::optional<std::uint8_t> reason = read_chat_rejected(message)) {
+        chat_.refused(*reason, Clock::now());
+        return true;
+    }
+    return false;
+}
+
+bool ClientSession::send_chat(std::string_view text) {
+    switch (state_) {
+    case ClientState::Lobby:
+    case ClientState::InRoom:
+    case ClientState::Binding:
+    case ClientState::InGame:
+        send_request(write_chat_send(text));
+        return true;
+    default:
+        return false;
+    }
+}
+
+ChatLog& ClientSession::chat() noexcept {
+    return chat_;
+}
+
+void ClientSession::set_ready(bool ready) {
+    if (state_ == ClientState::InRoom && ready != ready_) {
+        ready_ = ready;
+        send_request(write_set_ready(ready));
+    }
+}
+
+void ClientSession::leave_room() {
+    if (state_ != ClientState::InRoom) {
+        return;
+    }
+    send_request(write_leave_room());
+    state_ = ClientState::Lobby;
+    room_players_ = RoomPlayers{};
+    ready_ = false;
+    last_room_list_ = Clock::now();
+    send_request(write_list_rooms());
+    send_request(write_list_scores());
+}
+
+bool ClientSession::ready() const noexcept {
+    return ready_;
+}
+
+const RoomPlayers& ClientSession::room_players() const noexcept {
+    return room_players_;
+}
+
+void ClientSession::send_request(std::vector<std::byte> message) {
+    connection_->send(message);
+    ++sent_;
+}
+
+void ClientSession::create_room(const CreateRoomRequest& request) {
+    if (state_ == ClientState::Lobby) {
+        send_request(write_create_room(request));
+    }
+}
+
+void ClientSession::join_room(std::uint8_t room) {
+    if (state_ == ClientState::Lobby) {
+        send_request(write_join_room(room));
+    }
+}
+
+const std::vector<RoomRecord>& ClientSession::rooms() const noexcept {
+    return rooms_;
+}
+
+const std::string& ClientSession::room_error() const noexcept {
+    return room_error_;
+}
+
+// RFC section 3.4: a UDP socket of the server's family, and Connect until Accept.
+void ClientSession::start_binding() {
+    const LoginAccepted granted = login_.value_or(LoginAccepted{});
+    const std::optional<net::Endpoint> udp =
+        resolve(server_tcp_.value_or(net::Endpoint{}).address(), granted.udp_port);
+    if (!udp.has_value()) {
+        fail("the server's address cannot be used for UDP");
+        return;
+    }
+    const net::Endpoint server = udp.value_or(net::Endpoint{});
+    server_udp_ = server;
+    // RFC section 3.4: from an endpoint of the same family as the server's.
+    try {
+        socket_ = server.is_v6()
+                      ? std::make_unique<net::UdpSocket>(
+                            context_, net::Endpoint::v6(std::array<std::uint8_t, 16>{}, 0))
+                      : std::make_unique<net::UdpSocket>(context_, std::uint16_t{0});
+    } catch (const net::SocketError& error) {
+        fail(std::format("cannot open a UDP socket: {}", error.what()));
+        return;
+    }
+    socket_->start_receiving(
+        [this](const net::Endpoint& from, std::span<const std::byte> datagram) {
+            on_datagram(from, datagram);
+        });
+    state_ = ClientState::Binding;
+    accepted_ = Clock::now();
+    core::log_info("client: logged in as player {}, binding UDP port {}", granted.player,
+                   granted.udp_port);
+    send_connect(accepted_);
 }
 
 void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::byte> datagram) {
@@ -221,35 +434,60 @@ void ClientSession::on_datagram(const net::Endpoint& from, std::span<const std::
     if (header == nullptr || header->session != token) {
         return;
     }
+    const auto now = Clock::now();
+    traffic_.record(net::Direction::Received, header->type, datagram.size(), now);
+    network_stats_.record(header->sequence, header->type, now);
+    // RFC section 2.6: a compressed payload is decompressed before anything reads it.
+    std::vector<std::byte> decompressed;
+    if (header->compressed) {
+        std::optional<std::vector<std::byte>> payload = net::read_payload(*header, reader);
+        if (!payload) {
+            return;
+        }
+        decompressed = std::move(payload).value_or(std::vector<std::byte>{});
+        reader = net::BinaryReader{decompressed};
+    }
     if (state_ == ClientState::Binding) {
         if (header->type != net::PacketType::Accept || !reader.at_end()) {
             return;
         }
-        channel_.receive(*header);
+        channel_.receive(*header, now);
         state_ = ClientState::InGame;
-        next_input_ = Clock::now();
-        last_heard_ = next_input_;
+        next_input_ = now;
+        last_heard_ = now;
         world_.join(login_.value_or(LoginAccepted{}).player, settings_.name);
         core::log_info("client: in game as player {}", login_.value_or(LoginAccepted{}).player);
         return;
     }
     if (state_ == ClientState::InGame) {
-        on_game_datagram(*header, reader);
+        on_game_datagram(*header, reader, now);
     }
 }
 
 // RFC sections 4.3, 4.4, 5.1 and 6.3: a payload is read whole before anything is applied
-// or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored.
-void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload) {
+// or acknowledged; a duplicate or late datagram is acknowledged but its snapshot ignored, and
+// a delta snapshot whose baseline the client no longer has is neither.
+void ClientSession::on_game_datagram(const net::PacketHeader& header, net::BinaryReader& payload,
+                                     Clock::time_point now) {
     switch (header.type) {
     case net::PacketType::Snapshot: {
-        const std::optional<Snapshot> snapshot = read_snapshot(datagram_payload(payload));
-        if (!snapshot.has_value()) {
+        const std::optional<DeltaSnapshot> part = read_delta_snapshot(datagram_payload(payload));
+        if (!part.has_value()) {
             return;
         }
-        last_heard_ = Clock::now();
-        if (channel_.receive(header)) {
-            world_.apply(snapshot.value_or(Snapshot{}), last_heard_);
+        last_heard_ = now;
+        // A delta whose baseline is gone is not acknowledged: the server must not build on
+        // a snapshot the client could not rebuild.
+        const DeltaSnapshot& delta = part.value_or(DeltaSnapshot{});
+        if (!snapshots_.decodable(delta)) {
+            static_cast<void>(snapshots_.decode(delta)); // Counted in dropped().
+            return;
+        }
+        if (channel_.receive(header, now)) {
+            if (const std::optional<Snapshot> snapshot = snapshots_.decode(delta)) {
+                world_.apply(snapshot.value_or(Snapshot{}), now);
+                predict(snapshot.value_or(Snapshot{}));
+            }
         }
         return;
     }
@@ -257,10 +495,9 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
         // Each event is handed over once, however many copies arrive (section 5.3); one
         // whose bytes do not match its type is ignored on its own (section 6.4).
         std::vector<std::vector<std::byte>> events;
-        if (!channel_.read_events(header, payload, events)) {
+        if (!channel_.read_events(header, payload, events, now)) {
             return;
         }
-        const auto now = Clock::now();
         last_heard_ = now;
         for (const std::vector<std::byte>& bytes : events) {
             if (const std::optional<GameEvent> event = read_event(bytes)) {
@@ -272,8 +509,8 @@ void ClientSession::on_game_datagram(const net::PacketHeader& header, net::Binar
     case net::PacketType::Heartbeat:
     case net::PacketType::Accept:
         if (payload.at_end()) {
-            last_heard_ = Clock::now();
-            channel_.receive(header);
+            last_heard_ = now;
+            channel_.receive(header, now);
         }
         return;
     case net::PacketType::Disconnect:
@@ -294,13 +531,19 @@ void ClientSession::send_connect(Clock::time_point now) {
     }
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Connect,
-                                                   login_.value_or(LoginAccepted{}).session));
+                                                   login_.value_or(LoginAccepted{}).session, now));
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
+    traffic_.record(net::Direction::Sent, net::PacketType::Connect, writer.data().size(), now);
     last_connect_ = now;
     ++connects_sent_;
 }
 
 void ClientSession::update(Clock::time_point now) {
+    // The drawn ship catches up with the corrections a little at each frame.
+    if (last_update_.has_value() && now > *last_update_) {
+        prediction_.smooth(std::chrono::duration<float>{now - *last_update_}.count());
+    }
+    last_update_ = now;
     if (closing_ && connection_ && connection_->stats().sent >= sent_) {
         connection_->close();
         closing_ = false;
@@ -311,6 +554,15 @@ void ClientSession::update(Clock::time_point now) {
         if (now - started_ >= login_timeout) {
             fail("the server does not answer");
         }
+        break;
+    case ClientState::Lobby:
+        if (now - last_room_list_ >= room_refresh) {
+            last_room_list_ = now;
+            send_request(write_list_rooms());
+            send_request(write_list_scores());
+        }
+        break;
+    case ClientState::InRoom:
         break;
     case ClientState::Binding:
         if (now - accepted_ >= bind_timeout) {
@@ -355,16 +607,27 @@ void ClientSession::set_input(aegis2d::ecs::PlayerInput input) noexcept {
     held_ = static_cast<std::uint8_t>(input.held & valid_actions);
 }
 
-// RFC section 4.2: one byte of held actions, numbered and acknowledging like any datagram.
+// RFC section 4.2: the newest input's own sequence, 0 for the first, then one byte of held
+// actions for it and each of the 3 before it; the header is numbered and acknowledges like
+// any datagram's.
 void ClientSession::send_input(Clock::time_point now) {
     if (!socket_ || !server_udp_.has_value() || !login_.has_value()) {
         return;
     }
     net::BinaryWriter writer;
     net::write_header(writer, channel_.next_header(net::PacketType::Input,
-                                                   login_.value_or(LoginAccepted{}).session));
-    writer.write_u8(held_);
+                                                   login_.value_or(LoginAccepted{}).session, now));
+    // The 3 inputs before it go along, so a lost Input arrives with one of the next three.
+    if (recent_inputs_.size() == max_inputs_per_datagram) {
+        recent_inputs_.erase(recent_inputs_.begin());
+    }
+    recent_inputs_.push_back(
+        InputRecord{.sequence = static_cast<std::uint16_t>(inputs_sent_), .actions = held_});
+    writer.write_bytes(write_inputs(recent_inputs_));
+    // The own ship moves at once, as the server will move it at one of its ticks.
+    prediction_.apply(recent_inputs_.back(), tick_seconds);
     socket_->send_to(server_udp_.value_or(net::Endpoint{}), writer.data());
+    traffic_.record(net::Direction::Sent, net::PacketType::Input, writer.data().size(), now);
     ++inputs_sent_;
     // On time: the next one an interval after this one's due time. Late by more than an
     // interval (a stall): an interval from now, rather than a burst to catch up.
@@ -382,10 +645,13 @@ void ClientSession::leave() {
             net::BinaryWriter writer;
             net::write_header(writer, channel_.next_header(net::PacketType::Disconnect, token));
             socket_->send_to(server, writer.data());
+            traffic_.record(net::Direction::Sent, net::PacketType::Disconnect, writer.data().size(),
+                            Clock::now());
         }
     }
     if (connection_ && connection_->is_open() &&
-        (state_ == ClientState::Binding || state_ == ClientState::InGame)) {
+        (state_ == ClientState::Lobby || state_ == ClientState::InRoom ||
+         state_ == ClientState::Binding || state_ == ClientState::InGame)) {
         connection_->send(write_logout(LogoutReason::Left));
         ++sent_;
         closing_ = true;
@@ -435,12 +701,87 @@ std::uint64_t ClientSession::inputs_sent() const noexcept {
     return inputs_sent_;
 }
 
+std::optional<std::uint16_t> ClientSession::last_input() const noexcept {
+    if (inputs_sent_ == 0) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint16_t>(inputs_sent_ - 1);
+}
+
+std::optional<std::uint16_t> ClientSession::acknowledged_input() const noexcept {
+    if (!login_.has_value()) {
+        return std::nullopt;
+    }
+    const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
+    if (player >= world_.players().size()) {
+        return std::nullopt;
+    }
+    const std::optional<RemotePlayer>& own = world_.players().at(player);
+    return own.has_value() ? own->input : std::nullopt;
+}
+
+const net::TrafficCounters& ClientSession::traffic() const noexcept {
+    return traffic_;
+}
+
+const net::RttEstimator& ClientSession::rtt() const noexcept {
+    return channel_.rtt();
+}
+
+const NetworkStats& ClientSession::network_stats() const noexcept {
+    return network_stats_;
+}
+
 ClientWorld& ClientSession::world() noexcept {
     return world_;
 }
 
 const ClientWorld& ClientSession::world() const noexcept {
     return world_;
+}
+
+const ShipPrediction& ClientSession::prediction() const noexcept {
+    return prediction_;
+}
+
+// The prediction starts from the server's position of the ship, the first time a snapshot
+// has it, and again after a death or with another ship; each newer snapshot then corrects it
+// (server reconciliation): the ship goes back to the server's position at the acknowledged
+// input, and the inputs after it are replayed.
+void ClientSession::predict(const Snapshot& snapshot) {
+    const std::uint8_t player = login_.value_or(LoginAccepted{}).player;
+    const auto own = std::ranges::find(snapshot.players, player, &PlayerRecord::player);
+    if (own == snapshot.players.end()) {
+        return;
+    }
+    if (own->ship == no_entity) {
+        prediction_.stop();
+        return;
+    }
+    const auto ship = std::ranges::find(snapshot.entities, own->ship, &EntityRecord::id);
+    if (ship == snapshot.entities.end()) {
+        if (const std::optional<std::uint16_t>& input = own->input) {
+            prediction_.acknowledge(*input);
+        }
+        return;
+    }
+    const aegis2d::Vec2 server{ship->x, ship->y};
+    if (prediction_.ship() != own->ship || own->lives < predicted_lives_) {
+        prediction_.start(own->ship, server);
+        predicted_lives_ = own->lives;
+        reconciled_tick_ = snapshot.tick;
+        return;
+    }
+    // A late snapshot says less than the last one used: it changes nothing.
+    if (reconciled_tick_.has_value() && snapshot.tick <= *reconciled_tick_) {
+        return;
+    }
+    reconciled_tick_ = snapshot.tick;
+    static_cast<void>(prediction_.reconcile(server, own->input, tick_seconds));
+}
+
+const SnapshotDecoder& ClientSession::snapshots() const noexcept {
+    return snapshots_;
 }
 
 } // namespace rtype

@@ -44,16 +44,19 @@ OpenGL.
 ## Authoritative server
 
 The server owns the only true world. Each client sends the actions its player holds
-(one byte per tick: up, down, left, right, fire); the server applies them, runs the
-simulation and sends back what happened. A client never decides a hit, a kill or a score.
+(one byte per tick: up, down, left, right, fire), each tick's input numbered and sent
+again with the next three, so a lost datagram loses no input; the server applies each
+once, runs the simulation and sends back what happened, and each snapshot tells every
+player the number of its last input applied. A client never decides a hit, a kill or a
+score.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant N as Server network thread
     participant G as ServerGame (simulation thread)
-    C->>N: input (held actions)
-    N->>G: set_input(player, input)
+    C->>N: input (sequence, held actions)
+    N->>G: set_input(player, input, sequence)
     loop every 1/60 s
         G->>G: tick(step): every system in order
     end
@@ -66,10 +69,60 @@ The server's network side lives in `server/`, around
 [`ServerGame`](gameplay.md#the-server-game), which exposes what it needs: `add_player()`,
 `set_input()`, `tick()` and the reports of the last tick. `GameServer`
 (`rtype/game_server.hpp`) puts the pieces together, for `r-type_server` and for the tests:
-`ServerNetwork` on the network thread, the game on the `Simulation` thread, and tasks
-posted between them. A bound player joins the game: the others get its `PlayerJoined`
-(number and name), and it gets a `PlayerJoined` of every player already there before the
-world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
+`ServerNetwork` on the network thread, each game in its `Room` (`rtype/room.hpp`), and tasks
+posted between them. A room owns its `GameInstance`, the `Simulation` thread that runs it, the
+`EventTracker` of what its clients learnt and the names of its players; the rooms of a server
+run side by side, each on its own thread. Each session belongs to a room (`Session::room`),
+and its player number is its number in that room: a login goes to the first room in use with a
+free place, or else to a new room for 4 players (`Room 2`...), and the inputs, snapshots and
+events of a room only go between its game and its own players. Over TCP, a logged-in client
+may list the rooms in use (`ListRooms`, answered by `RoomList`: number, name, players, size,
+waiting or playing) and create one, empty, for the next logins (`CreateRoom`, with a name, 1 to
+4 players and the rules of its game: lives, difficulty, waves file and friendly fire, answered
+by `RoomCreated` or `RoomRejected` with the first bad value), as section 3.6 of the RFC says;
+the waves files a room may name are those next to the server's own (`waves_names()`);
+`SessionTable` keeps the rooms in use, from their creation until their last session leaves or
+ends. Out of game, a client also moves to another room (`JoinRoom`, answered by `RoomJoined`
+or `JoinRejected`) or to the lobby, out of every room (`LeaveRoom`), and says when it is ready
+(`SetReady`); the clients of a room that use these messages get its players and their ready
+states (`RoomPlayers`) whenever they change, then `GameStart` once every player out of game
+is ready, after which they bind and play (RFC section 3.7). A client that never sends them
+binds right after its login and plays in the room it was given. `ClientSession` does so
+unless `ClientSettings::choose_room` is set: it then stays in the `Lobby` state, with the
+rooms refreshed every second, until it joins one, then in the `InRoom` state, with the players
+of the room, until `GameStart`; `RoomListForm` is the room list screen of `r-type_client`
+apart from its drawing. A room opens when its first player joins, its game on a new thread
+with the rules the room was created with (`game_rules()`: the lives of each player, the health
+and spawn rate of the enemies for its difficulty, friendly fire, and the waves file it names,
+read once at start by `r-type_server` and given with `GameServer::set_waves()`; a room opened
+for a login plays the default rules), and closes when its last player leaves: its thread is stopped and joined, and the next player
+of that room starts a new game. `r-type_server` plays up to `--max-rooms` rooms at once (4 by
+default); once they are all full, a login is refused as `ServerFull`. Players chat over TCP, in the
+lobby, in a room and in game (RFC section 3.8): a `ChatSend` whose text passes
+`check_chat_text()` (1 to 200 bytes of UTF-8 without control characters) and whose sender is
+within its `ChatRate` (5 messages at once, then 1 per second) goes as a `ChatMessage` to every
+session of the sender's room, or of the lobby (`player` 255), the sender included; any other
+gets `ChatRejected` with its reason, the connection going on. `ClientSession::send_chat()`
+sends a message once logged in, and its `ChatLog` keeps the last ones of the room and the
+reasons of the refused ones, which `r-type_client` draws over its screens. When the game of a room
+is over (`GameInstance::take_game_over()`, once per game), the score of each of its players
+goes to the `Scoreboard` of the server (`GameServer::keep_scores()`, `--scores`): the 10 best,
+best first, in a JSON file (`{"scores": [{"name": "R9", "score": 1200}]}`) written at each
+change through a temporary file that then replaces it, so a crash never leaves half a file. A
+file that cannot be read or is not a board is logged and replaced by the next score: the
+server starts anyway. A client reads the board with `ListScores`, answered by `ScoreList`
+(RFC section 3.9); `ClientSession` asks for it with the rooms, at the login and at each
+refresh of the lobby (`scores()`), and the room list screen shows it. The administrator of `r-type_server` types commands on its standard input
+(`AdminConsole`, on the engine's `core::Commands`; `ConsoleInput` reads the lines on a thread
+of its own, and the network thread runs them between two updates): `rooms`, `players`,
+`say` (a `ChatMessage` of the server, `player` 254, to every session), `close` (each session
+of the room gets `Logout` with `RoomClosed`), `kick` and `ban` (`ServerNetwork::remove_player()`:
+`Logout` with `Kicked` or `Banned`, a message of the server to the others, `PlayerLeft` with
+`Kicked` in its game) and `stop`. The banned addresses are a `BanList` (`--bans`), a JSON file
+written like the scoreboard and read at start, checked before anything else of a login,
+which then gets `LoginRejected` with `Banned`. A bound player joins the
+game of its room: the others there get its `PlayerJoined` (number and name), and it gets a
+`PlayerJoined` of every player already there before the world. A player whose session ends leaves it, whatever ended it (`Logout`, `Disconnect`,
 protocol error, its TCP connection closing, as when its process is killed, or no valid
 datagram for 5 seconds, as when its UDP is blocked): the others get its `PlayerLeft`, with
 the reason `Left`, `TimedOut` or `Kicked`, and its ship is removed at the next tick.
@@ -91,16 +144,59 @@ After each tick, the simulation thread hands the network thread two things:
   already there.
 - **Snapshots** (`rtype/snapshot.hpp`, RFC section 4.3), every third tick: the position,
   velocity and frame of every entity, and each player's lives and score. They are not
-  resent: the next one replaces a lost one.
+  resent: the next one replaces a lost one. Their fields are packed bit by bit with the
+  engine's `BitWriter`, by the encoders of `rtype/compact.hpp`: positions to the 1/8 px on
+  15 bits (-2048 to 2047.875, off by 1/16 px at most), velocities in whole pixels per second
+  on 12 bits (off by 0.5 px/s at most), both clamped to their range, and numbers that grow
+  (ids, scores) as varints of 7-bit groups. The entity records go by increasing index (the
+  24 low bits of the network id), each giving the gap to the previous index and the 8 bits
+  of generation: 77 bits (10 bytes) instead of 22 bytes while the gap is below 128, as it
+  stays between live entities.
+  Each player's `SnapshotHistory` keeps the last 32 snapshots sent to it with the sequences
+  of their datagrams; the `ack` and `ack_bits` of every datagram the player sends mark them
+  acknowledged, a snapshot once all its datagrams are. The latest acknowledged one is the
+  baseline of the delta snapshots (`rtype/delta_snapshot.hpp`): `write_delta_snapshot()`
+  skips the entities whose quantized fields did not change, sends only the changed fields
+  of the others (x, y, velocity, frame), every field of the new ones and the id of the
+  removed ones, or every entity without a baseline; `apply_delta()` rebuilds the snapshot
+  from the baseline and the payloads of its tick. The server encodes each snapshot for each
+  player against that player's latest acknowledged one (`ServerNetwork::send_snapshot()`).
+  The client's `SnapshotDecoder` (`rtype/snapshot_decoder.hpp`) keeps the last 32 snapshots
+  it rebuilt, each from the payloads of its tick received so far, as the baselines of the
+  next ones. A payload whose baseline it no longer has is dropped and its datagram not
+  acknowledged, so the server never builds on a snapshot the client could not rebuild.
 
 On the client, one thread does everything, once a frame: it reads the keyboard and the
 gamepad, runs the network handlers that are ready (`NetworkContext::poll()`), then draws.
-`ClientSession` sends the held actions every tick and applies what arrives to
-`ClientWorld`, its copy of the world; the screen draws that copy where it was 100 ms ago,
-between two snapshots (`interpolate()`), so that 20 snapshots a second move the entities
-smoothly at any frame rate. The events applied are handed to the screen
+`ClientSession` sends the held actions every tick, numbered from 0 (`last_input()`), and
+applies what arrives to `ClientWorld`, its copy of the world, where its player's record
+gives the last of its inputs the server applied (`acknowledged_input()`); the screen draws
+that copy where it was a moment ago, between two snapshots (`interpolate()`), so that 20
+snapshots a second move the entities smoothly at any frame rate. The moment follows the
+jitter (`interpolation_delay()`): one snapshot interval, 50 ms, plus 1.25 times the latest
+snapshot of the last 2 seconds, up to 200 ms, so the tick drawn always has a snapshot after
+it; it rises at half real time and goes down by 10 ms a second, so the drawing never jumps
+back. The player's own ship is the exception: `ShipPrediction` (`rtype/ship_prediction.hpp`)
+moves it at once by each input sent, with the server's own step (`step_ship()`), from the
+server's position of the ship in a snapshot, and keeps the inputs the snapshots have not
+acknowledged yet; the screen draws the ship there, so it answers the keys within a frame
+whatever the round trip time. Each newer snapshot reconciles it
+(`ShipPrediction::reconcile()`): the ship goes back to where the server had it once it
+applied the acknowledged input, and the inputs after it are replayed; when the server
+applied them as predicted, nothing moves (`corrections()` counts the times something did,
+for the lagometer). The drawn ship does not jump with a correction: it glides to the
+corrected position at 120 pixels per second (`smooth()`, `drawn()`), unless the correction
+is 32 pixels or more. The events applied are handed to the screen
 (`ClientWorld::take_events()`), which shows them: an explosion and a sound for a kill, a
 notice when a player joins or leaves. The client never changes the world itself.
+
+The session also measures its link to the server, for the network statistics shown to the
+player: the datagrams and bytes by packet type (`traffic()`), the round trip time and its
+jitter (`rtt()`), and, over the last 2 seconds, the datagrams lost (the gaps in the
+server's sequences), the mean time between two snapshots and how irregularly they arrive
+(`network_stats()`, see `rtype/network_stats.hpp`). The lagometer (`rtype/lagometer.hpp`)
+samples them ten times a second and keeps the last 10 seconds, which `lagometer_view`
+draws as graphs over the game when the player presses F6.
 
 ## The code
 
@@ -108,26 +204,37 @@ notice when a player joins or leaves. The client never changes the world itself.
 game/
   include/rtype/
     server_game.hpp   ServerGame: the world, its systems in tick order, the players
-    entities.hpp      spawn_player, spawn_player_missile, spawn_bydos_slave...
+    entities.hpp      spawn_player, spawn_player_missile, fire_enemy_missile...
+    enemy_scripts.hpp EnemyScripts: the enemy types of assets/enemies and their behaviors
     layers.hpp        collision layers and masks
     tuning.hpp        every gameplay value (speeds, sizes, health, lives, scores)
-    waves.hpp         enemy types of the waves files, load_waves
+    waves.hpp         waves files, load_waves
   server_game.cpp
+  enemy_scripts.cpp
   entities.cpp
   waves.cpp
 assets/waves/         enemy waves (JSON), copied next to r-type_server
+assets/enemies/       enemy types (Lua), copied next to r-type_server
 server/main.cpp       r-type_server
 client/
   network/            rtype_client_net, built and tested by every preset
     client_session    login, UDP binding, inputs, loss of the server
     client_world      the world from snapshots and events, interpolation
     connect_form      the fields of the connect screen, checked
+    lagometer         the network statistics of the last 10 seconds, sampled
+    network_stats     loss, snapshot interval and jitter of the server's datagrams
     player_notices    "<name> left the game" and the like
-  client_app          r-type_client: window, screens, settings keys
+    snapshot_decoder  the snapshots rebuilt from their baseline and delta
+  ui/                 rtype_client_ui, built and tested with the client
+    connect_fields    the connect screen's fields as the engine's text fields
+  client_app          r-type_client: window, screens, settings keys, frame metrics (F12)
   game_view           the game screen: entities, explosions, HUD, notices
+  lagometer_view      the lagometer overlay, toggled with F6
   menu_screens        connect, joining and connection lost screens
   game_art, game_sounds, preferences   sprites, sounds, player settings
 assets/sprites/, assets/sounds/   art and sounds, copied next to r-type_client
+tools/bot/            r-type_bot: headless clients holding random or scripted inputs
+tools/net_benchmark.py   the server and bots under each netem profile, into a CSV
 tests/                Catch2 tests of rtype_game
 ```
 

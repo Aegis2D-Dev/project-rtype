@@ -3,7 +3,8 @@ name: Release
 # A tag v* (an annotated tag, on the commit delivered on master) builds the packages of the
 # server and the client for Linux and Windows and publishes them in a GitHub release. A pull
 # request touching this workflow or the build builds the packages without publishing, so a
-# release is known to build before its tag is pushed.
+# release is known to build before its tag is pushed. The release notes list the pull requests
+# of CHANGELOG.md added since the previous tag (tools/release_notes.cmake).
 #
 # The packages are built with the engine's master, the one delivered to Epitech, and not the
 # develop branch followed by development builds.
@@ -153,6 +154,11 @@ jobs:
       contents: write
       packages: read
     steps:
+      # The whole history and its tags, to find the previous release.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: package-*
@@ -170,6 +176,17 @@ jobs:
           libraries they need: unpack one, start \`bin/r-type_server\`, then \`bin/r-type_client\`
           on each player's computer (\`--help\` lists the options). The changes are listed in
           the [changelog](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md).
+
           EOF
+          # The pull requests of the changelog since the previous tag, if there is one.
+          previous=$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            git show "${previous}:CHANGELOG.md" > previous.md
+            echo "Changes since ${previous}." >> notes.md
+            echo >> notes.md
+          fi
+          cmake -DCHANGELOG=CHANGELOG.md -DPREVIOUS="${previous:+previous.md}" \
+            -DBASE_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/" \
+            -DOUTPUT=notes.md -P tools/release_notes.cmake
           gh release create "$TAG" packages/* --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "R-Type $TAG" --notes-file notes.md

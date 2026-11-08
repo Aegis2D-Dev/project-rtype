@@ -7,22 +7,32 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/ban_list.hpp>
+#include <rtype/chat.hpp>
 #include <rtype/events.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
+#include <rtype/snapshot_history.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace rtype {
@@ -32,9 +42,17 @@ namespace rtype {
 /// at start. Each TCP connection must log in (RFC section 3.3): a valid `LoginRequest`
 /// opens a session and gets `LoginAccepted`; a refused one gets `LoginRejected` and is
 /// closed once it is sent; a connection that sends anything else first, or nothing within
-/// login_timeout, is closed without a reply (section 6.5). Once logged in, a `Logout` or
-/// the closing of the connection ends the session; any other message is a protocol error
-/// that ends it too.
+/// login_timeout, is closed without a reply (section 6.5). Once logged in, a `ListRooms` gets
+/// the `RoomList` of the rooms in use and a `CreateRoom` its `RoomCreated` or `RoomRejected`
+/// (section 3.6); a `JoinRoom` gets `RoomJoined` or `JoinRejected`, a `LeaveRoom` moves the
+/// session to the lobby and a `SetReady` sets whether it is ready (section 3.7); a `ChatSend`
+/// whose text and rate pass (check_chat_text(), ChatRate) goes as a `ChatMessage` to every
+/// session of the sender's room, or of the lobby, the sender included, and any other gets
+/// `ChatRejected` with its reason (section 3.8); a `Logout` or
+/// the closing of the connection ends the session; any other message is a protocol error that
+/// ends it too. Whenever the sessions of a room or their ready states change, the clients of
+/// that room that sent a message of the rooms and are not in game get its `RoomPlayers`, then
+/// `GameStart` once every session of the room out of game is ready.
 ///
 /// Each datagram is checked as RFC section 6.3 says (header, direction, source). A
 /// `Connect` with an empty payload and the token of a session binds its source endpoint
@@ -48,6 +66,10 @@ namespace rtype {
 /// `Disconnect` ends the session like a `Logout`. A bound player that sends no valid
 /// datagram for udp_timeout has lost its session (RFC section 5.5): it gets `Logout` with
 /// the reason `TimedOut`, its connection is closed once it is sent, and it leaves the game.
+///
+/// Each session belongs to a room (Session::room): snapshots and events go to the players
+/// of one room only, so the games of several rooms run side by side without seeing each
+/// other.
 ///
 /// The handling of each datagram and TCP message is contained: an exception is logged, the
 /// client that sent the packet is kicked (`Logout` with the reason `ProtocolError`, then
@@ -69,9 +91,10 @@ public:
     /// acknowledges no event, `Kicked` for a protocol error.
     using LeaveHandler = std::function<void(const Session& session, LeaveReason reason)>;
 
-    /// @brief Called with the actions a player holds, from its most recent `Input`.
-    using InputHandler =
-        std::function<void(const Session& session, aegis2d::ecs::PlayerInput input)>;
+    /// @brief Called with the actions a player holds and the sequence of the `Input` they
+    /// come from, its most recent one.
+    using InputHandler = std::function<void(const Session& session, aegis2d::ecs::PlayerInput input,
+                                            std::uint16_t sequence)>;
 
     /// @brief Time a new connection has to send its `LoginRequest`.
     static constexpr std::chrono::seconds login_timeout{5};
@@ -80,11 +103,16 @@ public:
     /// (RFC section 5.5).
     static constexpr std::chrono::seconds udp_timeout{5};
 
+    /// @brief Time between two lines of traffic and round trip time of each bound player in
+    /// the log.
+    static constexpr std::chrono::seconds traffic_report_period{10};
+
     /// @brief Listens on both ports, on every IPv4 interface.
     /// @param context Context that runs the sockets; it must outlive this object.
     /// @param tcp_port TCP port of the logins, or 0 for any free port.
     /// @param udp_port UDP port of the game, or 0 for any free port.
-    /// @param sessions Sessions to fill, empty; tests give one with a seed.
+    /// @param sessions Sessions to fill, empty, with their rooms (SessionTable::set_rooms());
+    /// tests give one with a seed.
     /// @throws aegis2d::net::SocketError If a port is already in use or cannot be bound.
     ServerNetwork(aegis2d::net::NetworkContext& context, std::uint16_t tcp_port,
                   std::uint16_t udp_port, SessionTable sessions = SessionTable{});
@@ -104,40 +132,111 @@ public:
     void on_players(PlayerHandler joined, LeaveHandler left);
 
     /// @brief Sets what to do with the inputs of the players.
-    /// @details Called for each valid `Input` from a bound endpoint that is more recent
-    /// than the last one applied (by `sequence`): late, duplicated and malformed ones are
-    /// not passed on (RFC section 4.2).
-    /// @param input Called with the session and the actions it holds.
+    /// @details Called for each input of a valid `Input` datagram from a bound endpoint that
+    /// is more recent than the last one passed on (by its sequence, InputRecord), oldest
+    /// first: an input whose datagram was lost is passed on when one of the next three
+    /// arrives; those passed on already, late ones and malformed datagrams are not (RFC
+    /// section 4.2).
+    /// @param input Called with the session, the actions it holds and their sequence.
     void on_input(InputHandler input);
 
-    /// @brief Sends a snapshot to every player whose endpoint is bound.
+    /// @brief Sets from which size the payloads of snapshots and events are compressed.
+    /// @details A payload of at least @p threshold bytes is sent compressed with LZ4 when that
+    /// makes it smaller (`aegis2d/net/compression.hpp`, RFC section 2.6). Whatever this
+    /// setting, compressed datagrams received are decompressed.
+    /// @param threshold Size in bytes, or `std::nullopt` (the default) to never compress.
+    void set_compression(std::optional<std::size_t> threshold) noexcept;
+
+    /// @brief Sends a message of the server to every session logged in (`ChatMessage` with
+    /// server_player and server_name, RFC section 3.8).
+    /// @param text Text to send, checked as a chat text.
+    /// @return The number of sessions it was sent to, or ChatRejection::TooLong or BadText.
+    std::variant<std::size_t, ChatRejection> say(std::string_view text);
+
+    /// @brief Closes a room: each of its sessions gets `Logout` with `RoomClosed` and ends;
+    /// the others of the game are told it was kicked.
+    /// @param room Number of the room.
+    /// @return The number of sessions ended, 0 if the room was empty or not in use.
+    std::size_t close_room(std::uint32_t room);
+
+    /// @brief Removes a player for the administrator: it gets `Logout` with @p reason, every
+    /// other session a message of the server saying so, and its game a `PlayerLeft` with
+    /// `Kicked`.
+    /// @param name Name of the player.
+    /// @param reason LogoutReason::Kicked or LogoutReason::Banned.
+    /// @return The address its TCP connection comes from, or `std::nullopt` if no player
+    /// has this name.
+    std::optional<aegis2d::net::Endpoint> remove_player(std::string_view name, LogoutReason reason);
+
+    /// @brief Sets the bans checked at each login: a banned address gets `LoginRejected`
+    /// with `Banned`.
+    /// @param bans The list, which must outlive this object, or nullptr for none.
+    void set_bans(BanList* bans) noexcept;
+
+    /// @brief The bans checked at each login.
+    /// @return The list given to set_bans(), or nullptr.
+    [[nodiscard]] BanList* bans() const noexcept;
+
+    /// @brief Sets the board a `ListScores` reads (RFC section 3.9).
+    /// @param board The best scores, which must outlive this object, or nullptr to answer
+    /// with none.
+    void set_scoreboard(const Scoreboard* board) noexcept;
+
+    /// @brief Sets the waves files a room may be created with (SessionTable::set_waves()).
+    /// @param names Their names, without `.json`.
+    void set_waves(std::vector<std::string> names);
+
+    /// @brief From which size payloads are compressed.
+    /// @return The threshold set by set_compression(), or `std::nullopt`.
+    [[nodiscard]] std::optional<std::size_t> compression() const noexcept;
+
+    /// @brief Sends a snapshot to every player of a room whose endpoint is bound.
     /// @details Each payload goes in its own `Snapshot` datagram, whose header takes the
     /// next sequence of the player's channel and acknowledges its datagrams (RFC 5.1).
     /// @param payloads Payloads from write_snapshot(), header excluded.
-    void send_snapshot(std::span<const std::vector<std::byte>> payloads);
+    /// @param room Room of the game the snapshot comes from (Session::room).
+    /// @param snapshot The snapshot they encode, to keep in each player's snapshots() with
+    /// the sequences of its datagrams; none by default.
+    void send_snapshot(std::span<const std::vector<std::byte>> payloads, std::uint32_t room,
+                       const std::shared_ptr<const Snapshot>& snapshot = nullptr);
+
+    /// @brief Sends a snapshot to every player of a room whose endpoint is bound, encoded
+    /// against the latest snapshot that player acknowledged.
+    /// @details write_delta_snapshot() encodes it against snapshots()'s latest
+    /// acknowledged one, or whole if there is none; the payloads go as with the other
+    /// overload, and the snapshot is kept in the player's snapshots().
+    /// @param snapshot The snapshot to send; nothing is sent if it is `nullptr`.
+    /// @param room Room of the game the snapshot comes from (Session::room).
+    /// @throws std::invalid_argument if a field does not fit, as write_delta_snapshot().
+    void send_snapshot(const std::shared_ptr<const Snapshot>& snapshot, std::uint32_t room);
 
     /// @brief Number of `Snapshot` datagrams sent, all players together.
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t snapshots_sent() const noexcept;
 
-    /// @brief Sends gameplay events, reliably, to the players whose endpoint is bound.
+    /// @brief Sends gameplay events, reliably, to the players of a room whose endpoint is
+    /// bound.
     /// @details Each event is queued on the player's channel, which numbers it and resends
     /// it until it is acknowledged (RFC section 5.3): the events leave at once in `Event`
     /// datagrams, the resends in update(). A player who leaves
     /// `net::max_events_in_flight` events unacknowledged is lost (RFC section 6.2): its
     /// session ends.
     /// @param events Events from write_event(), in order.
-    /// @param token Only to this session, for a player who joins (RFC section 4.6); to
-    /// every bound player by default.
-    void send_events(std::span<const std::vector<std::byte>> events,
+    /// @param room Room of the game the events come from (Session::room).
+    /// @param token Only to this session of the room, for a player who joins (RFC section
+    /// 4.6); to every bound player of the room by default.
+    void send_events(std::span<const std::vector<std::byte>> events, std::uint32_t room,
                      std::optional<std::uint32_t> token = std::nullopt);
 
-    /// @brief Sends gameplay events, reliably, to every bound player but one, as send_events().
+    /// @brief Sends gameplay events, reliably, to every bound player of a room but one, as
+    /// send_events().
     /// @details For the `PlayerJoined` of a player who joins, which the others get (RFC
     /// section 4.6).
     /// @param events Events from write_event(), in order.
+    /// @param room Room of the game the events come from (Session::room).
     /// @param token Session that does not get them.
-    void send_events_to_others(std::span<const std::vector<std::byte>> events, std::uint32_t token);
+    void send_events_to_others(std::span<const std::vector<std::byte>> events, std::uint32_t room,
+                               std::uint32_t token);
 
     /// @brief Number of `Event` datagrams sent, first sends and resends, all players together.
     /// @return The count since the construction.
@@ -216,6 +315,30 @@ public:
     /// @return The count since the construction.
     [[nodiscard]] std::uint64_t errors() const noexcept;
 
+    /// @brief Datagrams exchanged with a bound player, by direction and packet type.
+    /// @details Counts the datagrams sent to the player (`Accept`, `Snapshot`, `Event`) and
+    /// the valid ones received from it, since its endpoint was bound; update() logs them
+    /// every traffic_report_period.
+    /// @param token Session of the player.
+    /// @return Its counters, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const aegis2d::net::TrafficCounters* traffic(std::uint32_t token) const;
+
+    /// @brief Round trip time to a bound player, with its jitter.
+    /// @details A sample each time a datagram of the player acknowledges, for the first
+    /// time, one sent to it (`Accept`, `Snapshot`, `Event`). It includes the time the client
+    /// waits before its next datagram: in game, at most its input interval (about 17 ms).
+    /// update() logs it every traffic_report_period.
+    /// @param token Session of the player.
+    /// @return Its estimate, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const aegis2d::net::RttEstimator* rtt(std::uint32_t token) const;
+
+    /// @brief The last snapshots sent to a player and the ones it acknowledged.
+    /// @details Every valid datagram of the player acknowledges the server's datagrams it
+    /// received (`ack`, `ack_bits`): a snapshot is acknowledged once all its datagrams are.
+    /// @param token Session of the player.
+    /// @return Its history, or nothing if the session is not bound or has ended.
+    [[nodiscard]] const SnapshotHistory* snapshots(std::uint32_t token) const;
+
 private:
     struct Client {
         aegis2d::net::TcpConnection connection;
@@ -224,11 +347,18 @@ private:
         std::uint64_t sent = 0;
         bool close_when_sent = false;
         bool closed = false;
+        // Whether it sent a message of the rooms, and so gets RoomPlayers and GameStart.
+        bool rooms = false;
+        ChatRate chat;
     };
 
     void on_accept(aegis2d::net::TcpConnection connection);
     void on_message(std::uint64_t id, std::span<const std::byte> message);
     void on_login(Client& client, std::span<const std::byte> message);
+    bool on_room_message(Client& client, std::span<const std::byte> message);
+    bool on_chat(Client& client, std::span<const std::byte> message);
+    void on_join(Client& client, std::uint8_t room);
+    void announce_room(std::uint32_t room);
     void on_close(std::uint64_t id, aegis2d::net::TcpCloseReason reason);
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
     void on_connect(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram,
@@ -243,7 +373,7 @@ private:
     void disconnect(std::uint32_t token, LeaveReason reason);
     void end_session(std::uint32_t token, LeaveReason reason);
     void queue_events(std::span<const std::vector<std::byte>> events,
-                      const std::function<bool(std::uint32_t token)>& receives);
+                      const std::function<bool(const Session& session)>& receives);
     void send(Client& client, std::span<const std::byte> message);
     void close(Client& client, std::string_view reason);
     void flush_events(Clock::time_point now);
@@ -251,6 +381,11 @@ private:
     void kick(std::uint32_t token);
     void kick_client(std::uint64_t id);
     void end_with_logout(std::uint32_t token, LogoutReason logout, LeaveReason leave);
+    void report_traffic(Clock::time_point now);
+    // Sends the payloads encode() gives for the history of each bound player of the room.
+    void send_snapshot(
+        const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
+        std::uint32_t room, const std::shared_ptr<const Snapshot>& snapshot);
 
     aegis2d::net::TcpListener listener_;
     aegis2d::net::UdpSocket socket_;
@@ -259,9 +394,12 @@ private:
     // What the server keeps of each bound session's datagrams, by token.
     struct Peer {
         aegis2d::net::ReliableChannel channel;
+        // Sequence of the last Input passed on (InputRecord::sequence).
         std::optional<std::uint16_t> last_input;
         // When its last valid datagram arrived, for the UDP timeout.
         Clock::time_point heard = Clock::now();
+        aegis2d::net::TrafficCounters traffic;
+        SnapshotHistory snapshots;
     };
     std::unordered_map<std::uint32_t, Peer> peers_;
     PlayerHandler joined_;
@@ -276,9 +414,13 @@ private:
     std::uint64_t errors_ = 0;
     RateLimits limits_;
     RateLimiter limiter_{limits_.datagrams_per_second};
+    const Scoreboard* scores_ = nullptr;
+    BanList* bans_ = nullptr;
     DropReport drops_;
     std::uint64_t rate_limited_ = 0;
     std::uint64_t refused_connections_ = 0;
+    std::optional<std::size_t> compression_;
+    std::optional<Clock::time_point> next_traffic_report_;
 };
 
 } // namespace rtype

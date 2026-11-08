@@ -9,8 +9,10 @@
 #include <cstdint>
 #include <format>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace rtype {
@@ -27,6 +29,26 @@ net::Endpoint address_of(const net::Endpoint& endpoint) noexcept {
     std::array<std::uint8_t, 4> address{};
     std::ranges::copy(bytes.first(address.size()), address.begin());
     return net::Endpoint::v4(address, 0);
+}
+
+bool ChatRate::allow(Clock::time_point now) noexcept {
+    if (!since_) {
+        since_ = now;
+    }
+    const auto back = (now - *since_) / refill;
+    if (std::cmp_greater_equal(back, burst - tokens_)) {
+        // Full again: the next message to come back counts from now.
+        tokens_ = burst;
+        since_ = now;
+    } else {
+        tokens_ += static_cast<std::uint32_t>(back);
+        *since_ += back * refill;
+    }
+    if (tokens_ == 0) {
+        return false;
+    }
+    --tokens_;
+    return true;
 }
 
 RateLimiter::RateLimiter(std::uint32_t per_second) noexcept : per_second_{per_second} {}

@@ -87,6 +87,11 @@ Both binaries accept `--version`, which prints the version and exits. The server
 | `--udp-port <port>` | `4243` | UDP port of the game |
 | `--waves <file>` | `assets/waves/stage1.json` | Enemy waves to play |
 | `--max-packet-rate <n>` | `300` | UDP datagrams accepted per second from one IP address (1 to 100000) |
+| `--compress <bytes>` | off | Sends the snapshots and events of at least that many bytes (1 to 1182) compressed with LZ4 when that makes them smaller |
+| `--max-rooms <count>` | `4` | Games played at once, 4 players in each (1 to 64): a room opens with its first player and closes with its last |
+| `--scores <file.json>` | `scores.json` | Where the 10 best scores are kept across runs, in the folder the server runs from by default |
+| `--bans <file.json>` | `bans.json` | Where the addresses banned with `ban` are kept across runs (`{"bans": ["203.0.113.7"]}`); remove one from the file to lift its ban |
+| `--trace <file.json>` | off | Times every tick of every room, its systems and the sending of its snapshots and events, and writes them to the file when the server stops, in the Chrome trace format: open it in [Perfetto](https://ui.perfetto.dev) to see the ticks on a timeline, a track per room |
 | `--help` | | Prints the usage and exits |
 
 A port is a number from 0 to 65535; 0 lets the system pick a free one, printed at start. A
@@ -99,17 +104,29 @@ closed, so a flood does not slow the game. Dropped datagrams are summed up in th
 most every 10 seconds per address (`UDP: 203.0.113.7: 1150 dropped in 10 s (1150 rate
 limit)`), never one line per datagram.
 
+Every 10 seconds the server also logs the traffic of each player: datagrams and bytes per
+second over the last whole second, by packet type, the bytes since the player joined, and
+the round trip time with its jitter (`UDP: player 0 sends 21 datagrams/s, 3420 B/s
+(snapshots 20, events 1), receives 60 datagrams/s, 1140 B/s (inputs 60, events 0,
+heartbeats 0); 41200 B sent and 13600 B received in all; round trip 203 ms (jitter 1 ms)`).
+Bytes count the datagrams with their 18-byte header, without the IP and UDP headers. The
+round trip is measured from the acknowledgements the datagrams already carry, smoothed like
+TCP's. Each sample also holds the time the client waits before its next `Input`, up to
+17 ms; the client's own estimate, the time the server waits before its next snapshot.
+
 Ctrl+C (SIGINT) or SIGTERM stops the server cleanly: every player gets `Logout` with the
 reason `Shutdown`, each connection closes once it has left (1 second at most), then the
 server exits with status 0. A second Ctrl+C quits at once, with status 130.
 
-For now the server creates a game, loads its waves, lists its systems, then listens on both
-ports until stopped with Ctrl+C. Up to 4 players log in over TCP (`LoginRequest`, then
-`LoginAccepted` with a session token, or `LoginRejected`), then bind their UDP endpoint
-with a `Connect` answered by `Accept`, as section 3 of the protocol RFC specifies. A bound
-player joins the game with the ship of its player number, and leaves it when its session
-ends; when the last one leaves, a fresh game waits for the next players. The game runs on
-its own thread at 60 ticks per second, with or without players, and logs its measured rate
+For now the server loads its waves, lists the systems of a game, then listens on both ports
+until stopped with Ctrl+C. Players log in over TCP (`LoginRequest`, then `LoginAccepted` with
+a session token, or `LoginRejected`), up to 4 per room, then bind their UDP endpoint with a
+`Connect` answered by `Accept`, as section 3 of the protocol RFC specifies; a logged-in
+client may also list the rooms and create one (section 3.6), join or leave one and start its
+game once its players are ready (section 3.7). A bound player joins the game of
+its room with the ship of its player number, and leaves it when its session ends; when the
+last one leaves, the room closes, and its next players get a fresh game. Each game runs on
+its own thread at 60 ticks per second while it has players, and logs its measured rate
 every 10 seconds (`simulation: 600 ticks in 10.0 s (60.0 Hz)`). The most recent `Input` of
 each player steers its ship; `Heartbeat` keeps the session acknowledged and `Disconnect`
 ends it. A client whose TCP connection closes, even a killed process, leaves the game at
@@ -125,6 +142,27 @@ are acknowledged, the events of the game: each entity that appears (a shot is th
 of its missile) or disappears, and each life lost; a player who joins first gets every
 entity already there.
 
+#### Admin console
+
+While it runs, the server reads commands on its standard input, one per line, and prints
+their answer:
+
+| Command | Does |
+|---|---|
+| `rooms` | Lists the rooms in use: their number, name, players and whether they play |
+| `players` | Lists every player: its room and number, or the lobby, and the address it plays from |
+| `say <text>` | Sends a message of the server to every player, shown as the server's in their chat |
+| `close <room>` | Ends the sessions of a room: its players are told the administrator closed it |
+| `kick <player>` | Ends the session of a player: it is told why, the others that it was removed |
+| `ban <player>` | The same, and its IP address cannot log in again, even after a restart (`--bans`) |
+| `stop` | Stops the server, telling the players, as Ctrl+C does |
+| `help`, `help <command>` | Lists the commands, or tells how to use one |
+
+A wrong command, a missing argument or one that cannot be done (`close 3` for a room not in
+use, a text over 200 bytes) says why and changes nothing. The console is not on the
+network: using it takes access to the machine and the terminal of the server (or `tmux`
+for a server left running).
+
 The client opens a window on its connect screen, filled with `--host <address>` (a
 numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <tcp port>`
 (`4242`) and `--name <player name>` (`player`); Enter joins, and `--join` joins at once.
@@ -133,6 +171,96 @@ numeric IPv4 or IPv6 address, or `localhost`; `127.0.0.1` by default), `--port <
 ```bash
 ./build/linux-debug/r-type_client --host 127.0.0.1 --port 4242 --name R9
 ```
+
+### Bots
+
+`r-type_bot` is a player without a window: it joins a server as the client does, then
+holds random inputs (a direction or none on each axis, Fire most of the time, each for 150
+to 900 ms), or replays a script of inputs, one `Input` per tick. One process can run several
+bots. It needs no SDL nor OpenGL, so every preset builds it,
+the `server` one included; it serves load and network tests.
+
+```bash
+./build/linux-debug/r-type_bot --port 4242 --name B1 --seconds 60
+./build/linux-debug/r-type_bot --count 4 --seconds 30   # fills a game for a stage
+./build/linux-debug/r-type_bot --count 2 --inputs tools/bot/dodge.txt
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--host <address>` | `127.0.0.1` | Server, as for the client |
+| `--port <tcp port>` | `4242` | TCP port of the server |
+| `--name <player name>` | `bot` | Player name; two processes on one server need two names |
+| `--count <n>` | `1` | Bots run by the process, 1 to 64, named `<name>1`, `<name>2`...; a server takes 4 |
+| `--inputs <file>` | random inputs | Script replayed by every bot, from its start in game, in a loop |
+| `--seconds <n>` | until Ctrl+C | Play time once in game, then leave |
+| `--seed <n>` | drawn at start | Seed of the random inputs: the same seed holds the same inputs; with `--count`, bot `i` takes seed + i - 1 |
+| `--stats <file>` | | CSV written at the end, one line per bot that played (below) |
+| `--help`, `--version` | | Prints the usage or the version and exits |
+
+An input script holds one step per line, a duration in milliseconds then the actions held:
+`U`, `D`, `L`, `R`, `F` (up, down, left, right, fire) or `-` for none; blank lines and lines
+starting with `#` are skipped. [`tools/bot/dodge.txt`](https://github.com/Aegis2D-Dev/project-rtype/blob/develop/tools/bot/dodge.txt)
+moves forward, dodges while firing, then falls back:
+
+```text
+600 RF
+400 UF
+400 DF
+300 -
+```
+
+It prints its seed (or script) at start, then the player each bot plays (`bot1 joined
+127.0.0.1:4242 as player 1`), and when they leave, what each exchanged (`bot1 left after
+30.0 s: 1801 inputs sent (57 holds), 600 snapshots received`). Each bot leaves with
+`Logout` after `--seconds` in game, or all of them at Ctrl+C (SIGINT) or SIGTERM; the
+process exits with status 0, 1 when a bot cannot join or loses the server (the others play
+on), when the script cannot be read, and 2 on a bad command line.
+
+With `--stats`, each bot that played measures its link when it leaves: `bot`, `seconds` in
+game, `inputs_sent`, `snapshots` received, `bytes_in_per_s` and `bytes_out_per_s` (the
+datagrams with their 18-byte header, averaged over the game), `rtt_ms` and
+`rtt_jitter_ms` (the smoothed round trip time at the end), and over the last 2 seconds
+`loss_percent` (the server's datagrams lost) and `snapshot_jitter_ms`.
+
+### Network benchmark
+
+`tools/net_benchmark.py` measures the game's network under the conditions players meet:
+it starts `r-type_server`, then for each profile degrades the server's two ports on `lo`
+with the engine's `tools/netem.sh`, plays `r-type_bot --count 4 --seconds 30 --stats`, and
+writes one line per profile, the mean of the four bots, to
+`docs/network-benchmark/<machine>.csv`, under a `--label` (`baseline` by default, then the
+name of each optimization): a run replaces the lines of its label and keeps the others.
+One command measures every profile, another publishes the results on the
+[Network benchmark](network-benchmark.md) page:
+
+```bash
+python3 tools/net_benchmark.py run --build build/linux-release --name "Arch, Ryzen 7"
+python3 tools/net_benchmark.py report
+```
+
+| Profile | netem on each packet | Loss |
+|---|---|---|
+| `lan` | nothing | 0 % |
+| `50ms` | 50 ms | 0 % |
+| `150ms-2%` | 150 ms | 2 % |
+| `300ms-5%` | 300 ms | 5 % |
+
+netem delays each packet, so on `lo` each direction: the round trip grows by twice the
+delay, and a datagram is lost with the given chance each way. Changing the queues of `lo`
+needs root, so the script runs `netem.sh` with `sudo` (it asks for the password once) and
+removes the rules after each profile, even after an error; the `lan` profile needs no
+root. `--profiles lan,50ms` picks some, `--bots`, `--seconds` change the game, `--netem`
+gives `netem.sh` when the build tree was not configured from the engine's sources, and
+`--dry-run` prints the `tc` commands without degrading anything (nothing is written then,
+unless `--output` names a file). `--compress <bytes>` starts the server with that option, to
+measure the game with and without compression under two labels.
+
+The CSV has, per profile: `machine`, `os`, `label`, `profile`, `delay_ms`, `loss_set_percent`,
+`bots`, `seconds`, then the means of the bots' `--stats` columns (`bytes_in_per_s`,
+`bytes_out_per_s`, `rtt_ms`, `rtt_jitter_ms`, `loss_percent`, `snapshot_jitter_ms`), and
+`corrections`, empty until the client predicts its own ship and counts the corrections of
+the server. Only the standard library of Python 3.10 or newer is needed.
 
 ## Documentation
 

@@ -6,7 +6,8 @@
 namespace rtype {
 
 /// @brief One bit per kind of entity, for `ecs::Collider::layer` and `ecs::Collider::mask`.
-/// @details Players and their missiles never hit each other (no friendly fire), enemies
+/// @details Players and their missiles never hit each other, unless the room plays with
+/// friendly fire (GameRules::friendly_fire: player missiles then hit `player` too); enemies
 /// ignore enemies and their missiles:
 ///
 /// | Layer | Hits (mask) |

@@ -4,6 +4,7 @@
 #include <rtype/rate_limit.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -63,4 +64,26 @@ TEST_CASE("dropped datagrams are summed up every 10 seconds per address", "[serv
 
     // Counted again from the next drop.
     CHECK(report.count(flooder, "rate limit", start + 20s));
+}
+
+TEST_CASE("a session chats 5 messages at once, then 1 more per second", "[server][rate][chat]") {
+    using Clock = rtype::ChatRate::Clock;
+    rtype::ChatRate rate;
+    const Clock::time_point start{};
+    for (std::uint32_t message = 0; message < rtype::ChatRate::burst; ++message) {
+        CHECK(rate.allow(start));
+    }
+    // The sixth is a flood, and a refused message does not count.
+    CHECK(!rate.allow(start));
+    CHECK(!rate.allow(start + std::chrono::milliseconds{999}));
+    CHECK(rate.allow(start + std::chrono::seconds{1}));
+    CHECK(!rate.allow(start + std::chrono::milliseconds{1500}));
+    CHECK(rate.allow(start + std::chrono::seconds{2}));
+
+    // After a long silence, 5 at once again, not more.
+    const Clock::time_point later = start + std::chrono::minutes{1};
+    for (std::uint32_t message = 0; message < rtype::ChatRate::burst; ++message) {
+        CHECK(rate.allow(later));
+    }
+    CHECK(!rate.allow(later));
 }

@@ -2,9 +2,11 @@
 #include <aegis2d/ecs/collision.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/ecs/registry.hpp>
+#include <aegis2d/shmup/components.hpp>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/entities.hpp>
 #include <rtype/layers.hpp>
 #include <rtype/tuning.hpp>
@@ -16,7 +18,6 @@
 #include <vector>
 
 using aegis2d::Vec2;
-using aegis2d::ecs::AutoTrigger;
 using aegis2d::ecs::Collider;
 using aegis2d::ecs::CollisionGrid;
 using aegis2d::ecs::Contact;
@@ -32,16 +33,21 @@ using aegis2d::ecs::Owner;
 using aegis2d::ecs::Registry;
 using aegis2d::ecs::Score;
 using aegis2d::ecs::ScoreValue;
-using aegis2d::ecs::SineMotion;
+using aegis2d::ecs::Sprite;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::Velocity;
-using aegis2d::ecs::Weapon;
+using aegis2d::shmup::AutoTrigger;
+using aegis2d::shmup::Weapon;
 using Catch::Approx;
 namespace layer = rtype::layer;
 namespace mask = rtype::mask;
 namespace tuning = rtype::tuning;
 
 namespace {
+
+// Values of assets/enemies/bydos_slave.lua that only its behavior knows.
+constexpr float bydos_speed = 120.0F;
+constexpr float bydos_amplitude = 48.0F;
 
 std::vector<Contact> contacts_of(Registry& registry) {
     CollisionGrid grid{Vec2{tuning::area_width, tuning::area_height}, tuning::collision_cell};
@@ -104,42 +110,31 @@ TEST_CASE("a player missile leaves the nose of its shooter", "[rtype][entities]"
 
 TEST_CASE("Bydos slaves and enemy missiles fly left", "[rtype][entities]") {
     Registry registry;
-    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F});
+    rtype::EnemyScripts scripts{registry};
+    const Entity bydos = scripts.spawn("bydos_slave", Vec2{1200.0F, 300.0F});
     const Entity bullet = rtype::spawn_enemy_missile(registry, Vec2{1100.0F, 300.0F});
-    CHECK(registry.get<Velocity>(bydos).value.x < 0.0F);
+    CHECK(registry.get<Velocity>(bydos).value == Vec2{-bydos_speed, 0.0F});
     CHECK(registry.get<Velocity>(bullet).value.x < 0.0F);
-    CHECK(registry.get<ScoreValue>(bydos).points == tuning::bydos_score);
-    CHECK(registry.get<Health>(bydos).points == tuning::bydos_health);
+    CHECK(registry.get<ScoreValue>(bydos).points == 100);
+    CHECK(registry.get<Health>(bydos).points == 1);
     CHECK_FALSE(registry.has<Health>(bullet));
     CHECK(registry.has<OffscreenDespawn>(bydos));
     CHECK(registry.has<OffscreenDespawn>(bullet));
-    CHECK_FALSE(registry.has<SineMotion>(bullet));
-}
-
-TEST_CASE("Bydos slaves weave up first, within the despawn margin", "[rtype][entities][135]") {
-    Registry registry;
-    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F});
-    const SineMotion& wave = registry.get<SineMotion>(bydos);
-    CHECK(wave.amplitude == Vec2{0.0F, -tuning::bydos_wave_amplitude});
-    CHECK(wave.period == tuning::bydos_wave_period);
-    CHECK(wave.elapsed == 0.0F);
-    CHECK(registry.get<Velocity>(bydos).value.y == 0.0F);
-    STATIC_CHECK(tuning::bydos_wave_amplitude <= tuning::despawn_margin);
+    CHECK(registry.get<Sprite>(bydos).size == tuning::bydos_size);
+    CHECK(registry.get<Collider>(bydos).size == tuning::bydos_size);
 }
 
 TEST_CASE("a Bydos spawned further along its wave is placed on it", "[rtype][entities][136]") {
     Registry registry;
+    rtype::EnemyScripts scripts{registry};
     const Vec2 line{1296.0F, 300.0F};
-    const float quarter = tuning::bydos_wave_period / 4.0F;
-    const Entity crest = rtype::spawn_bydos_slave(registry, line, quarter);
+    const Entity crest = scripts.spawn("bydos_slave", line, 0.25F);
     CHECK(registry.get<Transform>(crest).position.x == line.x);
-    CHECK(registry.get<Transform>(crest).position.y ==
-          Approx(line.y - tuning::bydos_wave_amplitude));
-    CHECK(registry.get<SineMotion>(crest).elapsed == quarter);
-    CHECK(registry.get<Transform>(rtype::spawn_bydos_slave(registry, line)).position == line);
-    STATIC_CHECK(tuning::bydos_lane_top - tuning::bydos_wave_amplitude ==
-                 tuning::bydos_size.y / 2.0F);
-    STATIC_CHECK(tuning::bydos_lane_bottom + tuning::bydos_wave_amplitude ==
+    CHECK(registry.get<Transform>(crest).position.y == Approx(line.y - bydos_amplitude));
+    CHECK(registry.get<Transform>(scripts.spawn("bydos_slave", line)).position == line);
+    STATIC_CHECK(bydos_amplitude == tuning::bydos_lane_margin);
+    STATIC_CHECK(tuning::bydos_lane_top - tuning::bydos_lane_margin == tuning::bydos_size.y / 2.0F);
+    STATIC_CHECK(tuning::bydos_lane_bottom + tuning::bydos_lane_margin ==
                  tuning::area_height - (tuning::bydos_size.y / 2.0F));
 }
 
@@ -172,8 +167,9 @@ TEST_CASE("missiles hit only their targets and enemies ignore enemies", "[rtype]
     registry.get<Transform>(two).position = spot;
     const Entity missile = rtype::spawn_player_missile(registry, one);
     registry.get<Transform>(missile).position = spot;
-    const Entity bydos = rtype::spawn_bydos_slave(registry, spot);
-    const Entity other_bydos = rtype::spawn_bydos_slave(registry, spot);
+    rtype::EnemyScripts scripts{registry};
+    const Entity bydos = scripts.spawn("bydos_slave", spot);
+    const Entity other_bydos = scripts.spawn("bydos_slave", spot);
     const Entity bullet = rtype::spawn_enemy_missile(registry, spot);
 
     const std::vector<Contact> contacts = contacts_of(registry);
@@ -192,19 +188,22 @@ TEST_CASE("missiles hit only their targets and enemies ignore enemies", "[rtype]
 
 TEST_CASE("Bydos slaves fire on their own, after a first delay", "[rtype][entities][137]") {
     Registry registry;
-    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F});
+    rtype::EnemyScripts scripts{registry};
+    const rtype::EnemyType& type = *scripts.find("bydos_slave");
+    const Entity bydos = scripts.spawn("bydos_slave", Vec2{1200.0F, 300.0F});
     CHECK(registry.has<AutoTrigger>(bydos));
-    CHECK(registry.get<Weapon>(bydos).cooldown == tuning::bydos_fire_cooldown);
-    CHECK(registry.get<Weapon>(bydos).reload == tuning::bydos_first_shot);
-    const Entity later = rtype::spawn_bydos_slave(registry, Vec2{1200.0F, 300.0F}, 0.0F, 2.5F);
-    CHECK(registry.get<Weapon>(later).reload == 2.5F);
-    STATIC_CHECK(tuning::bydos_first_shot * tuning::bydos_speed >
-                 tuning::bydos_spawn_x - tuning::area_width + tuning::bydos_size.x);
+    CHECK(registry.get<Weapon>(bydos).cooldown == type.fire_every);
+    CHECK(registry.get<Weapon>(bydos).reload == type.first_shot);
+    const Entity later = scripts.spawn("bydos_slave", Vec2{1200.0F, 300.0F}, 0.0F, 1.5F);
+    CHECK(registry.get<Weapon>(later).reload == type.first_shot + 1.5F);
+    CHECK(type.first_shot * bydos_speed >
+          tuning::bydos_spawn_x - tuning::area_width + tuning::bydos_size.x);
 }
 
 TEST_CASE("an enemy fires its missile from its left side", "[rtype][entities][137]") {
     Registry registry;
-    const Entity bydos = rtype::spawn_bydos_slave(registry, Vec2{900.0F, 200.0F});
+    rtype::EnemyScripts scripts{registry};
+    const Entity bydos = scripts.spawn("bydos_slave", Vec2{900.0F, 200.0F});
     const Entity missile = rtype::fire_enemy_missile(registry, bydos);
     const float nose = (tuning::bydos_size.x + tuning::enemy_missile_size.x) / 2.0F;
     CHECK(registry.get<Transform>(missile).position == Vec2{900.0F - nose, 200.0F});

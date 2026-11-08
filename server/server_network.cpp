@@ -1,26 +1,40 @@
 #include <aegis2d/core/log.hpp>
 #include <aegis2d/ecs/components.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/sequence.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/sessions.hpp>
+#include <rtype/snapshot.hpp>
+#include <rtype/snapshot_history.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <format>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -37,8 +51,17 @@ namespace ecs = aegis2d::ecs;
 
 namespace {
 
-// Bits 0 to 4 of an Input: up, down, left, right, fire (RFC section 4.2).
-constexpr std::uint8_t valid_actions = 0x1FU;
+// "round trip 203 ms (jitter 4 ms)", in whole milliseconds, or that none was measured yet.
+std::string describe_rtt(const net::RttEstimator& rtt) {
+    if (!rtt.has_estimate()) {
+        return "no round trip measured yet";
+    }
+    using std::chrono::duration_cast;
+    using std::chrono::milliseconds;
+    return std::format("round trip {} ms (jitter {} ms)",
+                       duration_cast<milliseconds>(rtt.smoothed()).count(),
+                       duration_cast<milliseconds>(rtt.jitter()).count());
+}
 
 // Runs the handling of one packet; an exception is logged and reported, never let out, so a
 // client can only break its own session (RFC section 6.6).
@@ -59,6 +82,26 @@ bool contained(std::string_view what, Handling&& handling) noexcept {
         }
     }
     return false;
+}
+
+// A datagram written by ReliableChannel, its payload compressed when that pays (RFC 2.6).
+net::BinaryWriter compressed(std::span<const std::byte> datagram,
+                             std::optional<std::size_t> threshold) {
+    net::BinaryReader reader{datagram};
+    const std::variant<net::PacketHeader, net::HeaderError> read = net::read_header(reader);
+    net::BinaryWriter writer;
+    if (const auto* const header = std::get_if<net::PacketHeader>(&read)) {
+        net::write_datagram(writer, *header, datagram.subspan(net::PacketHeader::size), threshold);
+    } else {
+        writer.write_bytes(datagram);
+    }
+    return writer;
+}
+
+// The bytes of a payload not read yet.
+std::span<const std::byte> rest_of(net::BinaryReader& payload) {
+    const std::optional<std::span<const std::byte>> rest = payload.read_bytes(payload.remaining());
+    return rest.value_or(std::span<const std::byte>{});
 }
 
 } // namespace
@@ -102,6 +145,17 @@ void ServerNetwork::on_datagram(const net::Endpoint& from, std::span<const std::
         drop(from, datagram, "wrong direction");
         return;
     }
+    // RFC section 2.6: a compressed payload is decompressed before anything reads it.
+    std::vector<std::byte> decompressed;
+    if (header.compressed) {
+        std::optional<std::vector<std::byte>> payload = net::read_payload(header, reader);
+        if (!payload) {
+            drop(from, datagram, "malformed compressed payload");
+            return;
+        }
+        decompressed = std::move(payload).value_or(std::vector<std::byte>{});
+        reader = net::BinaryReader{decompressed};
+    }
     if (header.type == net::PacketType::Connect) {
         on_connect(from, datagram, header, reader);
         return;
@@ -126,23 +180,29 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
     Peer& peer = peers_[session.token];
     switch (header.type) {
     case net::PacketType::Input: {
-        // One byte of held actions, bits 5 to 7 clear (RFC section 4.2).
-        const std::optional<std::uint8_t> actions = payload.read_u8();
-        if (!actions || !payload.at_end() || (*actions & ~valid_actions) != 0U) {
+        // The newest input and up to 3 before it, each one byte of held actions with bits 5
+        // to 7 clear (RFC section 4.2).
+        const std::optional<std::vector<InputRecord>> read = read_inputs(rest_of(payload));
+        if (!read) {
             drop(from, datagram, "malformed Input");
             return;
         }
-        const bool fresh = peer.channel.receive(header);
         peer.heard = Clock::now();
+        peer.channel.receive(header, peer.heard);
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
-        // Only the most recent Input counts: a late or duplicated one is ignored.
-        if (!fresh ||
-            (peer.last_input && !net::sequence_greater_than(header.sequence, *peer.last_input))) {
-            return;
-        }
-        peer.last_input = header.sequence;
-        if (input_) {
-            input_(session, ecs::PlayerInput{.held = *actions});
+        // Oldest first, each input not applied yet, by its own sequence: those of a lost
+        // datagram arrive with the next ones, those already applied are ignored.
+        for (const InputRecord& input : read.value_or(std::vector<InputRecord>{})) {
+            if (const std::optional<std::uint16_t> last = peer.last_input;
+                last && !net::sequence_greater_than(input.sequence, *last)) {
+                continue;
+            }
+            peer.last_input = input.sequence;
+            if (input_) {
+                input_(session, ecs::PlayerInput{.held = input.actions}, input.sequence);
+            }
         }
         return;
     }
@@ -150,11 +210,14 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
         // Only the server sends events in version 1: their framing is checked, they are
         // acknowledged and ignored (RFC section 6.4).
         std::vector<std::vector<std::byte>> events;
-        if (!peer.channel.read_events(header, payload, events)) {
+        const auto now = Clock::now();
+        if (!peer.channel.read_events(header, payload, events, now)) {
             drop(from, datagram, "malformed Event");
             return;
         }
-        peer.heard = Clock::now();
+        peer.heard = now;
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         return;
     }
@@ -166,8 +229,10 @@ void ServerNetwork::on_game_datagram(const Session& session, const net::Endpoint
                                                            : "malformed Disconnect");
             return;
         }
-        peer.channel.receive(header);
         peer.heard = Clock::now();
+        peer.channel.receive(header, peer.heard);
+        peer.snapshots.acknowledge(header.ack, header.ack_bits);
+        peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
         ++game_datagrams_;
         if (header.type == net::PacketType::Disconnect) {
             // The client leaves (RFC section 5.5): its session ends, TCP connection included.
@@ -195,12 +260,18 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     case BindResult::Taken:
         drop(from, datagram, "session or endpoint bound already");
         return;
+    case BindResult::NoRoom:
+        drop(from, datagram, "session in the lobby");
+        return;
     case BindResult::Bound: {
         const Session& session = *sessions_.find(header.session);
-        core::log_info("UDP: player {} plays from {}", session.player, from.to_string());
+        core::log_info("UDP: player {} of room {} plays from {}", session.player, session.room,
+                       from.to_string());
+        const std::uint32_t room = session.room;
         if (joined_) {
             joined_(session);
         }
+        announce_room(room);
         break;
     }
     case BindResult::AlreadyBound:
@@ -209,11 +280,16 @@ void ServerNetwork::on_connect(const net::Endpoint& from, std::span<const std::b
     // The first Accept may be lost: each Connect from the bound endpoint gets one.
     Peer& peer = peers_[header.session];
     peer.heard = Clock::now();
+    peer.traffic.record(net::Direction::Received, header.type, datagram.size(), peer.heard);
     net::ReliableChannel& channel = peer.channel;
-    channel.receive(header);
+    channel.receive(header, peer.heard);
+    peer.snapshots.acknowledge(header.ack, header.ack_bits);
     net::BinaryWriter writer;
-    net::write_header(writer, channel.next_header(net::PacketType::Accept, header.session));
+    net::write_header(writer,
+                      channel.next_header(net::PacketType::Accept, header.session, peer.heard));
     socket_.send_to(from, writer.data());
+    peer.traffic.record(net::Direction::Sent, net::PacketType::Accept, writer.data().size(),
+                        peer.heard);
 }
 
 // Never answered (RFC section 6.1), and only logged at the debug level (section 6.7).
@@ -246,49 +322,167 @@ void ServerNetwork::on_players(PlayerHandler joined, LeaveHandler left) {
     left_ = std::move(left);
 }
 
-void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads) {
+void ServerNetwork::send_snapshot(std::span<const std::vector<std::byte>> payloads,
+                                  std::uint32_t room,
+                                  const std::shared_ptr<const Snapshot>& snapshot) {
+    send_snapshot(
+        [payloads](const SnapshotHistory&) {
+            return std::vector<std::vector<std::byte>>{payloads.begin(), payloads.end()};
+        },
+        room, snapshot);
+}
+
+void ServerNetwork::send_snapshot(const std::shared_ptr<const Snapshot>& snapshot,
+                                  std::uint32_t room) {
+    if (!snapshot) {
+        return;
+    }
+    send_snapshot(
+        [&snapshot](const SnapshotHistory& history) {
+            const Snapshot* baseline = history.latest_acknowledged();
+            if (baseline != nullptr && baseline->tick >= snapshot->tick) {
+                baseline = nullptr;
+            }
+            return write_delta_snapshot(*snapshot, baseline);
+        },
+        room, snapshot);
+}
+
+void ServerNetwork::send_snapshot(
+    const std::function<std::vector<std::vector<std::byte>>(const SnapshotHistory&)>& encode,
+    std::uint32_t room, const std::shared_ptr<const Snapshot>& snapshot) {
+    const auto now = Clock::now();
     for (auto& [token, peer] : peers_) {
         const Session* const session = sessions_.find(token);
-        if (session == nullptr) {
+        if (session == nullptr || session->room != room) {
             continue;
         }
         if (!session->endpoint.has_value()) {
             continue;
         }
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
-        for (const std::vector<std::byte>& payload : payloads) {
+        std::vector<std::uint16_t> sequences;
+        for (const std::vector<std::byte>& payload : encode(peer.snapshots)) {
             net::BinaryWriter writer;
-            net::write_header(writer, peer.channel.next_header(net::PacketType::Snapshot, token));
-            writer.write_bytes(payload);
+            const net::PacketHeader header =
+                peer.channel.next_header(net::PacketType::Snapshot, token, now);
+            sequences.push_back(header.sequence);
+            net::write_datagram(writer, header, payload, compression_);
             socket_.send_to(endpoint, writer.data());
+            peer.traffic.record(net::Direction::Sent, net::PacketType::Snapshot,
+                                writer.data().size(), now);
             ++snapshots_sent_;
         }
+        if (snapshot) {
+            peer.snapshots.sent(snapshot, sequences);
+        }
     }
+}
+
+void ServerNetwork::set_compression(std::optional<std::size_t> threshold) noexcept {
+    compression_ = threshold;
+}
+
+std::variant<std::size_t, ChatRejection> ServerNetwork::say(std::string_view text) {
+    if (const std::optional<ChatRejection> rejection = check_chat_text(text)) {
+        return *rejection;
+    }
+    const std::vector<std::byte> message = write_chat_message(ChatMessage{
+        .player = server_player, .name = std::string{server_name}, .text = std::string{text}});
+    std::size_t sent = 0;
+    for (auto& [id, client] : clients_) {
+        if (client.token && !client.closed && !client.close_when_sent) {
+            send(client, message);
+            ++sent;
+        }
+    }
+    return sent;
+}
+
+std::size_t ServerNetwork::close_room(std::uint32_t room) {
+    // Collected first: ending a session changes the room.
+    std::vector<std::uint32_t> tokens;
+    for (const Session& member : sessions_.members(room)) {
+        tokens.push_back(member.token);
+    }
+    for (const std::uint32_t token : tokens) {
+        end_with_logout(token, LogoutReason::RoomClosed, LeaveReason::Kicked);
+    }
+    if (!tokens.empty()) {
+        core::log_info("TCP: room {} closed by the administrator, {} sessions ended", room,
+                       tokens.size());
+    }
+    return tokens.size();
+}
+
+std::optional<net::Endpoint> ServerNetwork::remove_player(std::string_view name,
+                                                          LogoutReason reason) {
+    std::optional<std::uint32_t> token;
+    std::optional<net::Endpoint> address;
+    for (auto& [id, client] : clients_) {
+        const Session* const session =
+            client.token && !client.closed ? sessions_.find(*client.token) : nullptr;
+        if (session != nullptr && session->name == name) {
+            token = session->token;
+            address = client.connection.remote_endpoint();
+            break;
+        }
+    }
+    if (!token) {
+        return std::nullopt;
+    }
+    end_with_logout(*token, reason, LeaveReason::Kicked);
+    const std::string_view what = reason == LogoutReason::Banned ? "banned" : "removed";
+    // The name passed valid_player_name(): no control character reaches the log.
+    core::log_info("TCP: {} {} by the administrator", name, what);
+    static_cast<void>(say(std::format("{} was {} by the administrator", name, what)));
+    return address;
+}
+
+void ServerNetwork::set_bans(BanList* bans) noexcept {
+    bans_ = bans;
+}
+
+BanList* ServerNetwork::bans() const noexcept {
+    return bans_;
+}
+
+void ServerNetwork::set_scoreboard(const Scoreboard* board) noexcept {
+    scores_ = board;
+}
+
+void ServerNetwork::set_waves(std::vector<std::string> names) {
+    sessions_.set_waves(std::move(names));
+}
+
+std::optional<std::size_t> ServerNetwork::compression() const noexcept {
+    return compression_;
 }
 
 std::uint64_t ServerNetwork::snapshots_sent() const noexcept {
     return snapshots_sent_;
 }
 
-void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events,
+void ServerNetwork::send_events(std::span<const std::vector<std::byte>> events, std::uint32_t room,
                                 std::optional<std::uint32_t> token) {
-    queue_events(events, [&](std::uint32_t peer) { return !token || *token == peer; });
+    queue_events(events, [&](const Session& session) {
+        return session.room == room && (!token || *token == session.token);
+    });
 }
 
 void ServerNetwork::send_events_to_others(std::span<const std::vector<std::byte>> events,
-                                          std::uint32_t token) {
-    queue_events(events, [&](std::uint32_t peer) { return peer != token; });
+                                          std::uint32_t room, std::uint32_t token) {
+    queue_events(events, [&](const Session& session) {
+        return session.room == room && session.token != token;
+    });
 }
 
 void ServerNetwork::queue_events(std::span<const std::vector<std::byte>> events,
-                                 const std::function<bool(std::uint32_t token)>& receives) {
+                                 const std::function<bool(const Session& session)>& receives) {
     std::vector<std::uint32_t> lost;
     for (auto& [peer_token, peer] : peers_) {
-        if (!receives(peer_token)) {
-            continue;
-        }
         const Session* const session = sessions_.find(peer_token);
-        if (session == nullptr || !session->endpoint) {
+        if (session == nullptr || !session->endpoint || !receives(*session)) {
             continue;
         }
         for (const std::vector<std::byte>& event : events) {
@@ -321,11 +515,14 @@ void ServerNetwork::flush_events(Clock::time_point now) {
         }
         const net::Endpoint endpoint = session->endpoint.value_or(net::Endpoint{});
         while (peer.channel.has_due_events(now)) {
-            net::BinaryWriter writer;
-            if (peer.channel.write_events(writer, token, now) == 0) {
+            net::BinaryWriter events;
+            if (peer.channel.write_events(events, token, now) == 0) {
                 break;
             }
+            const net::BinaryWriter writer = compressed(events.data(), compression_);
             socket_.send_to(endpoint, writer.data());
+            peer.traffic.record(net::Direction::Sent, net::PacketType::Event, writer.data().size(),
+                                now);
             ++event_datagrams_sent_;
         }
     }
@@ -347,12 +544,16 @@ void ServerNetwork::disconnect(std::uint32_t token, LeaveReason reason) {
 // Forgotten first, so a left handler that throws never leaves a session behind.
 void ServerNetwork::end_session(std::uint32_t token, LeaveReason reason) {
     std::optional<Session> left;
-    if (const Session* const session = sessions_.find(token);
-        session != nullptr && session->endpoint) {
-        left = *session;
+    std::uint32_t room = no_room;
+    if (const Session* const session = sessions_.find(token); session != nullptr) {
+        room = session->room;
+        if (session->endpoint) {
+            left = *session;
+        }
     }
     sessions_.end(token);
     peers_.erase(token);
+    announce_room(room);
     if (left && left_) {
         left_(*left, reason);
     }
@@ -378,7 +579,9 @@ void ServerNetwork::on_accept(net::TcpConnection connection) {
                                              .token = std::nullopt,
                                              .sent = 0,
                                              .close_when_sent = false,
-                                             .closed = false})
+                                             .closed = false,
+                                             .rooms = false,
+                                             .chat = ChatRate{}})
                          .first->second;
     // The handlers find the client by id: it may be gone when a late handler runs.
     client.connection.start(
@@ -407,7 +610,11 @@ void ServerNetwork::on_message(std::uint64_t id, std::span<const std::byte> mess
         on_login(client, message);
         return;
     }
-    // Logged in: a Logout is the only message the client may send (RFC section 3.3).
+    // Logged in: the messages of the rooms are answered, a Logout ends the session (RFC
+    // section 3.3).
+    if (on_room_message(client, message) || on_chat(client, message)) {
+        return;
+    }
     const Session* const session = sessions_.find(*client.token);
     const unsigned player = session != nullptr ? session->player : 0U;
     // Anything but a Logout is a protocol error: the player is kicked.
@@ -432,7 +639,11 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
                           : "a message other than LoginRequest first");
         return;
     }
-    const std::variant<Session, LoginRejection> result = sessions_.login(*request);
+    // A banned address is refused before anything else of its login.
+    const std::variant<Session, LoginRejection> result =
+        bans_ != nullptr && bans_->banned(client.connection.remote_endpoint())
+            ? std::variant<Session, LoginRejection>{LoginRejection::Banned}
+            : sessions_.login(*request);
     if (const auto* const rejection = std::get_if<LoginRejection>(&result)) {
         core::log_info("TCP: login from {} refused: {}",
                        client.connection.remote_endpoint().to_string(), to_string(*rejection));
@@ -443,13 +654,168 @@ void ServerNetwork::on_login(Client& client, std::span<const std::byte> message)
     const auto& session = *std::get_if<Session>(&result);
     client.token = session.token;
     // The name passed valid_player_name(): no control character reaches the log.
-    core::log_info("TCP: {} logged in as player {} ({})",
-                   client.connection.remote_endpoint().to_string(), session.player, session.name);
+    core::log_info("TCP: {} logged in as player {} of room {} ({})",
+                   client.connection.remote_endpoint().to_string(), session.player, session.room,
+                   session.name);
     send(client, write_login_accepted(LoginAccepted{
                      .session = session.token,
                      .player = session.player,
                      .udp_port = socket_.local_endpoint().port(),
                  }));
+    announce_room(session.room);
+}
+
+// RFC sections 3.6 and 3.7: the messages of the rooms, after the login; false for any other.
+bool ServerNetwork::on_room_message(Client& client, std::span<const std::byte> message) {
+    const std::uint32_t token = client.token.value_or(0);
+    // RFC section 3.9: the best scores, at any time after the login.
+    if (read_list_scores(message)) {
+        std::vector<ScoreRecord> best;
+        if (scores_ != nullptr) {
+            for (const ScoreEntry& entry : scores_->best()) {
+                best.push_back(ScoreRecord{.name = entry.name, .score = entry.score});
+            }
+        }
+        send(client, write_score_list(best));
+        return true;
+    }
+    if (read_list_rooms(message)) {
+        client.rooms = true;
+        send(client, write_room_list(sessions_.list_rooms()));
+        return true;
+    }
+    if (const std::optional<CreateRoomRequest> request = read_create_room(message)) {
+        client.rooms = true;
+        const std::variant<std::uint8_t, RoomRejection> created = sessions_.create_room(*request);
+        if (const auto* const room = std::get_if<std::uint8_t>(&created)) {
+            // The name passed valid_player_name(): no control character reaches the log.
+            core::log_info("TCP: session {:08x} created room {} ({}, {} players)", token, *room,
+                           request->name, request->max_players);
+            send(client, write_room_created(*room));
+        } else if (const auto* const rejection = std::get_if<RoomRejection>(&created)) {
+            core::log_info("TCP: session {:08x} could not create a room: {}", token,
+                           to_string(*rejection));
+            send(client, write_room_rejected(*rejection));
+        }
+        return true;
+    }
+    if (const std::optional<std::uint8_t> room = read_join_room(message)) {
+        client.rooms = true;
+        on_join(client, *room);
+        return true;
+    }
+    if (read_leave_room(message)) {
+        client.rooms = true;
+        if (const std::optional<std::uint32_t> left = sessions_.leave(token)) {
+            core::log_info("TCP: session {:08x} left room {} for the lobby", token, *left);
+            announce_room(*left);
+        }
+        return true;
+    }
+    if (const std::optional<bool> ready = read_set_ready(message)) {
+        client.rooms = true;
+        const Session* const session = sessions_.find(token);
+        if (session != nullptr && sessions_.set_ready(token, *ready)) {
+            announce_room(session->room);
+        }
+        return true;
+    }
+    return false;
+}
+
+// RFC section 3.8: a text checked, then relayed to the sessions of the sender's room (or of
+// the lobby), the sender included; false for any other message.
+bool ServerNetwork::on_chat(Client& client, std::span<const std::byte> message) {
+    const std::optional<std::string> text = read_chat_send(message);
+    if (!text) {
+        return false;
+    }
+    const Session* const sender = sessions_.find(client.token.value_or(0));
+    if (sender == nullptr) {
+        return true;
+    }
+    std::optional<ChatRejection> rejection = check_chat_text(*text);
+    if (!rejection && !client.chat.allow(Clock::now())) {
+        rejection = ChatRejection::TooFast;
+    }
+    if (rejection) {
+        // Debug only, like dropped datagrams: a flood must not become a flood of log lines.
+        core::log_debug("TCP: chat of player {} refused: {}", sender->player,
+                        to_string(*rejection));
+        send(client, write_chat_rejected(*rejection));
+        return true;
+    }
+    const std::uint32_t room = sender->room;
+    const std::vector<std::byte> relayed = write_chat_message(ChatMessage{
+        .player = room == no_room ? lobby_player : sender->player,
+        .name = sender->name,
+        .text = *text,
+    });
+    for (auto& [id, other] : clients_) {
+        if (!other.token || other.closed || other.close_when_sent) {
+            continue;
+        }
+        const Session* const session = sessions_.find(*other.token);
+        if (session != nullptr && session->room == room) {
+            send(other, relayed);
+        }
+    }
+    return true;
+}
+
+// RFC section 3.7: the session leaves its room, if it was in one, for the room it joins.
+void ServerNetwork::on_join(Client& client, std::uint8_t room) {
+    const std::uint32_t token = client.token.value_or(0);
+    const Session* const session = sessions_.find(token);
+    const std::uint32_t old = session != nullptr ? session->room : no_room;
+    const std::variant<std::uint8_t, JoinRejection> joined = sessions_.join(token, room);
+    if (const auto* const rejection = std::get_if<JoinRejection>(&joined)) {
+        core::log_info("TCP: session {:08x} could not join room {}: {}", token, room,
+                       to_string(*rejection));
+        send(client, write_join_rejected(*rejection));
+        return;
+    }
+    if (const auto* const player = std::get_if<std::uint8_t>(&joined)) {
+        core::log_info("TCP: session {:08x} joined room {} as player {}", token, room, *player);
+        send(client, write_room_joined(room, *player));
+    }
+    if (old != room) {
+        announce_room(old);
+    }
+    announce_room(room);
+}
+
+// RFC section 3.7: the players of a room and whether each is ready, to the clients of the
+// room that use the rooms and are not in game, then GameStart once all those are ready.
+void ServerNetwork::announce_room(std::uint32_t room) {
+    if (room == no_room) {
+        return;
+    }
+    RoomPlayers players{.room = static_cast<std::uint8_t>(room), .players = {}};
+    bool waiting = false;
+    bool ready = true;
+    for (const Session& member : sessions_.members(room)) {
+        players.players.push_back(
+            RoomPlayer{.player = member.player, .name = member.name, .ready = member.ready});
+        if (!member.endpoint) {
+            waiting = true;
+            ready = ready && member.ready;
+        }
+    }
+    const std::vector<std::byte> list = write_room_players(players);
+    for (auto& [id, client] : clients_) {
+        if (!client.rooms || !client.token || client.closed || client.close_when_sent) {
+            continue;
+        }
+        const Session* const session = sessions_.find(*client.token);
+        if (session == nullptr || session->room != room || session->endpoint) {
+            continue;
+        }
+        send(client, list);
+        if (waiting && ready) {
+            send(client, write_game_start());
+        }
+    }
 }
 
 void ServerNetwork::on_close(std::uint64_t id, net::TcpCloseReason reason) {
@@ -486,6 +852,9 @@ void ServerNetwork::close(Client& client, std::string_view reason) {
 }
 
 void ServerNetwork::update(Clock::time_point now) {
+    // Before the timeouts, so that a player who times out gets its last line.
+    report_traffic(now);
+
     // RFC section 5.5: a bound player silent for udp_timeout has lost its session. Ended once
     // the loop is over: ending a session erases its peer.
     std::vector<std::uint32_t> silent;
@@ -516,6 +885,58 @@ void ServerNetwork::update(Clock::time_point now) {
     for (const std::string& line : drops_.take_due(now)) {
         core::log_info("UDP: {}", line);
     }
+}
+
+// One line per bound player every traffic_report_period: its rates over the last whole
+// second, by packet type, the bytes since its endpoint was bound, and its round trip time.
+void ServerNetwork::report_traffic(Clock::time_point now) {
+    if (!next_traffic_report_) {
+        next_traffic_report_ = now + traffic_report_period;
+        return;
+    }
+    if (now < *next_traffic_report_) {
+        return;
+    }
+    next_traffic_report_ = now + traffic_report_period;
+    for (const auto& [token, peer] : peers_) {
+        const Session* const session = sessions_.find(token);
+        if (session == nullptr) {
+            continue;
+        }
+        const net::TrafficCounters& traffic = peer.traffic;
+        const net::TrafficCount sent = traffic.last_second(net::Direction::Sent, now);
+        const net::TrafficCount received = traffic.last_second(net::Direction::Received, now);
+        const auto per_second = [&](net::Direction direction, net::PacketType type) {
+            return traffic.last_second(direction, type, now).datagrams;
+        };
+        core::log_info("UDP: player {} sends {} datagrams/s, {} B/s (snapshots {}, events {}), "
+                       "receives {} datagrams/s, {} B/s (inputs {}, events {}, heartbeats {}); "
+                       "{} B sent and {} B received in all; {}",
+                       session->player, sent.datagrams, sent.bytes,
+                       per_second(net::Direction::Sent, net::PacketType::Snapshot),
+                       per_second(net::Direction::Sent, net::PacketType::Event), received.datagrams,
+                       received.bytes, per_second(net::Direction::Received, net::PacketType::Input),
+                       per_second(net::Direction::Received, net::PacketType::Event),
+                       per_second(net::Direction::Received, net::PacketType::Heartbeat),
+                       traffic.total(net::Direction::Sent).bytes,
+                       traffic.total(net::Direction::Received).bytes,
+                       describe_rtt(peer.channel.rtt()));
+    }
+}
+
+const net::TrafficCounters* ServerNetwork::traffic(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.traffic;
+}
+
+const net::RttEstimator* ServerNetwork::rtt(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.channel.rtt();
+}
+
+const SnapshotHistory* ServerNetwork::snapshots(std::uint32_t token) const {
+    const auto peer = peers_.find(token);
+    return peer == peers_.end() ? nullptr : &peer->second.snapshots;
 }
 
 net::Endpoint ServerNetwork::tcp_endpoint() const {

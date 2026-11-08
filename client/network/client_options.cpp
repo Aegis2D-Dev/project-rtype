@@ -72,8 +72,12 @@ parse_client_options(std::span<const std::string_view> args) {
             options.join = true;
             continue;
         }
+        if (arg == "--metrics") {
+            options.metrics = true;
+            continue;
+        }
         if (arg != "--host" && arg != "--port" && arg != "--name" && arg != "--settings" &&
-            arg != "--frames" && arg != "--screenshot") {
+            arg != "--frames" && arg != "--screenshot" && arg != "--edit") {
             return std::format("unknown argument \"{}\"", arg);
         }
         if (++next == args.end()) {
@@ -86,6 +90,8 @@ parse_client_options(std::span<const std::string_view> args) {
             options.settings.name = value;
         } else if (arg == "--settings") {
             options.settings_file = std::filesystem::path{value};
+        } else if (arg == "--edit") {
+            options.edit = std::filesystem::path{value};
         } else if (arg == "--screenshot") {
             options.screenshot = std::filesystem::path{value};
         } else if (arg == "--frames") {

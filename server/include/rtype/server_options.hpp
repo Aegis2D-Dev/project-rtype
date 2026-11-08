@@ -1,6 +1,7 @@
 /// @file
 /// @brief Command line of `r-type_server`: ports, waves file, help and version.
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -18,11 +19,21 @@ inline constexpr std::uint16_t default_udp_port = 4243;
 /// @brief Datagrams accepted per second from one address when `--max-packet-rate` is not
 /// given; see RateLimits.
 inline constexpr std::uint32_t default_packet_rate = 300;
+/// @brief Rooms played at once when `--max-rooms` is not given; see GameServer.
+inline constexpr std::uint32_t default_max_rooms = 4;
+
+/// @brief File of the best scores, in the folder the server runs from.
+inline constexpr std::string_view default_scores_file = "scores.json";
+
+/// @brief File of the banned addresses, in the folder the server runs from.
+inline constexpr std::string_view default_bans_file = "bans.json";
 
 /// @brief Usage line printed by `--help` and after a command line error.
 inline constexpr std::string_view server_usage =
     "usage: r-type_server [--tcp-port <port>] [--udp-port <port>] [--waves <file.json>]\n"
-    "                     [--max-packet-rate <datagrams per second>] [--help] [--version]\n";
+    "                     [--max-packet-rate <datagrams per second>] [--compress <bytes>]\n"
+    "                     [--max-rooms <count>] [--scores <file.json>] [--bans <file.json>]\n"
+    "                     [--trace <file.json>] [--help] [--version]\n";
 
 /// @brief What the server was asked to do.
 enum class ServerCommand : std::uint8_t {
@@ -46,6 +57,18 @@ struct ServerOptions {
     std::optional<std::filesystem::path> waves;
     /// @brief Datagrams accepted per second from one address, 1 to 100000.
     std::uint32_t packet_rate = default_packet_rate;
+    /// @brief Size from which snapshots and events are sent compressed with LZ4 when that
+    /// makes them smaller, 1 to 1182 bytes, or `std::nullopt` (the default) to never compress.
+    std::optional<std::size_t> compress_from;
+    /// @brief Rooms played at once, 1 to 64, tuning::max_players in each.
+    std::uint32_t max_rooms = default_max_rooms;
+    /// @brief File of the best scores (Scoreboard).
+    std::filesystem::path scores{default_scores_file};
+    /// @brief File of the banned addresses (BanList).
+    std::filesystem::path bans{default_bans_file};
+    /// @brief File the timings of every tick are written to when the server stops, in the
+    /// Chrome trace format (Perfetto), or `std::nullopt` (the default) for none.
+    std::optional<std::filesystem::path> trace;
 };
 
 /// @brief Reads the command line of `r-type_server`.

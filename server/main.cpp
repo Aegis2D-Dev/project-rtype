@@ -1,3 +1,4 @@
+#include <aegis2d/core/commands.hpp>
 #include <aegis2d/core/config.hpp>
 #include <aegis2d/core/log.hpp>
 #include <aegis2d/core/module.hpp>
@@ -7,13 +8,16 @@
 #include <aegis2d/net/module.hpp>
 #include <aegis2d/net/socket_error.hpp>
 
-#include <rtype/game_instance.hpp>
+#include <rtype/admin_console.hpp>
+#include <rtype/ban_list.hpp>
+#include <rtype/enemy_scripts.hpp>
 #include <rtype/game_server.hpp>
 #include <rtype/rate_limit.hpp>
 #include <rtype/server_game.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/stop_signal.hpp>
+#include <rtype/tuning.hpp>
 #include <rtype/waves.hpp>
 
 #include <chrono>
@@ -21,10 +25,12 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -59,34 +65,68 @@ int main(int argc, char** argv) {
               << ", " << aegis2d::ecs::name() << ", " << aegis2d::net::name() << ")\n";
 
     const std::filesystem::path waves_file = options.waves.value_or(rtype::default_waves_file());
-    std::optional<rtype::GameInstance> instance;
+    std::optional<aegis2d::ecs::WaveSchedule> loaded;
+    // The systems and the enemy scripts of every game, as a game the room has not started
+    // yet runs them: a wrong script stops the server here, not when a room starts.
+    std::optional<rtype::ServerGame> game;
     try {
-        instance.emplace(std::nullopt, rtype::load_waves(waves_file));
+        loaded = rtype::load_waves(waves_file);
+        game.emplace();
     } catch (const aegis2d::core::ConfigError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;
     }
-    const rtype::ServerGame& game = instance->game();
-    const aegis2d::ecs::WaveSchedule& waves = game.waves();
+    const aegis2d::ecs::WaveSchedule& waves = *loaded;
     std::cout << "waves: " << waves_file.string() << " (" << waves.waves()
               << (waves.waves() == 1 ? " wave, " : " waves, ") << waves.spawns().size()
               << " enemies in " << waves.duration() << " s" << (waves.loops() ? ", looping" : "")
               << ")\n";
     std::cout << "systems:";
-    for (const std::string_view system : game.systems().names()) {
+    for (const std::string_view system : game->systems().names()) {
         std::cout << ' ' << system;
     }
     std::cout << '\n';
+    std::cout << "enemies:";
+    for (const rtype::EnemyType& type : game->enemies().types()) {
+        std::cout << ' ' << type.name;
+    }
+    std::cout << " (" << rtype::default_enemies_directory().string() << ")\n";
 
     aegis2d::net::NetworkContext context;
+    // Before the server, which keeps a pointer to it.
+    rtype::BanList bans{options.bans};
     try {
-        rtype::GameServer server{context, *instance, options.tcp_port, options.udp_port};
+        rtype::GameServer server{context,          std::nullopt,     waves,
+                                 options.tcp_port, options.udp_port, rtype::tuning::tick_rate,
+                                 options.max_rooms};
         rtype::ServerNetwork& network = server.network();
+        server.keep_scores(options.scores);
+        std::cout << "scores: " << options.scores.string() << '\n';
+        network.set_bans(&bans);
+        std::cout << "bans: " << options.bans.string() << " (" << bans.addresses().size()
+                  << " banned)\n";
+        if (options.trace.has_value()) {
+            server.start_trace();
+        }
         network.set_limits(rtype::RateLimits{.datagrams_per_second = options.packet_rate});
+        network.set_compression(options.compress_from);
+        // The waves files next to the server's own, each read once; a bad one is not offered.
+        const std::filesystem::path waves_folder = rtype::default_waves_file().parent_path();
+        std::map<std::string, aegis2d::ecs::WaveSchedule> offered;
+        for (const std::string& name : rtype::waves_names(waves_folder)) {
+            try {
+                offered.emplace(name, rtype::load_waves(waves_folder / (name + ".json")));
+            } catch (const aegis2d::core::ConfigError& error) {
+                aegis2d::core::log_warn("server: waves {} not offered: {}", name, error.what());
+            }
+        }
+        server.set_waves(std::move(offered));
         // Flushed, so scripts waiting for the ports see it while the server runs.
         std::cout << "listening: TCP port " << network.tcp_endpoint().port() << ", UDP port "
-                  << network.udp_endpoint().port() << ", simulation at "
-                  << server.simulation().rate() << " Hz\n"
+                  << network.udp_endpoint().port() << ", up to " << server.max_rooms()
+                  << (server.max_rooms() == 1 ? " room" : " rooms") << " of "
+                  << rtype::tuning::max_players << " players, each simulated at " << server.rate()
+                  << " Hz\n"
                   << std::flush;
         if (!rtype::install_stop_handlers()) {
             aegis2d::core::log_warn(
@@ -103,8 +143,19 @@ int main(int argc, char** argv) {
                 aegis2d::core::log_error("server: {}", error.what());
             }
         };
+        // The admin console: each line typed is a command (`help` lists them), run between two
+        // updates on this thread, which owns the sessions.
+        rtype::AdminConsole console{network, rtype::request_stop};
+        rtype::ConsoleInput typed{std::cin};
+        std::cout << "admin console: type help for the commands\n" << std::flush;
         while (!rtype::stop_requested()) {
             run_network();
+            for (const std::string& line : typed.take()) {
+                const aegis2d::core::CommandResult result = console.run(line);
+                if (!result.text.empty()) {
+                    std::cout << result.text << '\n' << std::flush;
+                }
+            }
         }
 
         // Ctrl+C or SIGTERM: every player gets Logout(Shutdown), then the connections close
@@ -115,7 +166,12 @@ int main(int argc, char** argv) {
         while (!network.idle() && rtype::ServerNetwork::Clock::now() < deadline) {
             run_network();
         }
-        // Leaving the scope stops the simulation thread, then closes the sockets.
+        if (options.trace.has_value()) {
+            const std::size_t events = server.save_trace(*options.trace);
+            std::cout << "trace: " << events << " events in " << options.trace->string()
+                      << " (open it in Perfetto, ui.perfetto.dev)\n";
+        }
+        // Leaving the scope stops the simulation threads, then closes the sockets.
     } catch (const aegis2d::net::SocketError& error) {
         std::cerr << "r-type_server: " << error.what() << '\n';
         return 1;

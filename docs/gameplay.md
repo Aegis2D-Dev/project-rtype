@@ -38,6 +38,8 @@ if (game.game_over()) { /* every player who joined is out */ }
 | `slot_of(player)` | Slot of a player, or nothing once it is out |
 | `set_input(player, input)` | Held actions of a player; `false` for a player who is out (late packet) |
 | `tick(step)` | Runs every system once, in order |
+| `history()` | Where each enemy was at each of the last 30 ticks (500 ms), recorded after each tick (`rtype/position_history.hpp`), for lag compensation |
+| `set_rewind(player, ticks)`, `rewind(player)` | How many ticks back a player's missiles meet the enemies: `rewind_ticks(rtt, delay)` (`rtype/lag_compensation.hpp`), at most 30 |
 | `fired()`, `enemy_fired()`, `spawned()`, `damage()`, `awards()`, `lives_lost()`, `despawned()` | Events of the last tick, for the network layer |
 | `seed()` | Seed of the random spawns, if any |
 | `players()`, `game_over()` | Players with lives left; `true` once all of them are out |
@@ -50,39 +52,70 @@ The systems run in this order (`game.systems().names()` lists them):
 
 | # | System | Engine function | What happens |
 |---|---|---|---|
-| 1 | `steering` | `steer_player_ships` | Each ship takes the velocity of its held directions; diagonals are as fast as straight lines |
+| 1 | `steering` | `steer_ships` | Each ship takes the velocity of its held directions; diagonals are as fast as straight lines |
 | 2 | `movement` | `apply_velocity` | Every entity moves by `velocity × step` |
-| 3 | `sine_motion` | `apply_sine_motion` | Bydos slaves weave up and down on top of their velocity |
-| 4 | `play_area` | `clamp_player_ships` | Ships are kept fully on screen |
+| 3 | `behaviors` | `EnemyScripts::update` | The Lua script of each enemy's type moves it: Bydos slaves weave up and down |
+| 4 | `play_area` | `keep_ships_in_area` | Ships are kept fully on screen |
 | 5 | `weapons` | `trigger_weapons` | A ship holding fire with a reloaded weapon fires a missile from its nose |
 | 6 | `enemy_fire` | `trigger_auto_weapons` | Each enemy on screen with a reloaded weapon fires a missile to the left |
-| 7 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves appear at random on the right edge |
+| 7 | `spawn` | `RandomSpawner::update` | With a seed, Bydos slaves (`tuning::random_enemy`) appear at random on the right edge |
 | 8 | `waves` | `WaveSchedule::update` | The enemies of the waves file appear when due |
-| 9 | `collision` | `CollisionGrid::build`, `find_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other |
+| 9 | `collision` | `CollisionGrid::build`, `find_contacts`, `find_rewound_contacts` | A uniform grid finds the overlapping boxes whose layers can hit each other; each player's missiles also meet the enemies where that player saw them (lag compensation) |
 | 10 | `damage` | `apply_damage` | Contacts remove health; missiles are consumed by their first hit; kills are recorded |
 | 11 | `score` | `credit_kills` | Each kill is credited to the player who made it (the missile's owner) |
 | 12 | `lives` | `handle_player_deaths` | A killed player loses a life and respawns at its slot, or is out |
 | 13 | `cleanup` | `remove_casualties` | Dead entities and spent missiles are destroyed |
 | 14 | `despawn` | `despawn_outside` | Missiles and enemies that left the screen for good are destroyed |
 
+Systems 1, 2 and 4 move a player ship as `step_ship(position, input, delta)` does
+(`rtype/ship_movement.hpp`): the velocity of its input (`ship_velocity()`), the move, then
+the clamping to the play area (`keep_ship_in_area()`), with the same arithmetic. A client
+that runs it on its own inputs finds the positions the server will send.
+
+A player sees the enemies its round trip time plus its interpolation delay ago, and its
+missile leaves when its `Input` arrives: `GameServer` turns each player's smoothed round trip
+time, with the client's 100 ms of interpolation (`tuning::client_interpolation_delay`), into
+a rewind, so that a missile that hits an enemy on the player's screen hits it on the server.
+The rewind stops at the 500 ms the history keeps; an enemy destroyed since is not hit.
+
 Movement comes before collisions so that the contacts are those of the positions the
 clients will see; damage is applied for both sides of a contact at once, so a ship and a
 Bydos that ram each other both take the hit.
 
+## Enemy scripts
+
+Each enemy type is a Lua script of `assets/enemies`, copied next to `r-type_server`: its
+values (size, health, score, fire rate) and its behavior. Each game loads every
+`<type>.lua` file when it starts; the server checks them all at start, and stops with the
+file and the line of the first wrong one. A script describes its type with `enemy { ... }`; `spawn(self)` runs when an enemy
+appears and `update(self, dt)` at each tick, through the components the engine gives
+scripts (`ecs.get(self.entity, "Velocity").x = -120`). The C++ code gives every enemy the
+same components (collider, health, score, ramming, despawn, network id, and a weapon if it
+fires); everything that makes one type differ from another is in its script, so a new type
+needs no recompilation ([Add an enemy type](add-an-enemy.md)). The scripts run sandboxed:
+a behavior that fails, by an error or by running too long, is logged once and stopped: an
+`update` stops moving the enemies of its type, which keep their speed, and a type whose
+`spawn` failed spawns no more enemies; the game goes on.
+
+In a debug build, each game reloads a script when its file changes, checked at most every
+250 ms at the start of a tick (`EnemyScripts::reload()`): the enemies alive run the new
+behavior from that tick on, and the new values are for the next ones; a script that does
+not load is logged and the type keeps the one it had ([Change it while the game
+runs](add-an-enemy.md#change-it-while-the-game-runs)).
+
 ## Bydos slaves
 
-A Bydos slave flies left at `tuning::bydos_speed` and weaves around the line it was created
-on, with the engine's `SineMotion`: it rises `tuning::bydos_wave_amplitude` (48 px), comes
-back down through its line to 48 px below it, and is back on its line every
-`tuning::bydos_wave_period` (2 s). The wave depends on the time, not on the number of
-ticks, so its path is the same at any tick rate; a missile aimed at its line can pass
+A Bydos slave (`assets/enemies/bydos_slave.lua`) flies left at 120 px/s and weaves around
+the line it was created on: it rises 48 px, comes back down through its line to 48 px
+below it, and is back on its line every 2 s. The wave depends on its age, not on the number
+of ticks, so its path is the same at any tick rate; a missile aimed at its line can pass
 above or below it.
 
 ## Enemy fire
 
-Bydos slaves carry a `Weapon` with the engine's `AutoTrigger`: they fire on their own, a
-missile to the left from their left side, every `tuning::bydos_fire_cooldown` (2 s). The
-first shot comes `tuning::bydos_first_shot` (1 s) after the spawn, so the Bydos is on
+Bydos slaves carry a `Weapon` with the `AutoTrigger` of the engine's shmup module: they fire on their own, a
+missile to the left from their left side, every `fire_every` seconds of their script (2 s).
+The first shot comes `first_shot` (1 s) after the spawn, so the Bydos is on
 screen; random Bydos wait up to 2 s more, drawn from the seed, so they do not all fire in
 step. An enemy whose center is off screen does not fire. Enemy missiles hit only players: a
 hit costs a life, like ramming a Bydos. `enemy_fired()` lists the missiles of the last tick.
@@ -95,14 +128,14 @@ default, copied next to `r-type_server`, or another file with `r-type_server --w
 groups of enemies by type, position, count, interval and offset (a wall, a file, a
 diagonal, a V...); `"loop": true` plays them again from the first. The format is the
 engine's `WaveSchedule` (see [Add a wave](how-to.md#add-a-wave)). `load_waves()` accepts
-only the types of `rtype::enemy_types` (`bydos_slave` for now), so a typo stops the server
+only the types of `rtype::enemy_types()`, the scripts of `assets/enemies`, so a typo stops the server
 at start with the file and the place of the mistake:
 
 ```text
 r-type_server: assets/waves/stage1.json: waves.1.spawns.0.type: unknown type "bydos" (known: bydos_slave)
 ```
 
-Wave enemies are the same as the others (`spawn_enemy()` creates them by type): they weave,
+Wave enemies are the same as the others (`ServerGame::spawn_enemy()` creates them by type): they weave,
 fire and despawn. A game plays waves and random spawns together if it has both; one created
 without a seed and without waves spawns nothing (tests).
 
@@ -125,7 +158,7 @@ beyond an edge of the screen, by more than `tuning::despawn_margin`, and its vel
 not bring it back, the `despawn` system destroys it and lists it in `despawned()`. A player
 missile is gone just after the right edge, an enemy missile after the left one; a Bydos
 created beyond the right edge and flying left is kept until it has crossed the screen. The
-margin is larger than the amplitude of the Bydos wave (checked when compiling), so a Bydos
+margin is larger than the amplitude of the Bydos wave, so a Bydos
 weaving above or below the screen comes back instead of being destroyed.
 Players never despawn: they are kept on screen.
 
@@ -141,18 +174,40 @@ Each collider has a `layer` (what it is) and a `mask` (what it can hit), defined
 | `enemy` | player (ramming), player missile | player, player missile |
 | `enemy_missile` | player | player |
 
-There is no friendly fire: players and their missiles ignore each other, and so do enemies.
+Players and their missiles ignore each other, unless the room plays with friendly fire: the
+`weapons` system then adds `player` to the mask of each missile it fires, which hits the other
+players (never its shooter, which it leaves ahead of). Enemies always ignore each other.
+
+## Rules of a room
+
+A `ServerGame` takes `GameRules`, the rules of its room (`game_rules()` on the server, from
+those of `CreateRoom`, RFC section 3.6); the default ones are the game as tuned:
+
+| Rule | Effect |
+|---|---|
+| `lives` | Lives of each player at the start, 1 to 9 (3 by default) |
+| `enemy_health_factor` | Factor of the health that the script of every enemy gives it, at random or by the waves |
+| `spawn_interval_scale` | Factor of the intervals between two random Bydos |
+| `friendly_fire` | Player missiles hit the other players |
+
+| Difficulty | Enemy health | Random Bydos spawns |
+|---|---|---|
+| Easy | as its script (× 1) | every 1.2 to 3 s (intervals × 1.5) |
+| Normal | as its script | every 0.8 to 2 s |
+| Hard | twice its script's (× 2) | every 0.48 to 1.2 s (intervals × 0.6) |
+
+The waves file of a room replaces the server's own for its games.
 
 ## Entities
 
-Created by the functions of `rtype/entities.hpp`, all with a `NetworkId` so clients can
-name them:
+Created by the functions of `rtype/entities.hpp` and by the enemy scripts
+(`rtype/enemy_scripts.hpp`), all with a `NetworkId` so clients can name them:
 
 | Entity | Function | Components |
 |---|---|---|
 | Player ship | `spawn_player(registry, slot)` | Transform, Velocity, PlayerInput, PlayerShip, Sprite, Collider, Health, Damage (ramming), Lives, Score, Weapon |
 | Player missile | `spawn_player_missile(registry, shooter)` | Transform, Velocity (right), Sprite, Collider, Damage (consumed on hit), Owner, OffscreenDespawn |
-| Bydos slave | `spawn_bydos_slave(registry, line, phase, first_shot)` | Transform, Velocity (left), SineMotion (up and down), Weapon and AutoTrigger (fires on its own), Sprite, Collider, Health, Damage (ramming), ScoreValue, OffscreenDespawn |
+| Enemy | `ServerGame::spawn_enemy(type, position)`, `EnemyScripts::spawn()` | Transform, Velocity (set by its script), Sprite, Collider, Health, Damage (ramming), ScoreValue, OffscreenDespawn, and Weapon and AutoTrigger if its type fires |
 | Enemy missile | `spawn_enemy_missile(registry, position)` | Transform, Velocity (left), Sprite, Collider, Damage (consumed on hit), OffscreenDespawn |
 | Enemy missile | `fire_enemy_missile(registry, shooter)` | Transform, Velocity (left), Sprite, Collider, Damage (consumed on hit), OffscreenDespawn, Owner (the enemy); placed on its left side |
 
@@ -160,7 +215,8 @@ Players spawn at `x = 100`, their slots spread evenly over the height of the scr
 
 ## Tuning
 
-Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
+Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`), but those of the enemies,
+which their scripts give (`assets/enemies`):
 
 | Value | Default |
 |---|---|
@@ -172,9 +228,9 @@ Every value is a constant of `rtype::tuning` (`rtype/tuning.hpp`):
 | Player health, lives | 1 point, 3 lives |
 | Fire rate | one missile every 0.25 s (4 per second) |
 | Player missile | 900 px/s, 16 × 4, 1 damage |
-| Bydos slave | 120 px/s, 32 × 32, 1 point of health, 100 points |
-| Bydos wave | 48 px above and below its line, every 2 s |
-| Bydos fire | a missile every 2 s, the first after 1 s (random Bydos: 1 to 3 s) |
+| Bydos slave (script) | 120 px/s, 32 × 32, 1 point of health, 100 points |
+| Bydos wave (script) | 48 px above and below its line, every 2 s |
+| Bydos fire (script) | a missile every 2 s, the first after 1 s (random Bydos: 1 to 3 s) |
 | Bydos spawns | every 0.8 to 2 s, at x = 1296, lines from y = 64 to 656 |
 | Enemy missile | 300 px/s, 8 × 8, 1 damage |
 | Ramming damage | 1 |

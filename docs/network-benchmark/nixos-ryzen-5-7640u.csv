@@ -1,0 +1,5 @@
+machine,os,label,profile,delay_ms,loss_set_percent,bots,seconds,bytes_in_per_s,bytes_out_per_s,rtt_ms,rtt_jitter_ms,loss_percent,snapshot_jitter_ms,corrections
+"NixOS, Ryzen 5 7640U",Linux 6.18.55,baseline,lan,0,0,4,30.0,13889.15,1141.20,13.51,2.04,0.00,0.25,
+"NixOS, Ryzen 5 7640U",Linux 6.18.55,quantized-snapshots,lan,0,0,4,30.0,7067.90,1141.00,12.98,0.68,0.00,0.41,
+"NixOS, Ryzen 5 7640U",Linux 6.18.55,delta-snapshots,lan,0,0,4,30.0,4544.42,1141.20,15.18,1.88,0.00,0.40,
+"NixOS, Ryzen 5 7640U",Linux 6.18.55,lz4,lan,0,0,4,30.0,4725.97,1141.10,14.75,1.80,0.00,0.37,

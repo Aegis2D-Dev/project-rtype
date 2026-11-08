@@ -1,5 +1,7 @@
 /// @file
-/// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules.
+/// @brief TCP messages of the session (RFC section 3.2): encoding, decoding and name rules;
+/// those of the rooms are in rooms.hpp, those of the chat in chat.hpp, those of the
+/// scoreboard in scores.hpp.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -28,20 +30,56 @@ enum class TcpKind : std::uint8_t {
     LoginRejected = 3,
     /// @brief Both ways: the sender ends the session and closes.
     Logout = 4,
+    /// @brief Client to server, after the login: asks for the rooms.
+    ListRooms = 5,
+    /// @brief Server to client: the rooms, answering `ListRooms`.
+    RoomList = 6,
+    /// @brief Client to server, after the login: name and size of a room to create.
+    CreateRoom = 7,
+    /// @brief Server to client: the number of the room created, answering `CreateRoom`.
+    RoomCreated = 8,
+    /// @brief Server to client: why the room was not created, answering `CreateRoom`.
+    RoomRejected = 9,
+    /// @brief Client to server: the room to join.
+    JoinRoom = 10,
+    /// @brief Server to client: the room joined and the player's number there.
+    RoomJoined = 11,
+    /// @brief Server to client: why the room was not joined, answering `JoinRoom`.
+    JoinRejected = 12,
+    /// @brief Client to server: leaves its room for the lobby.
+    LeaveRoom = 13,
+    /// @brief Client to server: ready to start, or not.
+    SetReady = 14,
+    /// @brief Server to client: the players of its room and whether each is ready.
+    RoomPlayers = 15,
+    /// @brief Server to client: every player of its room is ready, bind and play.
+    GameStart = 16,
+    /// @brief Client to server: a text for the players of its room (RFC section 3.8).
+    ChatSend = 17,
+    /// @brief Server to client: a text relayed from a player of its room.
+    ChatMessage = 18,
+    /// @brief Server to client: why a `ChatSend` was not relayed.
+    ChatRejected = 19,
+    /// @brief Client to server: the best scores, please (RFC section 3.9).
+    ListScores = 20,
+    /// @brief Server to client: the best scores, best first.
+    ScoreList = 21,
 };
 
 /// @brief Why a login is refused, the `reason` of `LoginRejected`.
 enum class LoginRejection : std::uint8_t {
-    /// @brief The game already has 4 players.
+    /// @brief Every room of the server is full.
     ServerFull = 1,
     /// @brief The server does not speak the requested version.
     BadVersion = 2,
     /// @brief The name is empty, too long, not UTF-8 or has control characters.
     BadName = 3,
-    /// @brief Another player of the game has this name.
+    /// @brief Another player of the server has this name.
     NameTaken = 4,
     /// @brief The game is running and does not take new players.
     GameStarted = 5,
+    /// @brief The administrator banned the address the client connects from.
+    Banned = 6,
 };
 
 /// @brief Why a session ends, the `reason` of `Logout`.
@@ -54,6 +92,12 @@ enum class LogoutReason : std::uint8_t {
     TimedOut = 2,
     /// @brief The client sent something invalid over UDP.
     ProtocolError = 3,
+    /// @brief The administrator of the server closed the player's room.
+    RoomClosed = 4,
+    /// @brief The administrator of the server removed the player.
+    Kicked = 5,
+    /// @brief The administrator banned the player's address: it cannot log in again.
+    Banned = 6,
 };
 
 /// @brief Content of a `LoginRequest`.
@@ -72,7 +116,7 @@ struct LoginRequest {
 struct LoginAccepted {
     /// @brief Session token, never 0.
     std::uint32_t session = 0;
-    /// @brief Player number, 0 to 3.
+    /// @brief Player number in its room, 0 to 3.
     std::uint8_t player = 0;
     /// @brief UDP port of the server.
     std::uint16_t udp_port = 0;
@@ -86,6 +130,15 @@ struct LoginAccepted {
 /// @param reason Reason to name.
 /// @return `"server full"`, `"bad version"`... or `"unknown"`.
 [[nodiscard]] std::string_view to_string(LoginRejection reason) noexcept;
+
+/// @brief Tells whether a text is 1 to @p max_size bytes of valid UTF-8 without control
+/// characters, as player names and chat texts must be.
+/// @details No overlong form, surrogate or code point above U+10FFFF, and no control
+/// character (below U+0020, and U+007F).
+/// @param text Bytes received.
+/// @param max_size Most bytes allowed.
+/// @return `true` if the text follows these rules.
+[[nodiscard]] bool valid_text(std::string_view text, std::size_t max_size) noexcept;
 
 /// @brief Tells whether a name follows the rules of `LoginRequest`.
 /// @details 1 to max_name_size bytes of valid UTF-8 (no overlong form, surrogate or code

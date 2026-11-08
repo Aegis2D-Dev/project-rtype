@@ -1,12 +1,17 @@
 # Server code shared by r-type_server and the tests: command line, sessions, sockets and
 # the game instance.
 add_library(rtype_server STATIC
+    admin_console.cpp
+    ban_list.cpp
     event_tracker.cpp
     game_instance.cpp
     game_server.cpp
     rate_limit.cpp
+    room.cpp
+    scoreboard.cpp
     server_network.cpp
     server_options.cpp
+    snapshot_history.cpp
     sessions.cpp
     simulation.cpp
     stop_signal.cpp

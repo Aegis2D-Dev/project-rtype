@@ -1,3 +1,4 @@
+#include <aegis2d/core/profiler.hpp>
 #include <aegis2d/ecs/waves.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -5,12 +6,15 @@
 #include <rtype/simulation.hpp>
 #include <rtype/tuning.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -111,4 +115,30 @@ TEST_CASE("the simulation stops at once, even before its first tick", "[server][
         CHECK(!ran);
     }
     CHECK(instance.players() == 0);
+}
+
+TEST_CASE("a traced simulation records each tick and its systems", "[server][simulation][368]") {
+    GameInstance instance{std::nullopt, WaveSchedule{}};
+    Simulation simulation{instance, rtype::tuning::tick_rate, {}, true};
+    REQUIRE(wait_until([&] { return simulation.ticks() >= 3; }));
+    simulation.stop();
+    std::vector<std::string> names;
+    for (const aegis2d::core::TraceEvent& event : simulation.profiler().trace()) {
+        names.push_back(event.name);
+    }
+    const auto count = [&names](std::string_view name) {
+        return static_cast<std::uint64_t>(std::ranges::count(names, name));
+    };
+    CHECK(count("frame") == simulation.ticks());
+    CHECK(count("tick") == simulation.ticks());
+    CHECK(count("movement") == simulation.ticks());
+    CHECK(count("collision") == simulation.ticks());
+    CHECK(count("spawn") == 0); // disabled without a seed
+
+    GameInstance quiet{std::nullopt, WaveSchedule{}};
+    Simulation untraced{quiet};
+    REQUIRE(wait_until([&] { return untraced.ticks() >= 2; }));
+    untraced.stop();
+    CHECK(untraced.profiler().trace().empty());
+    CHECK_FALSE(untraced.profiler().enabled());
 }

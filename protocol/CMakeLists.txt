@@ -1,7 +1,13 @@
 # Messages of the protocol shared by the server and the client (docs/rfc in the engine).
 add_library(rtype_protocol STATIC
+    chat.cpp
+    compact.cpp
+    delta_snapshot.cpp
     events.cpp
+    input.cpp
     login.cpp
+    rooms.cpp
+    scores.cpp
     snapshot.cpp)
 target_include_directories(rtype_protocol PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(rtype_protocol

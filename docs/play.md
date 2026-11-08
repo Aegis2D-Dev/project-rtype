@@ -14,23 +14,59 @@ network (build first, see [Getting started](getting-started.md)):
 ./build/linux-debug/r-type_client
 ```
 
+A Linux server takes Windows clients and the other way round: see
+[Cross-play Linux and Windows](cross-play.md) for the ports to open and the test procedure.
+
 The client opens on the **connect screen**: the server's address, its TCP port and the
 player's name, filled with the command line's values (`127.0.0.1`, `4242`, `player` by
 default). Type over them, then press Enter to join:
 
 | Key | On the connect screen |
 |---|---|
-| Letters, digits, `.`, `-`, `:` | Type in the selected field |
-| Backspace | Erase the last character |
+| Any character the field takes | Type it at the cursor of the selected field |
+| Left, Right / Home, End | Move the cursor / to the start or the end |
+| Backspace / Delete | Erase the character before / after the cursor |
 | Tab, Down / Shift+Tab, Up | Select the next / previous row |
 | Enter | Join the server; on a control row, change its key |
 | Escape | Quit |
 
-Letters follow the keyboard's layout; digits come from the top row or the keypad, and the
-keypad's `.` types a dot on any layout. A field the server cannot accept is told before
+What is typed follows the keyboard's layout, punctuation included, so an address typed on
+an AZERTY keyboard has its dots and colons. The address takes letters, digits, `.`, `:`,
+`-`, `[` and `]`, the port digits, the name any printable character, accented letters
+included, up to 16 bytes (an accented letter takes two); anything else is left out, and so
+is it from `--host` and `--name`, which fill the fields as if typed. A text longer than its box scrolls to keep the cursor in view. A field the
+server cannot accept is told before
 joining (an empty address, a port above 65535, a name longer than 16 characters), and
 what keeps the client out once it tries is told too: the server is full, the name is
 taken, the server does not answer, or its UDP port is blocked.
+
+Once logged in, the client shows the **rooms** of the server, refreshed every second: each
+one with its name, its players and its size, waiting for players or playing. Under them are
+the **best scores** of the server, the 10 best of its games, kept across its restarts. Each room is a
+game of its own, of up to 4 players. Choose one and press Enter to go in it, or create one
+on the last row: type its name, choose its size, and press Enter; it is listed at once,
+ready to be joined:
+
+| Key | On the rooms screen |
+|---|---|
+| Up / Down | Select a room, or the new room on the last row |
+| Enter | Join the selected room, or create the new room |
+| Letters, digits, spaces | Type the name of the new room, up to 16 characters |
+| Backspace | Erase the last character of the name |
+| Left / Right | One player less / more in the new room, 1 to 4 |
+| Escape | Leave the server, back to the connect screen |
+
+With a gamepad, the D-pad or the left stick moves as the arrows, A (Cross) is Enter and B
+(Circle) is Escape, on the rooms screen, in a room, while joining and on the connection lost
+screen; the connect screen and the names are typed on the keyboard, or skipped with `--join`.
+
+A full room is told before joining, and what the server refuses is told too: a room gone
+meanwhile, or no room left on the server.
+
+In a room, the screen lists its players, the player's own highlighted, each **ready** or not.
+Press Enter when ready (again to take it back): the game starts for everyone once every player
+of the room is ready, and the room's players fly together. Escape goes back to the rooms. A
+room already playing takes a new player as soon as it is ready.
 
 To skip the connect screen, as for scripts or several clients on one machine, pass the
 server and `--join`:
@@ -44,10 +80,12 @@ server and `--join`:
 | `--host <address>` | Server: a numeric IPv4 or IPv6 address, or `localhost` |
 | `--port <tcp port>` | TCP port of the server |
 | `--name <name>` | Player name, 1 to 16 characters |
-| `--join` | Join at once instead of waiting on the connect screen |
+| `--join` | Join at once instead of waiting on the connect screen, and play in the room the server gives |
 | `--settings <file>` | Settings file to use instead of the player's own (below) |
 | `--frames <count>` | Quit after this many frames (tests, captures) |
 | `--screenshot <png>` | Save the frame before the last one (after 300 frames by default) |
+| `--metrics` | Show the frame metrics from the start, as F12 does |
+| `--edit <file>` | Open a waves file in the [level editor](#level-editor) instead of the connect screen |
 
 ## Controls
 
@@ -60,7 +98,10 @@ server and `--join`:
 | Flashes and shake on / off | F2 | |
 | Color vision preview | F3 | |
 | Smaller / larger text | F4 / F5 | |
+| Lagometer on / off | F6 | |
+| Frame metrics on / off | F12 | |
 | Music on / off | M (in game) | |
+| Chat | T, then Enter to send (Escape cancels) | |
 
 The movement and fire keys can be changed on the connect screen: select a control with
 the arrows or Tab, press Enter, then the new key (Escape keeps the old one). A key already
@@ -70,6 +111,13 @@ the key.
 
 The F-keys work on every screen; the keys of the game show at the top of the screen for
 the first seconds of a game, and again after each change.
+
+T opens the chat line at the bottom left, on the room list, in a room and in game (on the
+room list, not while a new room's name is typed). Enter sends the message to the players of
+the room, or of the lobby; Escape closes the line. While it is open the ship stops and the
+keys type text. The last 6 messages show above the line for 8 seconds, each in its sender's
+color (gray from the lobby); a message the server refuses, too long or too fast, says so
+there.
 
 ## Settings
 
@@ -124,6 +172,83 @@ the world as it was, consistent between the ships, the missiles and the enemies.
 While in game, the client sends the actions the player holds 60 times per second: these
 inputs are also the heartbeat that tells the server the player is still there.
 
+### Lagometer
+
+F6 shows the **lagometer** at the top right of the game: seven small graphs of the last 10
+seconds, one bar every 100 ms, newest on the right, each with its last value.
+
+| Graph | What it shows | Yellow from | Red from |
+|---|---|---|---|
+| RTT | Smoothed round trip time to the server | 100 ms | 200 ms |
+| Jitter | How irregularly the snapshots arrive | 10 ms | 30 ms |
+| Loss | Share of the server's datagrams lost, over 2 s | 1 % | 5 % |
+| Snapshots | Mean time between two snapshots (50 ms on a sound link) | 60 ms | 100 ms |
+| In / Out | Bytes received and sent during the last second (blue) | | |
+| Corrected | Times per second the server put the player's own ship elsewhere than the client predicted | 2 | 10 |
+
+A graph keeps its bars below its top on a sound link (100 ms for the RTT, 10 % for the
+loss...), and grows when a value goes above it. To see it react, play with a degraded
+network: `sudo tools/netem.sh start` in the engine (see its *Test on a degraded network*
+page) delays each direction of `lo` by 150 ms, so the RTT climbs above 300 ms and turns
+red within a second, the loss turns yellow, and the bandwidth graphs flatten at 5 KB/s;
+after `sudo tools/netem.sh stop`, the loss is back to 0 within 2 seconds and the RTT to
+normal within a few.
+
+### Frame metrics
+
+F12 shows the **frame metrics** at the top center of every screen (the engine's
+`render::MetricsOverlay`): the frames per second over the last second, the mean and longest
+frame times of the last 120 frames, the entities of the game (in game only), and the
+sprites and draw calls of the frame before, the overlay's own left out, the memory the
+client uses, and, while connected to a game, the network numbers of the lagometer (round
+trip, jitter, loss, the bytes received and sent per second, the time between two snapshots
+and the corrections of your ship), with or without the lagometer. Under them, a bar
+per frame, newest on the right: blue within 16.7 ms (60 frames per second, the line half
+way up), orange above, a frame of 33 ms or more filling the graph. `--metrics` shows them
+from the start, for a capture.
+
+![R-Type with the frame metrics: 119 frames per second, 8.4 ms a frame, 11 entities, 410 sprites in 12 draw calls, and an orange bar for a slower frame.](images/frame-metrics.png)
+
+## Level editor
+
+`r-type_client --edit assets/waves/stage1.json` opens a waves file in the level editor,
+with no server: the play area is shown a little smaller, with the strip beyond its right
+edge where the enemies appear, and each enemy of the wave shown at its place, with the
+second it appears in its wave under it.
+
+| Action | Mouse or key |
+|---|---|
+| Place an enemy (a Bydos slave) | Left click on an empty place |
+| Move an enemy | Left click on it and drag |
+| Remove an enemy | Right click on it |
+| Next / previous wave | Page Down / Page Up |
+| Edit a wave and move it in time | Left click on it in the timeline and drag |
+| The wave's delay, 0.1 s shorter / longer | Left / Right |
+| The wave before / after the one before or after it | Up / Down |
+| Add an empty wave after the one shown, 2 s after it | N |
+| Save the waves to the file | S |
+| Play the waves from the one shown, on the client | P (Escape comes back) |
+| Leave the editor | Escape |
+
+Under the play area, the timeline shows when each wave plays, as the server plays them: a
+block per wave, from the end of its delay to its last enemy, the wave edited in yellow, a
+mark every 5 seconds. A wave starts its delay after the last enemy of the wave before it, so
+moving a wave in time moves the waves after it too; its delay, start and end are written
+above the timeline.
+
+S writes the waves to the file opened, each enemy a spawn of its own, once the server
+would read them: a draft it would refuse (a wave with no enemy...) is not saved, and the
+reason is shown above the controls. P plays the waves from the one shown, on the client
+with no server: your ship (the keys of the game), the enemies of the waves as the server
+makes them appear, the score and the lives; Escape comes back to the editor, as it was. To
+play the saved waves with others, start the server on the file: `r-type_server --waves
+assets/waves/stage1.json`.
+
+Each group of the file (`count`, `every`, `step`) shows as one enemy per member, so each can
+be moved on its own. Positions are whole logical pixels, kept within the play area and the
+strip. The top of the screen tells the wave shown, its enemies, and whether something
+changed.
+
 ## Accessibility
 
 - **Text size**: F4 and F5 make every text smaller or larger, from 100 % to 200 %; the
@@ -134,3 +259,8 @@ inputs are also the heartbeat that tells the server the player is still there.
 - **Flashes and shake**: F2 turns them off, for players with photosensitive epilepsy or
   motion sickness; even when on, flashes never start more than three times a second.
 - **Keys**: every movement and fire key can be changed, and auto-fire spares holding Fire.
+- **Gamepad in the lobby**: the rooms, a room and the connection lost screen take the D-pad,
+  A and B as the arrows, Enter and Escape, so a game can be joined, readied and left without
+  the keyboard once connected (`--join` skips the connect screen).
+- **Chat and lagometer**: the chat's messages and its line, and the lagometer's labels,
+  follow the text size; the chat line stays above the HUD at every size.

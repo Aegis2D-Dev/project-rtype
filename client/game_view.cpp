@@ -179,10 +179,11 @@ bool GameView::game_over(const ClientWorld& world) {
     return any;
 }
 
-void GameView::draw(render::IRenderer& renderer, ClientWorld& world, const Preferences& preferences,
+void GameView::draw(render::IRenderer& renderer, ClientWorld& world,
+                    const ShipPrediction& prediction, const Preferences& preferences,
                     Clock::time_point now) {
     stars_.draw(renderer);
-    draw_world(renderer, world, preferences.vision, now);
+    draw_world(renderer, world, prediction, preferences.vision, now);
     draw_hud(renderer, world, preferences);
     draw_messages(renderer, world, preferences);
     if (const std::optional<render::Sprite> flash = effects_.overlay({width, height})) {
@@ -202,7 +203,8 @@ void GameView::explode(Vec2 position) {
     blasts_.emplace<ecs::DestroyAfterAnimation>(blast);
 }
 
-void GameView::draw_world(render::IRenderer& renderer, ClientWorld& world, std::size_t vision,
+void GameView::draw_world(render::IRenderer& renderer, ClientWorld& world,
+                          const ShipPrediction& prediction, std::size_t vision,
                           Clock::time_point now) {
     const GameArt& art = art_.get();
     const render::BitmapFont& font = font_.get();
@@ -216,15 +218,19 @@ void GameView::draw_world(render::IRenderer& renderer, ClientWorld& world, std::
                        .tint = tint,
                        .layer = world_layer});
     };
-    // Every entity drawn interpolation_delay in the past, between two snapshots (#127).
+    // Every entity drawn interpolation_delay() in the past, between two snapshots (#127), but
+    // the player's own ship, drawn where its inputs put it.
+    const std::optional<Vec2> predicted = prediction.drawn();
     if (const std::optional<double> tick = world.render_tick(now)) {
         world.registry().view<Replicated, Trail>().each([&](const Replicated& replicated,
                                                             const Trail& trail) {
+            const bool own = predicted.has_value() && prediction.ship() == replicated.id;
             // Spawned after the tick drawn: shown once the drawing reaches it.
-            if (trail.count == 0 || static_cast<double>(trail.points.front().tick) > *tick) {
+            if (!own &&
+                (trail.count == 0 || static_cast<double>(trail.points.front().tick) > *tick)) {
                 return;
             }
-            const Vec2 at = interpolate(trail, *tick) + offset;
+            const Vec2 at = (own ? predicted.value_or(Vec2{}) : interpolate(trail, *tick)) + offset;
             switch (static_cast<EntityKind>(replicated.kind)) {
             case EntityKind::PlayerShip: {
                 const std::size_t owner = replicated.owner % render::max_players;
@@ -387,7 +393,7 @@ void GameView::draw_messages(render::IRenderer& renderer, const ClientWorld& wor
 void GameView::draw_help(render::IRenderer& renderer, const Preferences& preferences) const {
     const render::BitmapFont& font = font_.get();
     const std::string help =
-        std::format("ESC LEAVE  F1 AUTO-FIRE {}  F2 EFFECTS {}  F3 {}  F4/F5 TEXT  M MUSIC",
+        std::format("ESC LEAVE  F1 AUTO-FIRE {}  F2 EFFECTS {}  F3 {}  F4/F5 TEXT  F6 LAG  M MUSIC",
                     preferences.controls.auto_fire().enabled() ? "ON" : "OFF",
                     preferences.effects.flashes || preferences.effects.shake ? "ON" : "OFF",
                     upper(std::string{vision_names.at(preferences.vision % vision_count)}));

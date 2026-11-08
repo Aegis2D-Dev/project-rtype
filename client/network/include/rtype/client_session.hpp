@@ -8,11 +8,20 @@
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
 #include <aegis2d/net/reliability.hpp>
+#include <aegis2d/net/rtt.hpp>
 #include <aegis2d/net/tcp_connection.hpp>
+#include <aegis2d/net/traffic.hpp>
 #include <aegis2d/net/udp_socket.hpp>
 
+#include <rtype/chat_log.hpp>
 #include <rtype/client_world.hpp>
+#include <rtype/input.hpp>
 #include <rtype/login.hpp>
+#include <rtype/network_stats.hpp>
+#include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
+#include <rtype/ship_prediction.hpp>
+#include <rtype/snapshot_decoder.hpp>
 #include <rtype/tuning.hpp>
 
 #include <chrono>
@@ -23,6 +32,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -34,6 +44,10 @@ enum class ClientState : std::uint8_t {
     Connecting,
     /// @brief `LoginRequest` sent, waiting for the answer.
     LoggingIn,
+    /// @brief Logged in with ClientSettings::choose_room: choosing a room (RFC 3.6, 3.7).
+    Lobby,
+    /// @brief In the room joined from the lobby, until all its players are ready (RFC 3.7).
+    InRoom,
     /// @brief Logged in, sending `Connect` until `Accept` arrives.
     Binding,
     /// @brief UDP endpoint bound: the game may start.
@@ -60,12 +74,21 @@ struct ClientSettings {
     std::uint16_t tcp_port = 4242;
     /// @brief Player name, 1 to 16 bytes of UTF-8 without control characters.
     std::string name = "player";
+    /// @brief Stays in the lobby after the login, where the rooms are listed, created and
+    /// joined, and binds once a room is joined; `false` binds at once, in the room the server
+    /// gives at login.
+    bool choose_room = false;
 };
 
 /// @brief The client side of a session (RFC section 3).
 /// @details start() opens the TCP connection and sends `LoginRequest`. On `LoginAccepted`,
 /// the client opens a UDP socket and sends `Connect` to the server's `udp_port` every
-/// connect_interval until `Accept` arrives: the session is then InGame. It fails, with a
+/// connect_interval until `Accept` arrives: the session is then InGame. With
+/// ClientSettings::choose_room, it stays in the Lobby state instead, where rooms() is
+/// refreshed every room_refresh, and create_room() and join_room() send their requests. A
+/// `RoomJoined` puts it InRoom, with the player's number in that room: room_players() follows
+/// the room, set_ready() and leave_room() send their requests, and `GameStart`, once every
+/// player of the room is ready, starts the binding. It fails, with a
 /// reason in error(), when the server cannot be reached, refuses the login, sends anything
 /// unexpected, closes the connection, or does not answer: no `LoginAccepted` within
 /// login_timeout, or no `Accept` within bind_timeout of `LoginAccepted` (then `Logout` is
@@ -90,6 +113,8 @@ public:
     static constexpr std::chrono::seconds login_timeout{5};
     /// @brief Longest silence of the server in game before the session is lost (RFC 5.5).
     static constexpr std::chrono::seconds server_timeout{5};
+    /// @brief Time between two `ListRooms` in the lobby.
+    static constexpr std::chrono::seconds room_refresh{1};
     /// @brief Time between two `Input` datagrams: one per server tick (RFC section 4.2).
     static constexpr aegis2d::core::Duration input_interval =
         aegis2d::core::step_from_rate(tuning::tick_rate);
@@ -124,6 +149,60 @@ public:
     /// @param input Held actions.
     void set_input(aegis2d::ecs::PlayerInput input) noexcept;
 
+    /// @brief Asks the server for a new room, in the lobby (`CreateRoom`, RFC section 3.6).
+    /// @details rooms() lists it once created; room_error() says why it was not.
+    /// @param request Name and size of the room.
+    void create_room(const CreateRoomRequest& request);
+
+    /// @brief Asks to join a room, in the lobby (`JoinRoom`, RFC section 3.7).
+    /// @details On `RoomJoined`, login() takes the player's number in the room and the session
+    /// is InRoom; room_error() says why the room was not joined.
+    /// @param room Number of the room.
+    void join_room(std::uint8_t room);
+
+    /// @brief Says whether the player is ready to start, in a room (`SetReady`, RFC 3.7).
+    /// @param ready Ready, or not any more.
+    void set_ready(bool ready);
+
+    /// @brief Leaves the room for the lobby, where the rooms are listed again (`LeaveRoom`).
+    void leave_room();
+
+    /// @brief Sends a chat message to the players of the room, or of the lobby (`ChatSend`,
+    /// RFC section 3.8).
+    /// @details Only once logged in, until the session ends; the server's `ChatMessage`
+    /// puts it in chat() for every player of the room, this one too, or its `ChatRejected`
+    /// the reason it was not sent.
+    /// @param text Text typed; it must fit a `string`.
+    /// @return `false` if the session is not logged in or has ended: nothing was sent.
+    bool send_chat(std::string_view text);
+
+    /// @brief The last chat messages of the room, and why a message of this client was not
+    /// sent, each for a few seconds.
+    /// @return The log; ChatLog::prune() it before drawing.
+    [[nodiscard]] ChatLog& chat() noexcept;
+
+    /// @brief The best scores of the server, as the lobby shows them (RFC section 3.9).
+    /// @details Asked with the rooms, at the login and at each refresh of the lobby; a score
+    /// whose name breaks the rules of `LoginRequest` is left out.
+    /// @return Best first, empty until the first `ScoreList`.
+    [[nodiscard]] const std::vector<ScoreRecord>& scores() const noexcept;
+
+    /// @brief Whether the player said it is ready, in its room.
+    /// @return The last value given to set_ready() since the room was joined.
+    [[nodiscard]] bool ready() const noexcept;
+
+    /// @brief The players of the room joined, from the server's last `RoomPlayers`.
+    /// @return The room and its players, by number; no player before the first one.
+    [[nodiscard]] const RoomPlayers& room_players() const noexcept;
+
+    /// @brief The rooms of the server, from its last `RoomList`.
+    /// @return Them, by number; none before the first answer.
+    [[nodiscard]] const std::vector<RoomRecord>& rooms() const noexcept;
+
+    /// @brief Why the last room could not be created or joined.
+    /// @return A sentence for the player, empty after a success.
+    [[nodiscard]] const std::string& room_error() const noexcept;
+
     /// @brief Leaves the server: sends `Logout` and closes once it has left.
     /// @details The state becomes Closed at once; keep running the context a little for the
     /// `Logout` to leave.
@@ -151,26 +230,84 @@ public:
 
     /// @brief The world as the server describes it, once in game.
     /// @details Updated with each `Snapshot` and `Event` datagram received (RFC sections 4.3
-    /// to 4.5): see ClientWorld.
+    /// to 4.5), each snapshot rebuilt from its baseline first: see ClientWorld.
     /// @return The world.
     [[nodiscard]] ClientWorld& world() noexcept;
 
     /// @copydoc world()
     [[nodiscard]] const ClientWorld& world() const noexcept;
 
+    /// @brief The snapshots rebuilt from the `Snapshot` datagrams, as baselines of the next.
+    /// @details A datagram whose baseline the client no longer has is dropped and not
+    /// acknowledged, so the server encodes the next snapshots against another one.
+    /// @return The decoder.
+    [[nodiscard]] const SnapshotDecoder& snapshots() const noexcept;
+
+    /// @brief The client's own ship, moved at once by each `Input` sent.
+    /// @details Started from the position of the ship in the first snapshot that has it, and
+    /// again when the player loses a life (the server moved it back to its spawn point) or
+    /// gets another ship; stopped once the player is out. Each newer snapshot reconciles it:
+    /// the ship goes back to the server's position once it applied the input the player
+    /// record acknowledges, and the inputs after it are replayed (ShipPrediction::reconcile()).
+    /// Each update() smooths the corrections (ShipPrediction::smooth()): the screen draws the
+    /// ship at its drawn() position, so it answers the keys within a frame whatever the round
+    /// trip time, and never jumps by more than a few pixels for a small correction.
+    /// @return The prediction.
+    [[nodiscard]] const ShipPrediction& prediction() const noexcept;
+
     /// @brief Number of `Input` datagrams sent.
     /// @return The count since the game state was reached.
     [[nodiscard]] std::uint64_t inputs_sent() const noexcept;
+
+    /// @brief Sequence of the last `Input` sent (RFC section 4.2).
+    /// @details The inputs are numbered from 0, one more for each, from 65535 back to 0: the
+    /// low 16 bits of inputs_sent() before it is sent.
+    /// @return The sequence, or nothing before the first `Input`.
+    [[nodiscard]] std::optional<std::uint16_t> last_input() const noexcept;
+
+    /// @brief Sequence of the last `Input` of the player the server applied, from the player
+    /// record of its own player in the snapshots (RFC section 4.3).
+    /// @details The inputs after it, up to last_input(), are those the server has not applied
+    /// yet. It only moves forward: a late snapshot does not move it back.
+    /// @return The sequence, or nothing until a snapshot says the server applied one.
+    [[nodiscard]] std::optional<std::uint16_t> acknowledged_input() const noexcept;
+
+    /// @brief Datagrams exchanged with the server, by direction and packet type.
+    /// @details Counts every datagram sent to the server's UDP port, and every one received
+    /// with the token of the session, since the login: the source of the network
+    /// statistics of the client.
+    /// @return The counters.
+    [[nodiscard]] const aegis2d::net::TrafficCounters& traffic() const noexcept;
+
+    /// @brief Round trip time to the server, with its jitter.
+    /// @details A sample each time a datagram of the server acknowledges, for the first time,
+    /// one sent to it (`Connect`, `Input`). It includes the time the server waits before its
+    /// next datagram: in game, for the `Input` it acknowledges, at most the input interval,
+    /// as a snapshot acknowledges the last one received. Next to traffic(), the source of
+    /// the network statistics of the client.
+    /// @return The estimate, without samples before the server's `Accept`.
+    [[nodiscard]] const aegis2d::net::RttEstimator& rtt() const noexcept;
+
+    /// @brief Loss, snapshot interval and jitter of the server's datagrams.
+    /// @details Records every datagram received with the token of the session, since the
+    /// login; NetworkStats::summary() gives the figures of the last NetworkStats::window.
+    /// @return The statistics.
+    [[nodiscard]] const NetworkStats& network_stats() const noexcept;
 
 private:
     void fail(std::string reason);
     void on_connected();
     void on_message(std::span<const std::byte> message);
     void on_datagram(const aegis2d::net::Endpoint& from, std::span<const std::byte> datagram);
+    void start_binding();
+    void on_room_message(std::span<const std::byte> message);
+    bool on_chat(std::span<const std::byte> message);
+    void send_request(std::vector<std::byte> message);
     void send_connect(Clock::time_point now);
     void send_input(Clock::time_point now);
+    void predict(const Snapshot& snapshot);
     void on_game_datagram(const aegis2d::net::PacketHeader& header,
-                          aegis2d::net::BinaryReader& payload);
+                          aegis2d::net::BinaryReader& payload, Clock::time_point now);
 
     aegis2d::net::NetworkContext& context_;
     ClientSettings settings_;
@@ -185,16 +322,36 @@ private:
     Clock::time_point started_;
     Clock::time_point accepted_;
     Clock::time_point last_connect_;
+    Clock::time_point last_room_list_;
+    std::vector<RoomRecord> rooms_;
+    std::string room_error_;
+    RoomPlayers room_players_;
+    ChatLog chat_;
+    std::vector<ScoreRecord> scores_;
     std::uint64_t connects_sent_ = 0;
     std::uint8_t held_ = 0;
     Clock::time_point next_input_;
     std::uint64_t inputs_sent_ = 0;
+    // The last inputs sent, oldest first: each Input carries them all.
+    std::vector<InputRecord> recent_inputs_;
+    aegis2d::net::TrafficCounters traffic_;
+    NetworkStats network_stats_;
     // Last valid datagram from the server, in game.
     Clock::time_point last_heard_;
     ClientWorld world_;
+    SnapshotDecoder snapshots_;
+    ShipPrediction prediction_;
+    // Lives of the player when the prediction started: one less means a respawn.
+    std::uint8_t predicted_lives_ = 0;
+    // Tick of the last snapshot the prediction started from or was reconciled with.
+    std::optional<std::uint32_t> reconciled_tick_;
+    // Time of the last update(), to smooth the corrections of the prediction.
+    std::optional<Clock::time_point> last_update_;
     // Messages handed to the connection, to close it once they have left.
     std::uint64_t sent_ = 0;
     bool closing_ = false;
+    // Whether the player said it is ready, in its room.
+    bool ready_ = false;
 };
 
 } // namespace rtype

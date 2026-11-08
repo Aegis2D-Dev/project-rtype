@@ -3,24 +3,35 @@
 #include <aegis2d/core/math.hpp>
 #include <aegis2d/platform/actions.hpp>
 #include <aegis2d/platform/controls.hpp>
-#include <aegis2d/platform/ship_controls.hpp>
 #include <aegis2d/render/bitmap_font.hpp>
 #include <aegis2d/render/color.hpp>
+#include <aegis2d/render/player_style.hpp>
 #include <aegis2d/render/renderer.hpp>
+#include <aegis2d/shmup/ship_controls.hpp>
+#include <aegis2d/ui/text_field.hpp>
+#include <aegis2d/ui/widget_tree.hpp>
 
 #include "game_art.hpp"
 #include "preferences.hpp"
+#include <rtype/chat.hpp>
+#include <rtype/connect_fields.hpp>
 #include <rtype/connect_form.hpp>
+#include <rtype/player_notices.hpp>
+#include <rtype/room_list_form.hpp>
+#include <rtype/rooms.hpp>
+#include <rtype/scores.hpp>
 #include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rtype {
 
@@ -66,10 +77,13 @@ float centered_x(const render::BitmapFont& font, std::string_view text, float sc
     return (width - font.measure(text, scale).x) / 2.0F;
 }
 
+// Over the game's HUD (100) and the lagometer (110).
+constexpr std::int32_t chat_layer = 120;
+
 } // namespace
 
 void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
-                  const ConnectForm& form, const ScreenMessage& message, const ConnectView& view,
+                  ConnectFields& fields, const ScreenMessage& message, const ConnectView& view,
                   const Preferences& preferences) {
     constexpr std::string_view goal_text =
         "Fly through the Bydo empire with up to four players. Shoot the enemies, dodge their "
@@ -126,28 +140,44 @@ void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
     const float label_width = font.measure("MOVE RIGHT  ", label.scale).x;
     const float box_width = font.measure(widest_value, value.scale).x;
     const float left = (width - label_width - box_width) / 2.0F;
-    const auto row = [&](std::size_t index, std::string_view name, const std::string& text) {
-        const bool selected = index == view.row;
-        renderer.draw({.position = {left + label_width - 8.0F, y - 4.0F},
-                       .size = {box_width + 16.0F, row_height - 2.0F},
-                       .tint = color(selected ? 0x3A3A6A : box_color, preferences),
-                       .layer = 0});
+    const render::Rect box_at{.x = left + label_width - 8.0F,
+                              .y = 0.0F,
+                              .width = box_width + 16.0F,
+                              .height = row_height - 2.0F};
+    const auto label_row = [&](std::size_t index, std::string_view name) {
         render::TextStyle name_style = label;
-        if (selected) {
+        if (index == view.row) {
             name_style.color = color(title_color, preferences);
         }
         font.draw(renderer, name, {left, y}, name_style);
+    };
+    const auto row = [&](std::size_t index, std::string_view name, const std::string& text) {
+        renderer.draw({.position = {box_at.x, y - 4.0F},
+                       .size = {box_at.width, box_at.height},
+                       .tint = color(index == view.row ? 0x3A3A6A : box_color, preferences),
+                       .layer = 0});
+        label_row(index, name);
         font.draw(renderer, text, {left + label_width, y}, value);
         y += row_height;
     };
-    const bool cursor = std::fmod(view.seconds, 1.0) < 0.5;
+    // The fields: text fields in the rows' boxes, the one being edited outlined, with its
+    // cursor; text longer than its box scrolls with the cursor.
+    const aegis2d::ui::TextFieldStyle field_style{.background = color(box_color, preferences),
+                                                  .focused = color(0x3A3A6A, preferences),
+                                                  .disabled = color(box_color, preferences),
+                                                  .text = value.color,
+                                                  .placeholder = color(dim_color, preferences),
+                                                  .cursor = color(title_color, preferences),
+                                                  .outline = color(title_color, preferences),
+                                                  .outline_width = 2.0F,
+                                                  .text_scale = value.scale,
+                                                  .layer = 0};
     for (std::size_t field = 0; field < connect_field_count; ++field) {
-        const auto which = static_cast<ConnectField>(field);
-        std::string text = form.text(which);
-        if (view.row == field && cursor) {
-            text += '_';
-        }
-        row(field, field_labels.at(field), text);
+        render::Rect box = box_at;
+        box.y = y - 4.0F;
+        fields.draw(renderer, font, static_cast<ConnectField>(field), box, field_style);
+        label_row(field, field_labels.at(field));
+        y += row_height;
     }
     y += gap / 2.0F;
     const render::TextStyle heading = sized(2.0F, dim_color);
@@ -177,6 +207,133 @@ void draw_connect(render::IRenderer& renderer, const render::BitmapFont& font,
               {.scale = scale, .color = color(dim_color, preferences), .layer = 1});
 }
 
+void draw_rooms(render::IRenderer& renderer, const render::BitmapFont& font,
+                const RoomListForm& form, const ScreenMessage& message,
+                std::span<const ScoreRecord> scores, double seconds,
+                const Preferences& preferences) {
+    const render::TextStyle title = style(5.0F, title_color, preferences);
+    const render::TextStyle body = style(2.5F, text_color, preferences);
+    const render::TextStyle small = style(2.0F, dim_color, preferences);
+    float y = gap;
+    font.draw(renderer, "ROOMS", {centered_x(font, "ROOMS", title.scale), y}, title);
+    y += font.line_height(title.scale) + gap;
+
+    // The rooms around the selected one, then the row of a new room; the selected row is boxed.
+    const std::vector<RoomRecord>& rooms = form.rooms();
+    const float left = 4.0F * gap;
+    const float row_height = font.line_height(body.scale) + 10.0F;
+    const auto row = [&](bool selected, const std::string& text) {
+        renderer.draw({.position = {left - 8.0F, y - 4.0F},
+                       .size = {width - (2.0F * left) + 16.0F, row_height - 2.0F},
+                       .tint = color(selected ? 0x3A3A6A : box_color, preferences),
+                       .layer = 0});
+        render::TextStyle text_style = body;
+        if (selected) {
+            text_style.color = color(title_color, preferences);
+        }
+        font.draw(renderer, text, {left, y}, text_style);
+        y += row_height;
+    };
+    if (rooms.empty()) {
+        font.draw(renderer, "NO ROOM YET: CREATE ONE BELOW", {left, y}, small);
+        y += row_height;
+    }
+    const std::size_t first =
+        form.row() < visible_rooms ? 0 : std::min(form.row(), rooms.size()) + 1 - visible_rooms;
+    for (std::size_t index = first; index < rooms.size() && index < first + visible_rooms;
+         ++index) {
+        const RoomRecord& room = rooms.at(index);
+        row(index == form.row(),
+            std::format("{:<16}  {}/{} PLAYERS  {}", upper(room.name), room.players,
+                        room.max_players,
+                        room.state == static_cast<std::uint8_t>(RoomState::Waiting) ? "WAITING"
+                                                                                    : "PLAYING"));
+    }
+    const bool cursor = form.creating() && std::fmod(seconds, 1.0) < 0.5;
+    row(form.creating(),
+        std::format("NEW ROOM: {:<17} {} PLAYERS", form.name() + (cursor ? "_" : ""), form.size()));
+    y += gap / 2.0F;
+
+    if (!message.text.empty()) {
+        const render::TextStyle said =
+            style(2.0F, message.error ? error_color : title_color, preferences);
+        const std::string text = font.wrap(message.text, width - (4.0F * gap), said.scale);
+        font.draw(renderer, text, {centered_x(font, text, said.scale), y}, said);
+        y += font.line_height(said.scale) + gap;
+    }
+
+    // The best scores of the server (RFC section 3.9), in two columns of 5, best first.
+    if (!scores.empty()) {
+        const render::TextStyle heading = style(2.5F, heading_color, preferences);
+        font.draw(renderer, "BEST SCORES", {left, y}, heading);
+        y += font.line_height(heading.scale) + 6.0F;
+        const render::TextStyle line = style(2.0F, text_color, preferences);
+        const float line_height = font.line_height(line.scale) + 4.0F;
+        constexpr std::size_t per_column = 5;
+        std::size_t index = 0;
+        for (const ScoreRecord& score : scores) {
+            const float x = left + (index < per_column ? 0.0F : (width / 2.0F) - left);
+            const float at = y + (static_cast<float>(index % per_column) * line_height);
+            ++index;
+            font.draw(renderer,
+                      std::format("{:>2}. {:<16} {:>7}", index, upper(score.name), score.score),
+                      {x, at}, line);
+        }
+    }
+    constexpr std::string_view keys =
+        "ENTER JOIN OR CREATE   UP / DOWN CHOOSE   LEFT / RIGHT PLAYERS   ESC LEAVE";
+    font.draw(renderer, keys,
+              {centered_x(font, keys, small.scale), height - font.line_height(small.scale) - gap},
+              small);
+}
+
+void draw_room(render::IRenderer& renderer, const render::BitmapFont& font, std::string_view name,
+               const RoomPlayers& room, std::uint8_t self, const ScreenMessage& message,
+               const Preferences& preferences) {
+    const render::TextStyle title = style(5.0F, title_color, preferences);
+    const render::TextStyle body = style(2.5F, text_color, preferences);
+    const render::TextStyle small = style(2.0F, dim_color, preferences);
+    float y = gap;
+    const std::string heading = std::format("ROOM {}", upper(name));
+    font.draw(renderer, heading, {centered_x(font, heading, title.scale), y}, title);
+    y += font.line_height(title.scale) + gap;
+
+    // One row per player, the player's own highlighted, each ready or not.
+    const float left = 4.0F * gap;
+    const float row_height = font.line_height(body.scale) + 10.0F;
+    for (const RoomPlayer& player : room.players) {
+        renderer.draw({.position = {left - 8.0F, y - 4.0F},
+                       .size = {width - (2.0F * left) + 16.0F, row_height - 2.0F},
+                       .tint = color(player.player == self ? 0x3A3A6A : box_color, preferences),
+                       .layer = 0});
+        render::TextStyle text_style = body;
+        text_style.color = color(player.ready ? title_color : text_color, preferences);
+        font.draw(renderer,
+                  std::format("PLAYER {}  {:<16}  {}{}", player.player + 1, upper(player.name),
+                              player.ready ? "READY" : "NOT READY",
+                              player.player == self ? "  (YOU)" : ""),
+                  {left, y}, text_style);
+        y += row_height;
+    }
+    y += gap / 2.0F;
+    const auto ready = std::ranges::count_if(room.players, &RoomPlayer::ready);
+    const std::string waiting = std::format("{} OF {} READY: THE GAME STARTS ONCE EVERY PLAYER IS",
+                                            ready, room.players.size());
+    font.draw(renderer, waiting, {centered_x(font, waiting, small.scale), y}, small);
+    y += font.line_height(small.scale) + gap;
+
+    if (!message.text.empty()) {
+        const render::TextStyle said =
+            style(2.0F, message.error ? error_color : title_color, preferences);
+        const std::string text = font.wrap(message.text, width - (4.0F * gap), said.scale);
+        font.draw(renderer, text, {centered_x(font, text, said.scale), y}, said);
+    }
+    constexpr std::string_view keys = "ENTER READY / NOT READY   ESC LEAVE THE ROOM";
+    font.draw(renderer, keys,
+              {centered_x(font, keys, small.scale), height - font.line_height(small.scale) - gap},
+              small);
+}
+
 void draw_status(render::IRenderer& renderer, const render::BitmapFont& font,
                  std::string_view title, std::string_view text, std::string_view footer,
                  const Preferences& preferences) {
@@ -192,6 +349,43 @@ void draw_status(render::IRenderer& renderer, const render::BitmapFont& font,
     font.draw(renderer, wrapped, {centered_x(font, wrapped, body.scale), y}, body);
     const float footer_y = height - font.line_height(small.scale) - (2.0F * gap);
     font.draw(renderer, footer, {centered_x(font, footer, small.scale), footer_y}, small);
+}
+
+void draw_chat(render::IRenderer& renderer, const render::BitmapFont& font,
+               const std::vector<PlayerNotice>& lines, const aegis2d::ui::TextField& field,
+               const aegis2d::ui::WidgetTree& tree, bool typing, const Preferences& preferences) {
+    // Above the line, newest at the bottom, each on a dark band so it reads over the game.
+    const render::TextStyle line_style = style(1.5F, text_color, preferences);
+    const float line_height = font.line_height(line_style.scale) + 8.0F;
+    // Above the line as large as the tree's scale makes it.
+    float y = chat_box.y + chat_box.height - (chat_box.height * tree.scale()) - line_height;
+    for (const PlayerNotice& line : std::views::reverse(lines)) {
+        const Vec2 size = font.measure(line.text, line_style.scale);
+        renderer.draw({.position = Vec2{chat_box.x - 6.0F, y - 4.0F},
+                       .size = size + Vec2{12.0F, 8.0F},
+                       .tint = render::Color{.r = 0.0F, .g = 0.0F, .b = 0.0F, .a = 0.6F},
+                       .layer = chat_layer});
+        render::TextStyle sender = line_style;
+        sender.layer = chat_layer + 1;
+        // The players in their slot's color, the server in the title's, the lobby dimmed.
+        if (line.player < tuning::max_players) {
+            sender.color = seen_as(render::player_style(line.player).color, preferences.vision);
+        } else {
+            sender.color =
+                color(line.player == server_player ? title_color : dim_color, preferences);
+        }
+        font.draw(renderer, line.text, Vec2{chat_box.x, y}, sender);
+        y -= line_height;
+    }
+    if (typing) {
+        aegis2d::ui::TextFieldStyle box;
+        box.text = color(text_color, preferences);
+        box.placeholder = color(dim_color, preferences);
+        box.cursor = color(title_color, preferences);
+        box.outline = color(title_color, preferences);
+        box.layer = chat_layer;
+        field.draw(renderer, tree, font, box);
+    }
 }
 
 } // namespace rtype

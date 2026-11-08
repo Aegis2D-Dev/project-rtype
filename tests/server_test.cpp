@@ -1,6 +1,12 @@
+#include <aegis2d/core/commands.hpp>
+#include <aegis2d/core/config.hpp>
 #include <aegis2d/core/random.hpp>
+#include <aegis2d/ecs/components.hpp>
+#include <aegis2d/ecs/entity.hpp>
+#include <aegis2d/ecs/registry.hpp>
 #include <aegis2d/ecs/waves.hpp>
 #include <aegis2d/net/binary.hpp>
+#include <aegis2d/net/compression.hpp>
 #include <aegis2d/net/context.hpp>
 #include <aegis2d/net/endpoint.hpp>
 #include <aegis2d/net/packet.hpp>
@@ -10,25 +16,37 @@
 #include <aegis2d/net/udp_socket.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <rtype/admin_console.hpp>
+#include <rtype/ban_list.hpp>
+#include <rtype/chat.hpp>
+#include <rtype/delta_snapshot.hpp>
 #include <rtype/events.hpp>
 #include <rtype/game_instance.hpp>
 #include <rtype/game_server.hpp>
+#include <rtype/input.hpp>
+#include <rtype/input_script.hpp>
 #include <rtype/login.hpp>
 #include <rtype/rate_limit.hpp>
+#include <rtype/rooms.hpp>
+#include <rtype/scoreboard.hpp>
 #include <rtype/server_network.hpp>
 #include <rtype/server_options.hpp>
 #include <rtype/sessions.hpp>
 #include <rtype/snapshot.hpp>
+#include <rtype/tuning.hpp>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <initializer_list>
 #include <memory>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -47,6 +65,7 @@ using aegis2d::net::TcpCloseReason;
 using aegis2d::net::TcpConnection;
 using aegis2d::net::TcpListener;
 using aegis2d::net::UdpSocket;
+using rtype::ChatRejection;
 using rtype::LoginAccepted;
 using rtype::LoginRejection;
 using rtype::LoginRequest;
@@ -142,6 +161,19 @@ std::vector<std::byte> datagram(PacketType type, std::uint32_t session, std::uin
     return {writer.data().begin(), writer.data().end()};
 }
 
+// The payload of an Input (RFC section 4.2), written by hand so it can be malformed: the
+// sequence of the newest input, little-endian, the count, then the actions, newest first.
+std::vector<std::byte> input_payload(std::uint16_t newest,
+                                     std::initializer_list<std::uint8_t> actions) {
+    std::vector<std::byte> payload{std::byte{static_cast<std::uint8_t>(newest & 0xFFU)},
+                                   std::byte{static_cast<std::uint8_t>(newest >> 8U)},
+                                   std::byte{static_cast<std::uint8_t>(actions.size())}};
+    for (const std::uint8_t held : actions) {
+        payload.push_back(std::byte{held});
+    }
+    return payload;
+}
+
 // A player's UDP socket, keeping the headers of the datagrams the server sends, and the
 // datagrams themselves.
 struct Socket {
@@ -205,6 +237,46 @@ TEST_CASE("the packet rate limit is read from the command line", "[server][optio
     CHECK(error_of({"--max-packet-rate"}) == "--max-packet-rate needs a value");
 }
 
+TEST_CASE("the compression threshold is read from the command line", "[server][options]") {
+    CHECK(!parse({}).compress_from.has_value());
+    CHECK(parse({"--compress", "128"}).compress_from == 128U);
+    CHECK(parse({"--compress", "1"}).compress_from == 1U);
+    CHECK(parse({"--compress", "1182"}).compress_from == 1182U);
+    for (const std::string_view size : {"0", "1183", "-5", "big", ""}) {
+        CAPTURE(size);
+        CHECK(error_of({"--compress", size}) ==
+              "--compress: \"" + std::string{size} + "\" is not a payload size (1 to 1182)");
+    }
+    CHECK(error_of({"--compress"}) == "--compress needs a value");
+}
+
+TEST_CASE("a trace file is read from the command line", "[server][options][368]") {
+    CHECK_FALSE(parse({}).trace.has_value());
+    CHECK(parse({"--trace", "trace.json"}).trace == std::filesystem::path{"trace.json"});
+}
+
+TEST_CASE("the room limit is read from the command line", "[server][options]") {
+    CHECK(parse({}).max_rooms == rtype::default_max_rooms);
+    CHECK(parse({"--max-rooms", "1"}).max_rooms == 1);
+    CHECK(parse({"--max-rooms", "64"}).max_rooms == 64);
+    for (const std::string_view rooms : {"0", "65", "-1", "many", ""}) {
+        CAPTURE(rooms);
+        CHECK(error_of({"--max-rooms", rooms}) ==
+              "--max-rooms: \"" + std::string{rooms} + "\" is not a room count (1 to 64)");
+    }
+    CHECK(error_of({"--max-rooms"}) == "--max-rooms needs a value");
+}
+
+TEST_CASE("the scores file is read from the command line", "[server][options]") {
+    CHECK(parse({}).scores == std::filesystem::path{rtype::default_scores_file});
+    CHECK(parse({}).bans == std::filesystem::path{rtype::default_bans_file});
+    CHECK(parse({"--bans", "/var/lib/rtype/bans.json"}).bans ==
+          std::filesystem::path{"/var/lib/rtype/bans.json"});
+    CHECK(parse({"--scores", "/var/lib/rtype/best.json"}).scores ==
+          std::filesystem::path{"/var/lib/rtype/best.json"});
+    CHECK(error_of({"--scores"}) == "--scores needs a value");
+}
+
 TEST_CASE("help and version stop the reading", "[server][options]") {
     CHECK(parse({"--help"}).command == ServerCommand::Help);
     CHECK(parse({"--version"}).command == ServerCommand::Version);
@@ -216,6 +288,7 @@ TEST_CASE("bad command lines name the faulty argument", "[server][options]") {
     CHECK(error_of({"4242"}) == "unknown argument \"4242\"");
     CHECK(error_of({"--tcp-port"}) == "--tcp-port needs a value");
     CHECK(error_of({"--waves"}) == "--waves needs a value");
+    CHECK(error_of({"--trace"}) == "--trace needs a value");
     for (const std::string_view port : {"", "65536", "-1", "+1", "42abc", "0x10", " 42", "abc"}) {
         CAPTURE(port);
         CHECK(error_of({"--udp-port", port}) ==
@@ -397,6 +470,408 @@ std::uint32_t log_in(NetworkContext& context, ServerNetwork& server, Player& pla
 
 } // namespace
 
+TEST_CASE("a client lists and creates rooms with these messages only", "[server][rooms]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{21};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    Player player{context, server};
+    static_cast<void>(log_in(context, server, player, "R9"));
+    // Sends a message and waits for its answer.
+    const auto ask = [&](const std::vector<std::byte>& message) {
+        const std::size_t before = player.received.size();
+        player.send(message);
+        REQUIRE(pump(context, server, [&] { return player.received.size() > before; }));
+        return player.received.back();
+    };
+
+    // The room of the login only, its player not in game yet.
+    using rtype::RoomRecord;
+    const auto waiting = static_cast<std::uint8_t>(rtype::RoomState::Waiting);
+    CHECK(rtype::read_room_list(ask(rtype::write_list_rooms())) ==
+          std::vector<RoomRecord>{
+              {.room = 0, .name = "Room 1", .players = 1, .max_players = 4, .state = waiting}});
+
+    // A room is created, a bad one refused, then none is left.
+    CHECK(rtype::read_room_created(ask(
+              rtype::write_create_room({.name = "Aces", .max_players = 2}))) == std::uint8_t{1});
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 5}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::BadSize));
+    CHECK(rtype::read_room_rejected(
+              ask(rtype::write_create_room({.name = "Bees", .max_players = 4}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::NoRoomLeft));
+    const std::vector<RoomRecord> rooms =
+        rtype::read_room_list(ask(rtype::write_list_rooms())).value_or(std::vector<RoomRecord>{});
+    REQUIRE(rooms.size() == 2);
+    CHECK(rooms.at(1) ==
+          RoomRecord{.room = 1, .name = "Aces", .players = 0, .max_players = 2, .state = waiting});
+    CHECK(!player.closed);
+    CHECK(server.sessions().size() == 1);
+
+    // Rules out of range are refused with their reason, the connection going on.
+    CHECK(rtype::read_room_rejected(ask(rtype::write_create_room(
+              {.name = "Bees",
+               .max_players = 4,
+               .rules = {.lives = 3, .difficulty = 1, .waves = "stage9", .friendly_fire = 0}}))) ==
+          static_cast<std::uint8_t>(rtype::RoomRejection::UnknownWaves));
+    CHECK(!player.closed);
+
+    // A malformed one ends the session without an answer (RFC section 6.5).
+    const std::size_t answers = player.received.size();
+    player.send({std::byte{0x05}, std::byte{0x00}});
+    REQUIRE(pump(context, server, [&] { return player.closed; }));
+    CHECK(player.received.size() == answers);
+    CHECK(server.sessions().size() == 0);
+}
+
+TEST_CASE("the chat stays in its room, a long message is refused and a flood is cut",
+          "[server][chat]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{23};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    // Four players log in to room 0; the third moves to room 1, the fourth to the lobby.
+    std::vector<std::unique_ptr<Player>> players;
+    for (const std::string name : {"A", "B", "C", "D"}) {
+        players.push_back(std::make_unique<Player>(context, server));
+        static_cast<void>(log_in(context, server, *players.back(), name));
+    }
+    Player& first = *players.at(0);
+    Player& second = *players.at(1);
+    Player& other_room = *players.at(2);
+    Player& lobby = *players.at(3);
+    const auto chats = [](const Player& player) {
+        std::vector<rtype::ChatMessage> messages;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                messages.push_back(std::move(*chat));
+            }
+        }
+        return messages;
+    };
+    const auto rejections = [](const Player& player, ChatRejection reason) {
+        return std::ranges::count_if(
+            player.received, [reason](const std::vector<std::byte>& message) {
+                return rtype::read_chat_rejected(message) == static_cast<std::uint8_t>(reason);
+            });
+    };
+    other_room.send(rtype::write_create_room({.name = "Bees", .max_players = 4}));
+    other_room.send(rtype::write_join_room(1));
+    lobby.send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] {
+        return server.sessions().members(1).size() == 1 && server.sessions().members(0).size() == 2;
+    }));
+
+    // A message reaches the players of the room, the sender too, and no one else.
+    first.send(rtype::write_chat_send("hi"));
+    other_room.send(rtype::write_chat_send("yo"));
+    lobby.send(rtype::write_chat_send("anyone?"));
+    const rtype::ChatMessage hi{.player = 0, .name = "A", .text = "hi"};
+    REQUIRE(pump(context, server, [&] {
+        return !chats(second).empty() && !chats(other_room).empty() && !chats(lobby).empty();
+    }));
+    context.run_for(std::chrono::milliseconds{100});
+    CHECK(chats(first) == std::vector{hi});
+    CHECK(chats(second) == std::vector{hi});
+    CHECK(chats(other_room) ==
+          std::vector{rtype::ChatMessage{.player = 0, .name = "C", .text = "yo"}});
+    CHECK(chats(lobby) == std::vector{rtype::ChatMessage{
+                              .player = rtype::lobby_player, .name = "D", .text = "anyone?"}});
+
+    // A long message is refused, and only its sender learns it; the session goes on.
+    first.send(rtype::write_chat_send(std::string(rtype::max_chat_size + 1, 'a')));
+    first.send(rtype::write_chat_send("a\tb"));
+    REQUIRE(pump(context, server, [&] { return rejections(first, ChatRejection::BadText) == 1; }));
+    CHECK(rejections(first, ChatRejection::TooLong) == 1);
+    CHECK(chats(second).size() == 1);
+    CHECK(!first.closed);
+
+    // A flood: the 4 messages left of the first 5 go out, the others are refused.
+    constexpr std::size_t flood = 12;
+    for (std::size_t message = 0; message < flood; ++message) {
+        first.send(rtype::write_chat_send("spam"));
+    }
+    const auto answered = [&] {
+        return chats(first).size() - 1 +
+               static_cast<std::size_t>(rejections(first, ChatRejection::TooFast));
+    };
+    REQUIRE(pump(context, server, [&] { return answered() == flood; }));
+    context.run_for(std::chrono::milliseconds{100});
+    // A slow machine may get a message back during the flood, rarely more.
+    const std::size_t relayed = chats(first).size() - 1;
+    CHECK(relayed >= rtype::ChatRate::burst - 1);
+    CHECK(relayed <= rtype::ChatRate::burst + 1);
+    CHECK(chats(second).size() == relayed + 1);
+    CHECK(chats(other_room).size() == 1);
+    CHECK(!first.closed);
+    CHECK(server.sessions().size() == 4);
+}
+
+TEST_CASE("every admin command works, and a wrong one says why", "[server][admin]") {
+    NetworkContext context;
+    rtype::SessionTable sessions{29};
+    sessions.set_rooms(2);
+    ServerNetwork server{context, 0, 0, std::move(sessions)};
+    bool stopped = false;
+    rtype::AdminConsole console{server, [&stopped] { stopped = true; }};
+    using aegis2d::core::CommandStatus;
+    const auto run = [&](std::string_view line) {
+        const aegis2d::core::CommandResult result = console.run(line);
+        // What the sessions send in answer is read by the context.
+        context.run_for(std::chrono::milliseconds{20});
+        return result;
+    };
+
+    // Nothing yet.
+    CHECK(run("rooms").text == "no room in use");
+    CHECK(run("players").text == "no player");
+    CHECK(run("help").text.contains("close"));
+
+    // Two players in room 0, one in the lobby.
+    Player first{context, server};
+    static_cast<void>(log_in(context, server, first, "R9"));
+    Player second{context, server};
+    static_cast<void>(log_in(context, server, second, "Kaz"));
+    Player lobby{context, server};
+    static_cast<void>(log_in(context, server, lobby, "Lolo"));
+    lobby.send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] { return server.sessions().members(0).size() == 2; }));
+    CHECK(run("rooms").text == "room 0 \"Room 1\": 2/4 players, waiting");
+    CHECK(run("players").text ==
+          "R9: room 0, player 0, out of game\nKaz: room 0, player 1, out of game\nLolo: lobby, "
+          "out of game");
+
+    // say: a message of the server reaches every player, lobby included.
+    const auto chats = [](const Player& player) {
+        std::vector<rtype::ChatMessage> messages;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                messages.push_back(std::move(*chat));
+            }
+        }
+        return messages;
+    };
+    const aegis2d::core::CommandResult said = run("say the server restarts at noon");
+    CHECK(said.status == CommandStatus::Done);
+    CHECK(said.text == "said to 3 players");
+    REQUIRE(pump(context, server, [&] { return !chats(lobby).empty(); }));
+    const rtype::ChatMessage notice{.player = rtype::server_player,
+                                    .name = std::string{rtype::server_name},
+                                    .text = "the server restarts at noon"};
+    CHECK(chats(first) == std::vector{notice});
+    CHECK(chats(lobby) == std::vector{notice});
+
+    // Wrong commands say why and change nothing.
+    const aegis2d::core::CommandResult long_text =
+        run("say " + std::string(rtype::max_chat_size + 1, 'a'));
+    CHECK(long_text.status == CommandStatus::Failed);
+    CHECK(long_text.text.contains("too long"));
+    CHECK(run("say").status == CommandStatus::WrongArguments);
+    CHECK(run("close").status == CommandStatus::WrongArguments);
+    CHECK(run("close first").status == CommandStatus::WrongArguments);
+    const aegis2d::core::CommandResult no_room = run("close 1");
+    CHECK(no_room.status == CommandStatus::Failed);
+    CHECK(no_room.text.contains("room 1 is not in use"));
+    CHECK(run("teleport R9").status == CommandStatus::Unknown);
+    CHECK(server.sessions().size() == 3);
+    CHECK(!stopped);
+
+    // close: the players of the room are told why, and their sessions end; the lobby stays.
+    const aegis2d::core::CommandResult closed = run("close 0");
+    CHECK(closed.status == CommandStatus::Done);
+    CHECK(closed.text == "room 0 closed: 2 players logged out");
+    REQUIRE(pump(context, server, [&] { return first.closed && second.closed; }));
+    CHECK(rtype::read_logout(first.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::RoomClosed));
+    CHECK(server.sessions().size() == 1);
+    CHECK(!lobby.closed);
+    CHECK(run("rooms").text == "no room in use");
+
+    // stop: what the server was given.
+    CHECK(run("stop").text == "stopping");
+    CHECK(stopped);
+}
+
+TEST_CASE("a kicked player sees why, the others are told, and a ban outlives a restart",
+          "[server][admin][bans]") {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_server_bans_test";
+    std::filesystem::remove_all(folder);
+    const std::filesystem::path file = folder / "bans.json";
+    rtype::BanList bans{file};
+    NetworkContext context;
+    std::optional<ServerNetwork> server{std::in_place, context, 0, 0, rtype::SessionTable{31}};
+    rtype::AdminConsole console{*server, [] {}};
+    using aegis2d::core::CommandStatus;
+    const auto chats = [](const Player& player) {
+        std::vector<std::string> texts;
+        for (const std::vector<std::byte>& message : player.received) {
+            if (std::optional<rtype::ChatMessage> chat = rtype::read_chat_message(message)) {
+                CHECK(chat->player == rtype::server_player);
+                texts.push_back(chat->text);
+            }
+        }
+        return texts;
+    };
+    Player kicked{context, *server};
+    static_cast<void>(log_in(context, *server, kicked, "R9"));
+    Player other{context, *server};
+    static_cast<void>(log_in(context, *server, other, "Kaz"));
+
+    // Without a ban list, nobody is banned; an unknown player is said so.
+    CHECK(console.run("ban R9").status == CommandStatus::Failed);
+    const aegis2d::core::CommandResult unknown = console.run("kick Lolo");
+    CHECK(unknown.status == CommandStatus::Failed);
+    CHECK(unknown.text.contains("no player is named Lolo"));
+    CHECK(server->sessions().size() == 2);
+
+    // kick: the player is told why and its session ends; the other is told.
+    CHECK(console.run("kick R9").text == "R9 removed");
+    REQUIRE(pump(context, *server, [&] { return kicked.closed && !chats(other).empty(); }));
+    CHECK(rtype::read_logout(kicked.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::Kicked));
+    CHECK(chats(other) == std::vector<std::string>{"R9 was removed by the administrator"});
+    CHECK(server->sessions().size() == 1);
+
+    // ban: the same, and the address cannot log in again.
+    server->set_bans(&bans);
+    CHECK(console.run("ban Kaz").text == "Kaz banned (127.0.0.1)");
+    REQUIRE(pump(context, *server, [&] { return other.closed; }));
+    CHECK(rtype::read_logout(other.received.back()) ==
+          static_cast<std::uint8_t>(LogoutReason::Banned));
+    CHECK(bans.banned(aegis2d::net::Endpoint::loopback(0)));
+    const auto refused = [&](ServerNetwork& network) {
+        Player again{context, network};
+        again.send(rtype::write_login_request(request("Again")));
+        REQUIRE(pump(context, network, [&] { return again.closed; }));
+        REQUIRE(!again.received.empty());
+        return rtype::read_login_rejected(again.received.back());
+    };
+    CHECK(refused(*server) == static_cast<std::uint8_t>(LoginRejection::Banned));
+
+    // After a restart, the bans read back from their file still refuse the address.
+    server.reset();
+    rtype::BanList reread{file};
+    ServerNetwork restarted{context, 0, 0, rtype::SessionTable{37}};
+    restarted.set_bans(&reread);
+    CHECK(refused(restarted) == static_cast<std::uint8_t>(LoginRejection::Banned));
+}
+
+TEST_CASE("the console takes the lines typed, until the end of the input", "[server][admin]") {
+    std::istringstream typed{"rooms\nsay hello world\n"};
+    rtype::ConsoleInput input{typed};
+    std::vector<std::string> lines;
+    const auto deadline = std::chrono::steady_clock::now() + test_deadline;
+    while (!input.ended() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
+    }
+    REQUIRE(input.ended());
+    lines = input.take();
+    CHECK(lines == std::vector<std::string>{"rooms", "say hello world"});
+    CHECK(input.take().empty());
+}
+
+TEST_CASE("four clients join one room and start it with these messages", "[server][rooms]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::uint32_t> tokens;
+    players.reserve(5);
+    tokens.reserve(5);
+    for (std::size_t index = 0; index < 5; ++index) {
+        players.push_back(std::make_unique<Player>(context, server));
+    }
+    for (std::size_t index = 0; index < 4; ++index) {
+        tokens.push_back(log_in(context, server, *players.at(index), "p" + std::to_string(index)));
+    }
+    // The messages of a kind a player received.
+    const auto received = [&](std::size_t index, rtype::TcpKind kind) {
+        std::vector<std::vector<std::byte>> messages;
+        for (const std::vector<std::byte>& message : players.at(index)->received) {
+            if (rtype::kind_of(message) == kind) {
+                messages.push_back(message);
+            }
+        }
+        return messages;
+    };
+    const auto wait_for = [&](std::size_t index, rtype::TcpKind kind, std::size_t count) {
+        REQUIRE(pump(context, server, [&] { return received(index, kind).size() >= count; }));
+        return received(index, kind).back();
+    };
+
+    // The first player creates room 1; the four join it, one after the other.
+    players.at(0)->send(rtype::write_create_room({.name = "Aces", .max_players = 4}));
+    CHECK(rtype::read_room_created(wait_for(0, rtype::TcpKind::RoomCreated, 1)) == std::uint8_t{1});
+    for (std::size_t index = 0; index < 4; ++index) {
+        players.at(index)->send(rtype::write_join_room(1));
+        CHECK(rtype::read_room_joined(wait_for(index, rtype::TcpKind::RoomJoined, 1)) ==
+              std::pair<std::uint8_t, std::uint8_t>{1, static_cast<std::uint8_t>(index)});
+    }
+    const auto everyone = [&] {
+        const std::optional<rtype::RoomPlayers> room =
+            rtype::read_room_players(wait_for(0, rtype::TcpKind::RoomPlayers, 1));
+        return room.value_or(rtype::RoomPlayers{});
+    };
+    REQUIRE(pump(context, server, [&] { return everyone().players.size() == 4; }));
+    CHECK(everyone().room == 1);
+    CHECK(everyone().players.at(3).name == "p3");
+    CHECK(server.sessions().list_rooms().size() == 1);
+
+    // A fifth player cannot join the full room, nor a room not in use.
+    tokens.push_back(log_in(context, server, *players.at(4), "p4"));
+    players.at(4)->send(rtype::write_join_room(1));
+    CHECK(rtype::read_join_rejected(wait_for(4, rtype::TcpKind::JoinRejected, 1)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::RoomFull));
+    players.at(4)->send(rtype::write_join_room(9));
+    CHECK(rtype::read_join_rejected(wait_for(4, rtype::TcpKind::JoinRejected, 2)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::NoSuchRoom));
+
+    // Three ready: everyone sees it, nothing starts; the fourth too: the game starts for all.
+    for (std::size_t index = 0; index < 3; ++index) {
+        players.at(index)->send(rtype::write_set_ready(true));
+    }
+    REQUIRE(pump(context, server, [&] {
+        return std::ranges::count_if(everyone().players, [](const rtype::RoomPlayer& player) {
+                   return player.ready;
+               }) == 3;
+    }));
+    CHECK(received(0, rtype::TcpKind::GameStart).empty());
+    players.at(3)->send(rtype::write_set_ready(true));
+    for (std::size_t index = 0; index < 4; ++index) {
+        CHECK(rtype::read_game_start(wait_for(index, rtype::TcpKind::GameStart, 1)));
+    }
+    CHECK(received(4, rtype::TcpKind::GameStart).empty());
+
+    // They bind and play in room 1; in game, a player stays there.
+    std::vector<std::unique_ptr<Socket>> sockets;
+    sockets.reserve(4);
+    for (std::size_t index = 0; index < 4; ++index) {
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, tokens.at(index)));
+    }
+    REQUIRE(pump(context, server, [&] {
+        return std::ranges::all_of(sockets,
+                                   [](const auto& socket) { return !socket->received.empty(); });
+    }));
+    CHECK(game_server.open_rooms() == 1);
+    CHECK_NOTHROW(game_server.room(1));
+    players.at(0)->send(rtype::write_join_room(0));
+    CHECK(rtype::read_join_rejected(wait_for(0, rtype::TcpKind::JoinRejected, 1)) ==
+          static_cast<std::uint8_t>(rtype::JoinRejection::InGame));
+
+    // The fifth leaves for the lobby: its room ends, and its Connect finds no game.
+    players.at(4)->send(rtype::write_leave_room());
+    REQUIRE(pump(context, server, [&] { return server.sessions().list_rooms().size() == 1; }));
+    const std::uint64_t dropped = server.dropped_datagrams();
+    Socket lobby_udp{context};
+    lobby_udp.send(server, datagram(PacketType::Connect, tokens.at(4)));
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+    CHECK(lobby_udp.received.empty());
+    CHECK(game_server.open_rooms() == 1);
+}
+
 TEST_CASE("a Connect binds the endpoint and gets an Accept", "[server][udp]") {
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
@@ -440,12 +915,12 @@ TEST_CASE("datagrams from unknown endpoints are dropped without an answer", "[se
 
     Socket stranger{context};
     const std::vector<std::vector<std::byte>> bad = {
-        datagram(PacketType::Input, token, 0, {std::byte{0x01}}), // endpoint not bound
-        datagram(PacketType::Connect, token),                     // session bound elsewhere
-        datagram(PacketType::Connect, token + 1),                 // unknown session
-        datagram(PacketType::Connect, 0),                         // 0 is never a token
-        datagram(PacketType::Snapshot, token),                    // wrong direction
-        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},      // truncated header
+        datagram(PacketType::Input, token, 0, input_payload(0, {0x01})), // endpoint not bound
+        datagram(PacketType::Connect, token),                            // session bound elsewhere
+        datagram(PacketType::Connect, token + 1),                        // unknown session
+        datagram(PacketType::Connect, 0),                                // 0 is never a token
+        datagram(PacketType::Snapshot, token),                           // wrong direction
+        {std::byte{0x52}, std::byte{0x54}, std::byte{0x59}},             // truncated header
     };
     for (const std::vector<std::byte>& bytes : bad) {
         stranger.send(server, bytes);
@@ -529,9 +1004,12 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
     std::vector<std::uint8_t> inputs;
+    std::vector<std::uint16_t> sequences;
     std::vector<unsigned> left;
-    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input) {
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
         inputs.push_back(input.held);
+        sequences.push_back(sequence);
     });
     server.on_players([](const rtype::Session& /*session*/) {},
                       [&](const rtype::Session& session, rtype::LeaveReason /*reason*/) {
@@ -543,24 +1021,165 @@ TEST_CASE("the most recent valid input of a bound player reaches the game", "[se
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
 
+    // The datagram's sequence, then the payload: the input's own sequence and its actions.
     const auto input = [&](std::uint16_t sequence, std::vector<std::byte> payload) {
         udp.send(server, datagram(PacketType::Input, token, sequence, std::move(payload)));
     };
-    input(1, {std::byte{0x08}});               // right: applied
-    input(2, {std::byte{0x20}});               // bit 5 set: malformed
-    input(3, {std::byte{0x08}, std::byte{0}}); // two bytes: malformed
-    input(5, {std::byte{0x01}});               // up: applied
-    input(4, {std::byte{0x02}});               // older than 5: ignored
-    input(5, {std::byte{0x01}});               // duplicate: ignored
-    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 2; }));
-    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 4; }));
+    std::vector<std::byte> too_long = input_payload(14, {0x08}); // count 1, two actions
+    too_long.push_back(std::byte{0});
+    input(1, input_payload(10, {0x08}));     // right: applied
+    input(2, input_payload(11, {0x20}));     // bit 5 set: malformed
+    input(3, {std::byte{11}, std::byte{0}}); // no count: malformed
+    input(4, std::move(too_long));           // a byte too many: malformed
+    input(5, input_payload(13, {0x01}));     // up: applied
+    input(6, input_payload(12, {0x02}));     // an older input in a newer datagram: ignored
+    input(5, input_payload(13, {0x01}));     // duplicate: ignored
+    input(7, input_payload(13, {0x04}));     // the same input again: ignored
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == 3; }));
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 5; }));
     CHECK(inputs == std::vector<std::uint8_t>{0x08, 0x01});
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13});
 
-    // The next datagram to the player acknowledges 6, 5, 4, 1 and 0, not the malformed 2 and 3.
-    udp.send(server, datagram(PacketType::Connect, token, 6));
+    // The next datagram to the player acknowledges 8, 7, 6, 5, 1 and 0, not the malformed 2
+    // to 4.
+    udp.send(server, datagram(PacketType::Connect, token, 8));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 2; }));
-    CHECK(udp.received.back().ack == 6);
-    CHECK(udp.received.back().ack_bits == 0b110011U);
+    CHECK(udp.received.back().ack == 8);
+    CHECK(udp.received.back().ack_bits == 0b11000111U);
+
+    // Input sequences wrap from 65535 to 0, as datagram sequences do (RFC section 2.2).
+    input(9, input_payload(30000, {0x08}));
+    input(10, input_payload(60000, {0x08}));
+    input(11, input_payload(65535, {0x08}));
+    input(12, input_payload(0, {0x10}));
+    input(13, input_payload(65534, {0x01})); // older than 0: ignored
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 10; }));
+    CHECK(sequences == std::vector<std::uint16_t>{10, 13, 30000, 60000, 65535, 0});
+    CHECK(inputs.back() == 0x10);
+    CHECK(left.empty());
+}
+
+TEST_CASE("the inputs of lost datagrams arrive with the next ones, each once", "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    std::vector<std::uint16_t> sequences;
+    std::vector<std::uint8_t> actions;
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
+        sequences.push_back(sequence);
+        actions.push_back(input.held);
+    });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // Input n holds the actions n and goes with the count - 1 before it, in the datagram of
+    // sequence n + 1.
+    const auto send = [&](std::uint16_t newest, std::size_t count) {
+        std::vector<rtype::InputRecord> inputs;
+        for (std::size_t back = count; back > 0; --back) {
+            const auto sequence = static_cast<std::uint16_t>(newest + 1 - back);
+            inputs.push_back(rtype::InputRecord{.sequence = sequence,
+                                                .actions = static_cast<std::uint8_t>(sequence)});
+        }
+        udp.send(server, datagram(PacketType::Input, token, static_cast<std::uint16_t>(newest + 1),
+                                  rtype::write_inputs(inputs)));
+    };
+    send(0, 1);
+    send(1, 2);
+    send(2, 3);
+    send(3, 4);
+    send(7, 4);  // 4 to 6 lost: they come with 7
+    send(5, 4);  // late: nothing new
+    send(12, 4); // 8 to 11 lost: 8 is lost for good, 9 to 11 come with 12
+    REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 7; }));
+    CHECK(sequences == std::vector<std::uint16_t>{0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12});
+    CHECK(actions == std::vector<std::uint8_t>{0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12});
+    CHECK(server.dropped_datagrams() == 0);
+}
+
+TEST_CASE("with 10 % loss the server applies every input of a recorded session",
+          "[server][input]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    // The whole session is sent at once: more datagrams per second than a client sends.
+    server.set_limits(
+        rtype::RateLimits{.datagrams_per_second = 100000, .connections_per_address = 8});
+    std::vector<rtype::InputRecord> applied;
+    server.on_input([&](const rtype::Session& /*session*/, aegis2d::ecs::PlayerInput input,
+                        std::uint16_t sequence) {
+        applied.push_back(rtype::InputRecord{.sequence = sequence, .actions = input.held});
+    });
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // The recorded session: the bot's dodge script, one input per tick for 10 seconds, then 3
+    // more inputs as the game goes on.
+    const auto script = rtype::load_input_script(RTYPE_ASSET_DIR "/../tools/bot/dodge.txt");
+    REQUIRE(std::holds_alternative<rtype::InputScript>(script));
+    const std::size_t ticks = std::size_t{10} * rtype::tuning::tick_rate;
+    std::vector<std::uint8_t> recorded;
+    while (recorded.size() < ticks) {
+        for (const rtype::ScriptStep& step : std::get<rtype::InputScript>(script).steps) {
+            const auto count = step.duration.count() * rtype::tuning::tick_rate / 1000;
+            recorded.insert(recorded.end(), static_cast<std::size_t>(count), step.held);
+        }
+    }
+    recorded.resize(ticks);
+    const std::size_t session = recorded.size() + 3;
+
+    // A link losing one datagram in ten.
+    aegis2d::core::Random random{310};
+    std::vector<bool> lost(session);
+    std::ranges::generate(lost, [&] { return random.below(100) < 10; });
+    std::size_t losses = 0;
+    std::size_t longest = 0;
+    for (std::size_t index = 0, run = 0; index < session; ++index) {
+        run = lost.at(index) ? run + 1 : 0;
+        losses += lost.at(index) ? 1 : 0;
+        longest = std::max(longest, run);
+    }
+    CAPTURE(losses, longest);
+    CHECK(losses > session / 12);
+    CHECK(losses < session / 8);
+    // Runs of 3 lost datagrams are recovered; one of 4 would lose an input.
+    REQUIRE(longest == 3);
+
+    std::vector<rtype::InputRecord> window;
+    std::uint64_t delivered = 0;
+    for (std::size_t index = 0; index < session; ++index) {
+        if (window.size() == rtype::max_inputs_per_datagram) {
+            window.erase(window.begin());
+        }
+        window.push_back(rtype::InputRecord{.sequence = static_cast<std::uint16_t>(index),
+                                            .actions = index < recorded.size() ? recorded.at(index)
+                                                                               : std::uint8_t{0}});
+        if (!lost.at(index)) {
+            udp.send(server,
+                     datagram(PacketType::Input, token, static_cast<std::uint16_t>(index + 1),
+                              rtype::write_inputs(window)));
+            ++delivered;
+        }
+        // A few at a time, so the socket's buffer never overflows.
+        if (index % 16 == 15 || index + 1 == session) {
+            REQUIRE(pump(context, server, [&] { return server.game_datagrams() == delivered; }));
+        }
+    }
+
+    // Every input of the recording, in order, once, with its actions.
+    REQUIRE(applied.size() >= recorded.size());
+    for (std::size_t index = 0; index < recorded.size(); ++index) {
+        CAPTURE(index);
+        CHECK(applied.at(index) == rtype::InputRecord{.sequence = static_cast<std::uint16_t>(index),
+                                                      .actions = recorded.at(index)});
+    }
+    CHECK(server.dropped_datagrams() == 0);
+    CHECK(server.rate_limited() == 0);
 }
 
 TEST_CASE("heartbeats, events and disconnects of a bound player are checked", "[server][input]") {
@@ -607,15 +1226,15 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
     Socket udp{context};
     udp.send(server, datagram(PacketType::Connect, token, 0));
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
-    udp.send(server, datagram(PacketType::Input, token, 1, {std::byte{0x08}}));
+    udp.send(server, datagram(PacketType::Input, token, 1, input_payload(0, {0x08})));
     REQUIRE(pump(context, server, [&] { return server.game_datagrams() == 1; }));
 
     rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
-    snapshot.entities.resize(60);
-    server.send_snapshot(rtype::write_snapshot(snapshot));
+    snapshot.entities.resize(130);
+    server.send_snapshot(rtype::write_snapshot(snapshot), 0);
     REQUIRE(pump(context, server, [&] { return udp.received.size() == 3; }));
 
-    // Two datagrams (51 + 9 entities), after the Accept of sequence 0, acknowledging 1 and 0;
+    // Two datagrams (122 + 8 entities), after the Accept of sequence 0, acknowledging 1 and 0;
     // only the bound player gets them.
     CHECK(server.snapshots_sent() == 2);
     for (std::size_t index = 1; index < 3; ++index) {
@@ -626,8 +1245,122 @@ TEST_CASE("snapshots go to bound players, numbered and acknowledging their datag
         CHECK(header.ack == 1);
         CHECK(header.ack_bits == 1U);
     }
-    CHECK(udp.sizes.at(1) == PacketHeader::size + 7 + (std::size_t{51} * 22));
-    CHECK(udp.sizes.at(2) == PacketHeader::size + 7 + (std::size_t{9} * 22));
+    // 51 bits, then 77 bits per record, rounded up to the byte.
+    CHECK(udp.sizes.at(1) == PacketHeader::size + ((51 + (std::size_t{122} * 77) + 7) / 8));
+    CHECK(udp.sizes.at(2) == PacketHeader::size + ((51 + (std::size_t{8} * 77) + 7) / 8));
+}
+
+TEST_CASE("payloads from the compression threshold go compressed, and back whole",
+          "[server][snapshot][compression]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token, 0));
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 1; }));
+
+    // 130 still entities in two payloads, sent plain, then compressed from 128 bytes.
+    rtype::Snapshot snapshot{.tick = 9, .players = {}, .entities = {}};
+    snapshot.entities.resize(130);
+    const std::vector<std::vector<std::byte>> payloads = rtype::write_snapshot(snapshot);
+    REQUIRE(payloads.size() == 2);
+    CHECK(!server.compression().has_value());
+    server.send_snapshot(payloads, 0);
+    server.set_compression(128);
+    CHECK(server.compression() == 128U);
+    server.send_snapshot(payloads, 0);
+    REQUIRE(pump(context, server, [&] { return udp.received.size() == 5; }));
+
+    for (std::size_t index = 0; index < payloads.size(); ++index) {
+        CAPTURE(index);
+        const std::vector<std::byte>& plain = udp.datagrams.at(1 + index);
+        const std::vector<std::byte>& packed = udp.datagrams.at(3 + index);
+        CHECK(!udp.received.at(1 + index).compressed);
+        // The second payload, 8 records, is below the threshold.
+        CHECK(udp.received.at(3 + index).compressed == (index == 0));
+        CHECK((packed.size() < plain.size()) == (index == 0));
+        aegis2d::net::BinaryReader reader{packed};
+        REQUIRE(std::holds_alternative<PacketHeader>(aegis2d::net::read_header(reader)));
+        CHECK(aegis2d::net::read_payload(udp.received.at(3 + index), reader) == payloads.at(index));
+    }
+
+    // A compressed payload that does not decompress is dropped before anything reads it.
+    std::vector<std::byte> broken = datagram(PacketType::Heartbeat, token, 1, {std::byte{0x10}});
+    broken.at(5) |= std::byte{PacketHeader::compressed_flag};
+    const std::uint64_t dropped = server.dropped_datagrams();
+    udp.send(server, broken);
+    REQUIRE(pump(context, server, [&] { return server.dropped_datagrams() == dropped + 1; }));
+    CHECK(server.game_datagrams() == 0);
+}
+
+TEST_CASE("the server knows the latest snapshot each player acknowledged",
+          "[server][snapshot][baselines]") {
+    NetworkContext context;
+    ServerNetwork server{context, 0, 0};
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket first_udp{context};
+    Socket second_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first, 0));
+    second_udp.send(server, datagram(PacketType::Connect, second, 0));
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 1 && second_udp.received.size() == 1;
+    }));
+    REQUIRE(server.snapshots(first) != nullptr);
+    CHECK(server.snapshots(first)->latest_acknowledged() == nullptr);
+    CHECK(server.snapshots(first + second + 1) == nullptr);
+
+    // Ticks 3 and 6, one datagram each: sequences 1 and 2 of both channels, after the Accept.
+    for (const std::uint32_t tick : {3U, 6U}) {
+        const auto snapshot = std::make_shared<const rtype::Snapshot>(
+            rtype::Snapshot{.tick = tick, .players = {}, .entities = {}});
+        server.send_snapshot(rtype::write_snapshot(*snapshot), 0, snapshot);
+    }
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 3 && second_udp.received.size() == 3;
+    }));
+    CHECK(server.snapshots(first)->size() == 2);
+
+    // The first player received both, the second only the first one (sequence 2 lost).
+    const auto heartbeat = [](std::uint32_t session, std::uint16_t ack, std::uint32_t bits) {
+        aegis2d::net::BinaryWriter writer;
+        aegis2d::net::write_header(writer, PacketHeader{.type = PacketType::Heartbeat,
+                                                        .sequence = 1,
+                                                        .ack = ack,
+                                                        .ack_bits = bits,
+                                                        .session = session});
+        return std::vector<std::byte>{writer.data().begin(), writer.data().end()};
+    };
+    first_udp.send(server, heartbeat(first, 2, 0b11U));
+    second_udp.send(server, heartbeat(second, 1, 0b1U));
+    REQUIRE(pump(context, server, [&] {
+        const rtype::Snapshot* const one = server.snapshots(first)->latest_acknowledged();
+        const rtype::Snapshot* const two = server.snapshots(second)->latest_acknowledged();
+        return one != nullptr && two != nullptr;
+    }));
+    CHECK(server.snapshots(first)->latest_acknowledged()->tick == 6);
+    CHECK(server.snapshots(second)->latest_acknowledged()->tick == 3);
+    CHECK(!server.snapshots(second)->acknowledged(6));
+
+    // The next snapshot goes to each player against the latest one it acknowledged.
+    server.send_snapshot(std::make_shared<const rtype::Snapshot>(
+                             rtype::Snapshot{.tick = 9, .players = {}, .entities = {}}),
+                         0);
+    REQUIRE(pump(context, server, [&] {
+        return first_udp.received.size() == 4 && second_udp.received.size() == 4;
+    }));
+    const auto baseline_of = [](const std::vector<std::byte>& datagram) {
+        const std::optional<rtype::DeltaSnapshot> delta =
+            rtype::read_delta_snapshot(std::span{datagram}.subspan(PacketHeader::size));
+        REQUIRE(delta.has_value());
+        return delta.value_or(rtype::DeltaSnapshot{}).baseline;
+    };
+    CHECK(baseline_of(first_udp.datagrams.back()) == 6U);
+    CHECK(baseline_of(second_udp.datagrams.back()) == 3U);
+    CHECK(server.snapshots(first)->find(9) != nullptr);
 }
 
 namespace {
@@ -677,7 +1410,7 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     const std::vector<std::vector<std::byte>> spawns{
         rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 5, .kind = 3}),
         rtype::write_event(rtype::SpawnEvent{.tick = 1, .id = 6, .kind = 3})};
-    server.send_events(spawns);
+    server.send_events(spawns, 0);
     REQUIRE(pump(context, server, [&] {
         return first_udp.received.size() == 2 && second_udp.received.size() == 2;
     }));
@@ -690,7 +1423,7 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     // To the player who joins only.
     const std::vector<std::vector<std::byte>> world{
         rtype::write_event(rtype::SpawnEvent{.tick = 2, .id = 7, .kind = 4})};
-    server.send_events(world, second);
+    server.send_events(world, 0, second);
     REQUIRE(pump(context, server, [&] { return second_udp.received.size() == 3; }));
     CHECK(events_of(second_client, second_udp.datagrams.at(2)) == world);
     context.run_for(std::chrono::milliseconds{50});
@@ -716,11 +1449,35 @@ TEST_CASE("events reach bound players and are resent until acknowledged", "[serv
     CHECK(first_udp.received.size() == received);
 }
 
+TEST_CASE("the server writes the timings of its rooms as a Chrome trace", "[server][368]") {
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    game_server.start_trace();
+    ServerNetwork& server = game_server.network();
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    REQUIRE(pump(context, server, [&] { return game_server.simulation().ticks() >= 5; }));
+
+    const auto file = std::filesystem::temp_directory_path() / "rtype_server_trace_test.json";
+    CHECK(game_server.save_trace(file) > 0);
+    CHECK(game_server.open_rooms() == 0);
+    const auto trace = aegis2d::core::Config::from_file(file);
+    CHECK(trace.string("traceEvents.0.args.name") == "r-type_server");
+    CHECK(trace.string("traceEvents.1.args.name").value_or("").starts_with("room 0 ("));
+    // The systems of the first tick, then the tick, its sending and the whole frame.
+    CHECK(trace.string("traceEvents.2.name") == "steering");
+    CHECK(trace.string("traceEvents.2.ph") == "X");
+    CHECK(trace.integer("traceEvents.2.tid") == 1);
+    std::filesystem::remove(file);
+}
+
 TEST_CASE("a player whose TCP connection closes is gone from the game within a second",
           "[server][disconnect]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player staying_player{context, server};
@@ -854,8 +1611,7 @@ TEST_CASE("a bound player silent for 5 seconds loses its session", "[server][tim
 
 TEST_CASE("a player whose UDP traffic stops is gone from the game", "[server][timeout]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player staying_player{context, server};
@@ -1003,8 +1759,7 @@ struct EventLog {
 TEST_CASE("players learn who joins, and who leaves before its ship is destroyed",
           "[server][leave]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     Player first_player{context, server};
@@ -1068,6 +1823,326 @@ TEST_CASE("players learn who joins, and who leaves before its ship is destroyed"
     CHECK(left_at < first_log.find<rtype::DestroyEvent>(destroyed));
 }
 
+namespace {
+
+// Snapshot datagrams a socket received, read whole: the test clients acknowledge none, so
+// none is a delta.
+std::vector<rtype::DeltaSnapshot> snapshots_of(const Socket& socket) {
+    std::vector<rtype::DeltaSnapshot> snapshots;
+    for (std::size_t index = 0; index < socket.datagrams.size(); ++index) {
+        if (socket.received.at(index).type != PacketType::Snapshot) {
+            continue;
+        }
+        const std::span<const std::byte> bytes{socket.datagrams.at(index)};
+        const std::optional<rtype::DeltaSnapshot> snapshot =
+            rtype::read_delta_snapshot(bytes.subspan(PacketHeader::size));
+        REQUIRE(snapshot.has_value());
+        snapshots.push_back(snapshot.value_or(rtype::DeltaSnapshot{}));
+    }
+    return snapshots;
+}
+
+// Ships whose Spawn a player got, each counted once: a player bound while the events of a
+// tick are on their way to the network thread gets them, and the same Spawn again in the
+// world it is sent when it joins (RFC section 4.6), which a client applies again harmlessly.
+std::size_t ships_in(const EventLog& log) {
+    std::vector<std::uint32_t> ships;
+    for (const rtype::GameEvent& event : log.events) {
+        const auto* const spawn = std::get_if<rtype::SpawnEvent>(&event);
+        if (spawn != nullptr &&
+            spawn->kind == static_cast<std::uint8_t>(rtype::EntityKind::PlayerShip) &&
+            std::ranges::find(ships, spawn->id) == ships.end()) {
+            ships.push_back(spawn->id);
+        }
+    }
+    return ships.size();
+}
+
+} // namespace
+
+TEST_CASE("two rooms play side by side and nothing of one reaches the other", "[server][room]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    REQUIRE(game_server.max_rooms() == 2);
+
+    // Four players fill the first room, the next two play in the second, as its 0 and 1.
+    constexpr std::size_t count = rtype::tuning::max_players + 2;
+    const auto room_of = [](std::size_t index) {
+        return index < rtype::tuning::max_players ? 0U : 1U;
+    };
+    std::vector<std::unique_ptr<Player>> players;
+    std::vector<std::unique_ptr<Socket>> sockets;
+    std::vector<std::uint32_t> tokens;
+    std::vector<EventLog> logs(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        players.push_back(std::make_unique<Player>(context, server));
+        const std::uint32_t token =
+            log_in(context, server, *players.back(), "p" + std::to_string(index));
+        tokens.push_back(token);
+        const rtype::Session* const session = server.sessions().find(token);
+        REQUIRE(session != nullptr);
+        CHECK(session->room == room_of(index));
+        CHECK(session->player == index % rtype::tuning::max_players);
+        sockets.push_back(std::make_unique<Socket>(context));
+        sockets.back()->send(server, datagram(PacketType::Connect, token));
+    }
+    const auto update = [&] {
+        for (std::size_t index = 0; index < count; ++index) {
+            logs.at(index).update(*sockets.at(index));
+        }
+    };
+
+    // Events: each player sees the ships and names of its room only.
+    const auto every_ship_seen = [&] {
+        update();
+        for (std::size_t index = 0; index < count; ++index) {
+            if (ships_in(logs.at(index)) < (room_of(index) == 0 ? 4U : 2U)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    REQUIRE(pump(context, server, every_ship_seen));
+    CHECK(game_server.open_rooms() == 2);
+    context.run_for(std::chrono::milliseconds{100});
+    update();
+    for (std::size_t index = 0; index < count; ++index) {
+        CAPTURE(index);
+        CHECK(ships_in(logs.at(index)) == (room_of(index) == 0 ? 4U : 2U));
+        for (std::size_t other = 0; other < count; ++other) {
+            const std::string name = "p" + std::to_string(other);
+            const bool known = logs.at(index)
+                                   .find<rtype::PlayerJoinedEvent>(
+                                       [&](const auto& joined) { return joined.name == name; })
+                                   .has_value();
+            CHECK(known == (other != index && room_of(other) == room_of(index)));
+        }
+    }
+
+    // Inputs and snapshots: the input of player 0 of the second room is applied there, and
+    // not to player 0 of the first room, whose snapshots only list the 4 players there.
+    const auto input_of_first = [](const rtype::DeltaSnapshot& snapshot) {
+        const auto first = std::ranges::find_if(
+            snapshot.players, [](const rtype::PlayerRecord& record) { return record.player == 0; });
+        return first == snapshot.players.end() ? std::nullopt : first->input;
+    };
+    sockets.at(4)->send(server,
+                        datagram(PacketType::Input, tokens.at(4), 1, input_payload(7, {0x08})));
+    const std::size_t seen = snapshots_of(*sockets.at(0)).size();
+    REQUIRE(pump(context, server, [&] {
+        const std::vector<rtype::DeltaSnapshot> second = snapshots_of(*sockets.at(4));
+        return !second.empty() && input_of_first(second.back()) == 7;
+    }));
+    REQUIRE(pump(context, server, [&] { return snapshots_of(*sockets.at(0)).size() > seen; }));
+    const rtype::DeltaSnapshot first_room = snapshots_of(*sockets.at(0)).back();
+    CHECK(first_room.players.size() == 4);
+    CHECK(!input_of_first(first_room).has_value());
+    CHECK(snapshots_of(*sockets.at(4)).back().players.size() == 2);
+
+    // Leaving: the other player of the second room learns it, the first room does not.
+    players.at(4)->send(rtype::write_logout(LogoutReason::Left));
+    const auto left = [](const EventLog& log) {
+        return log.find<rtype::PlayerLeftEvent>([](const auto& /*event*/) { return true; });
+    };
+    REQUIRE(pump(context, server, [&] {
+        update();
+        return left(logs.at(5)).has_value();
+    }));
+    context.run_for(std::chrono::milliseconds{100});
+    update();
+    CHECK(std::get<rtype::PlayerLeftEvent>(logs.at(5).events.at(left(logs.at(5)).value_or(0)))
+              .player == 0);
+    for (std::size_t index = 0; index < rtype::tuning::max_players; ++index) {
+        CHECK(!left(logs.at(index)).has_value());
+    }
+}
+
+TEST_CASE("a room opens with its first player in game and closes with its last", "[server][room]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    ServerNetwork& server = game_server.network();
+    CHECK(game_server.open_rooms() == 0);
+    CHECK_THROWS_AS(game_server.room(0), std::out_of_range);
+
+    // Logged in, the first player is not in game yet: no room opens.
+    Player first_player{context, server};
+    const std::uint32_t first = log_in(context, server, first_player, "R9");
+    context.run_for(std::chrono::milliseconds{50});
+    CHECK(game_server.open_rooms() == 0);
+
+    // In game, its room opens and its game runs; the second player joins the same room.
+    Socket first_udp{context};
+    first_udp.send(server, datagram(PacketType::Connect, first));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    Player second_player{context, server};
+    const std::uint32_t second = log_in(context, server, second_player, "R10");
+    Socket second_udp{context};
+    second_udp.send(server, datagram(PacketType::Connect, second));
+    REQUIRE(pump(context, server, [&] { return !second_udp.received.empty(); }));
+    CHECK(game_server.open_rooms() == 1);
+    REQUIRE(pump(context, server, [&] { return game_server.room(0).simulation().ticks() >= 30; }));
+
+    // The room stays while a player is left, and closes with the last one.
+    first_player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return server.sessions().size() == 1; }));
+    CHECK(game_server.open_rooms() == 1);
+    second_player.send(rtype::write_logout(LogoutReason::Left));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 0; }));
+    CHECK_THROWS_AS(game_server.room(0), std::out_of_range);
+
+    // The next player of that room starts a new game.
+    Player third_player{context, server};
+    const std::uint32_t third = log_in(context, server, third_player, "R11");
+    Socket third_udp{context};
+    third_udp.send(server, datagram(PacketType::Connect, third));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+    CHECK(game_server.room(0).simulation().ticks() < 30);
+}
+
+TEST_CASE("the scores of a game over are kept for the next run", "[server][scores]") {
+    const auto folder = std::filesystem::temp_directory_path() / "rtype_server_scores_test";
+    std::filesystem::remove_all(folder);
+    const std::filesystem::path file = folder / "scores.json";
+    NetworkContext context;
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
+    CHECK(game_server.scoreboard() == nullptr);
+    game_server.keep_scores(file);
+    REQUIRE(game_server.scoreboard() != nullptr);
+    ServerNetwork& server = game_server.network();
+    Player player{context, server};
+    const std::uint32_t token = log_in(context, server, player, "R9");
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, token));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
+
+    // The player scores, then is out: the game is over, and its score is kept, once.
+    game_server.room().simulation().post([](rtype::GameInstance& game) {
+        // On the simulation thread: no assertion here, the test waits for the board.
+        const std::optional<aegis2d::ecs::Entity> ship = game.ship(0);
+        if (!ship.has_value()) {
+            return;
+        }
+        aegis2d::ecs::Registry& world = game.game().registry();
+        world.get<aegis2d::ecs::Score>(*ship).points = 1500;
+        world.remove<aegis2d::ecs::Lives>(*ship);
+    });
+    REQUIRE(pump(context, server, [&] { return !game_server.scoreboard()->best().empty(); }));
+    context.run_for(std::chrono::milliseconds{100});
+    const std::vector<rtype::ScoreEntry> kept{{.name = "R9", .score = 1500}};
+    CHECK(game_server.scoreboard()->best() == kept);
+    CHECK(rtype::Scoreboard{file}.best() == kept);
+}
+
+TEST_CASE("the rules of a room become the rules of its games", "[server][rules]") {
+    const rtype::GameRules tuned = rtype::game_rules(rtype::RoomRules{});
+    CHECK(tuned.lives == rtype::tuning::player_lives);
+    CHECK(tuned.enemy_health_factor == 1);
+    CHECK(tuned.spawn_interval_scale == 1.0F);
+    CHECK(!tuned.friendly_fire);
+
+    const rtype::GameRules easy =
+        rtype::game_rules({.lives = 9, .difficulty = 0, .waves = "", .friendly_fire = 0});
+    CHECK(easy.lives == 9);
+    CHECK(easy.enemy_health_factor == rtype::tuning::easy_enemy_health_factor);
+    CHECK(easy.spawn_interval_scale == rtype::tuning::easy_spawn_interval_scale);
+    const rtype::GameRules hard =
+        rtype::game_rules({.lives = 1, .difficulty = 2, .waves = "", .friendly_fire = 1});
+    CHECK(hard.lives == 1);
+    CHECK(hard.enemy_health_factor == rtype::tuning::hard_enemy_health_factor);
+    CHECK(hard.spawn_interval_scale == rtype::tuning::hard_spawn_interval_scale);
+    CHECK(hard.friendly_fire);
+}
+
+TEST_CASE("two rooms with different rules play differently at the same time",
+          "[server][room][rules]") {
+    NetworkContext context;
+    rtype::GameServer game_server{
+        context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0, rtype::tuning::tick_rate, 2};
+    game_server.set_waves({{"swarm", aegis2d::ecs::WaveSchedule::from_string(
+                                         R"({"loop": true, "waves": [{"delay": 0.5, "spawns": [
+                                             {"type": "bydos_slave", "position": [1296, 360]}]}]})")}});
+    ServerNetwork& server = game_server.network();
+    const auto received = [](const Player& player, rtype::TcpKind kind) {
+        return std::ranges::count_if(player.received,
+                                     [kind](const std::vector<std::byte>& message) {
+                                         return rtype::kind_of(message) == kind;
+                                     });
+    };
+
+    // The first player plays in the room of the logins, with the default rules.
+    Player tuned_player{context, server};
+    const std::uint32_t tuned = log_in(context, server, tuned_player, "Tuned");
+    const rtype::Session* const session = server.sessions().find(tuned);
+    REQUIRE(session != nullptr);
+    const std::uint32_t tuned_room = session->room;
+    CHECK(server.sessions().rules(tuned_room) == rtype::RoomRules{});
+
+    // The second one creates room 1 with its rules, joins it and starts it alone.
+    Player hard_player{context, server};
+    const std::uint32_t hard = log_in(context, server, hard_player, "Hard");
+    hard_player.send(rtype::write_create_room(
+        {.name = "Aces",
+         .max_players = 2,
+         .rules = {.lives = 1, .difficulty = 2, .waves = "swarm", .friendly_fire = 1}}));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::RoomCreated) == 1; }));
+    CHECK(rtype::read_room_created(hard_player.received.back()) == std::uint8_t{1});
+    hard_player.send(rtype::write_join_room(1));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::RoomJoined) == 1; }));
+    hard_player.send(rtype::write_set_ready(true));
+    REQUIRE(pump(context, server,
+                 [&] { return received(hard_player, rtype::TcpKind::GameStart) == 1; }));
+
+    Socket hard_udp{context};
+    hard_udp.send(server, datagram(PacketType::Connect, hard));
+    Socket tuned_udp{context};
+    tuned_udp.send(server, datagram(PacketType::Connect, tuned));
+    REQUIRE(pump(context, server, [&] {
+        return !snapshots_of(hard_udp).empty() && !snapshots_of(tuned_udp).empty() &&
+               !snapshots_of(hard_udp).back().players.empty() &&
+               !snapshots_of(tuned_udp).back().players.empty();
+    }));
+    CHECK(game_server.open_rooms() == 2);
+    // Each player sees the lives of its room's rules.
+    CHECK(snapshots_of(hard_udp).back().players.front().lives == 1);
+    CHECK(snapshots_of(tuned_udp).back().players.front().lives == rtype::tuning::player_lives);
+
+    // Both games run side by side, each with its own rules and waves.
+    struct Probe {
+        std::atomic<bool> done{false};
+        rtype::GameRules rules;
+        std::size_t waves = 0;
+        std::uint64_t ticks = 0;
+    };
+    const auto probe = [&](std::uint32_t id, Probe& into) {
+        game_server.room(id).simulation().post([&into](rtype::GameInstance& game) {
+            into.rules = game.game().rules();
+            into.waves = game.game().waves().spawns().size();
+            into.ticks = game.game().ticks();
+            into.done = true;
+        });
+    };
+    Probe hard_room;
+    Probe tuned_game;
+    probe(1, hard_room);
+    probe(tuned_room, tuned_game);
+    REQUIRE(pump(context, server, [&] { return hard_room.done && tuned_game.done; }));
+    CHECK(hard_room.rules.lives == 1);
+    CHECK(hard_room.rules.enemy_health_factor == rtype::tuning::hard_enemy_health_factor);
+    CHECK(hard_room.rules.friendly_fire);
+    CHECK(hard_room.waves == 1);
+    CHECK(tuned_game.rules.lives == rtype::tuning::player_lives);
+    CHECK(tuned_game.rules.enemy_health_factor == 1);
+    CHECK(!tuned_game.rules.friendly_fire);
+    CHECK(tuned_game.waves == 0);
+    CHECK(hard_room.ticks > 0);
+    CHECK(tuned_game.ticks > 0);
+}
+
 TEST_CASE("an exception while handling a client kicks that client only", "[server][errors]") {
     NetworkContext context;
     ServerNetwork server{context, 0, 0};
@@ -1082,7 +2157,8 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                           }
                       });
     // A bug in the game's handling of player 1's inputs, standing for any exception.
-    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/) {
+    server.on_input([&](const rtype::Session& session, aegis2d::ecs::PlayerInput /*input*/,
+                        std::uint16_t /*sequence*/) {
         if (session.player == 1) {
             throw std::runtime_error{"input handler failed"};
         }
@@ -1100,14 +2176,14 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
                  [&] { return good_udp.received.size() == 1 && bad_udp.received.size() == 1; }));
 
     // Over UDP: the datagram that threw kicks its sender (RFC section 6.6), not the others.
-    bad_udp.send(server, datagram(PacketType::Input, bad, 1, {std::byte{0x01}}));
+    bad_udp.send(server, datagram(PacketType::Input, bad, 1, input_payload(0, {0x01})));
     REQUIRE(pump(context, server, [&] { return bad_player.closed; }));
     CHECK(server.errors() == 1);
     REQUIRE(!bad_player.received.empty());
     CHECK(bad_player.received.back() == rtype::write_logout(LogoutReason::ProtocolError));
     CHECK(left ==
           std::vector<std::pair<unsigned, rtype::LeaveReason>>{{1, rtype::LeaveReason::Kicked}});
-    good_udp.send(server, datagram(PacketType::Input, good, 1, {std::byte{0x01}}));
+    good_udp.send(server, datagram(PacketType::Input, good, 1, input_payload(0, {0x01})));
     REQUIRE(pump(context, server, [&] { return inputs.size() == 1; }));
     CHECK(inputs.front() == 0);
 
@@ -1126,8 +2202,7 @@ TEST_CASE("an exception while handling a client kicks that client only", "[serve
 TEST_CASE("a flood of forged packets from players in the game crashes nothing",
           "[server][errors]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
 
     // An honest player, which must go on playing.
@@ -1300,10 +2375,14 @@ TEST_CASE("an address cannot open more connections than its share", "[server][ra
 
 TEST_CASE("a flood does not slow the tick rate", "[server][rate]") {
     NetworkContext context;
-    rtype::GameInstance instance{std::nullopt, aegis2d::ecs::WaveSchedule{}};
-    rtype::GameServer game_server{context, instance, 0, 0};
+    rtype::GameServer game_server{context, std::nullopt, aegis2d::ecs::WaveSchedule{}, 0, 0};
     ServerNetwork& server = game_server.network();
     const std::uint16_t port = server.udp_endpoint().port();
+    // A player in game, so that its room ticks.
+    Player player{context, server};
+    Socket udp{context};
+    udp.send(server, datagram(PacketType::Connect, log_in(context, server, player, "R9")));
+    REQUIRE(pump(context, server, [&] { return game_server.open_rooms() == 1; }));
 
     // A second context and thread flood the server as fast as they can for a second, while
     // the server's context handles them and the simulation ticks. A jthread, so that it stops

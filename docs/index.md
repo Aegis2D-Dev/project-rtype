@@ -14,7 +14,7 @@ engine, developed alongside it.
 
 | Binary | Role | Engine modules |
 |---|---|---|
-| `r-type_server` | Authoritative simulation of the game at 60 ticks per second | core, ecs, net |
+| `r-type_server` | Authoritative simulation of the game at 60 ticks per second | core, ecs, shmup, net |
 | `r-type_client` | Window, input, rendering and sound of one player | every module |
 
 ## Where to go next

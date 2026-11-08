@@ -32,4 +32,8 @@ bool stop_requested() noexcept {
     return stopping.load();
 }
 
+void request_stop() noexcept {
+    stopping.store(true);
+}
+
 } // namespace rtype

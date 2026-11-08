@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#45](https://github.com/Aegis2D-Dev/project-rtype/pull/45) (opened 2026-10-17) |
 | Branch | `ci/release-packages` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-10-17 (`8744f02`) |
 | Author | @vmbr068 |
 | Ticket | None: the release of the playable client (#44) |
 
@@ -29,7 +29,9 @@ version becomes 0.2.0, for the playable client.
 - `changelogs/2026-10-17-client-game.md`: the pull request is #44, merged.
 
 ## Commits
-Added once merged.
+- `b2cfa23` feat(ci): added the release workflow and the game packages
+- `91932d2` feat(changelog): updated changelogs
+- `77ed185` feat(ci): set the run path of the packaged binaries
 
 ## Notes
 - The engine's `aegis2d_install()` sets the run path of the executables from a variable of

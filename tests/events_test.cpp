@@ -25,7 +25,6 @@
 using aegis2d::Vec2;
 using aegis2d::core::step_from_rate;
 using aegis2d::ecs::Entity;
-using aegis2d::ecs::SineMotion;
 using aegis2d::ecs::Transform;
 using aegis2d::ecs::WaveSchedule;
 using rtype::DeathEvent;
@@ -79,8 +78,8 @@ Vec2 position_of(GameInstance& instance, Entity entity) {
 
 // A Bydos that does not weave, for the tests that aim a missile at it.
 Entity straight_bydos(GameInstance& instance, Vec2 position) {
-    const Entity bydos = rtype::spawn_bydos_slave(instance.game().registry(), position);
-    instance.game().registry().remove<SineMotion>(bydos);
+    const Entity bydos = instance.game().spawn_enemy("bydos_slave", position);
+    instance.game().enemies().stop(bydos);
     return bydos;
 }
 
