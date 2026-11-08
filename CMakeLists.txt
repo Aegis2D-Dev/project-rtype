@@ -71,16 +71,6 @@ if(RTYPE_BUILD_CLIENT)
     list(APPEND rtype_installed r-type_client)
 endif()
 aegis2d_install(TARGETS ${rtype_installed} ASSETS "${PROJECT_SOURCE_DIR}/assets")
-# The engine's master sets the run path to the libraries in its own folder's scope, which a
-# game fetched with FetchContent does not see: set it here, or the packaged binaries do not
-# find the engine libraries.
-if(APPLE)
-    set_target_properties(${rtype_installed} PROPERTIES
-        INSTALL_RPATH "@executable_path/../${CMAKE_INSTALL_LIBDIR}")
-elseif(NOT WIN32)
-    set_target_properties(${rtype_installed} PROPERTIES
-        INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
-endif()
 if(PROJECT_IS_TOP_LEVEL)
     aegis2d_package(NAME r-type VENDOR Aegis2D-Dev
         DESCRIPTION "R-Type: the authoritative server and the client of a four-player shoot'em up")
