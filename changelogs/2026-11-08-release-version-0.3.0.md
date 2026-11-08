@@ -4,7 +4,7 @@
 |---|---|
 | Pull request | [#106](https://github.com/Aegis2D-Dev/project-rtype/pull/106) (opened 2026-11-08) |
 | Branch | `chore/release-version-0.3.0` → `develop` |
-| Status | Open |
+| Status | Merged on 2026-11-07 (`53d8cf2`) |
 | Author | @vmbr068 |
 | Ticket | [Aegis2D-Dev/aegis2d#388](https://github.com/Aegis2D-Dev/aegis2d/issues/388) chore(release): tag the deliveries (version part) |
 
